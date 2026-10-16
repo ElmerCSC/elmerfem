@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,13 +27,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 13 Sep 2002
 ! *
 ! ****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !------------------------------------------------------------------------------
@@ -50,7 +50,7 @@
   USE GeneralUtils
 
   IMPLICIT NONE
-  
+
   TYPE(model_t)  :: Model        !> All model information (mesh,materials,BCs,etc...)
   TYPE(solver_t) :: Solver       !> Linear equation solver options
   TYPE(matrix_t), POINTER :: A   !> Linear equation matrix information
@@ -118,7 +118,7 @@
       l = 0
       DO i=1,A % NumberOFRows
          s = A % Values( A % Diag(i) )
-         A % Values( A % Diag(i) ) = 0.0d0 
+         A % Values( A % Diag(i) ) = 0.0d0
          j = A % Rows(i)
          k = A % Rows(i+1)-1
          IF ( ALL( ABS(A % Values(j:k))<1.d-12 ) ) THEN
@@ -145,7 +145,7 @@
       j = 0
       k = 1
 zz = 0
-      DO i=1, A % NumberOFRows 
+      DO i=1, A % NumberOFRows
          IF ( Permutation(i) /= 0 ) THEN
             j = j + 1
             Bmatrix % Rows(j) = k
@@ -183,7 +183,7 @@ if ( .not. add ) zz=zz+1
          DCount(1) = 0
       END IF
 
-      DO i=2, A % NumberOFRows 
+      DO i=2, A % NumberOFRows
          IF ( Permutation(i) /= 0 ) THEN
             DCount(i) = DCount(i-1)
          ELSE
@@ -193,7 +193,7 @@ if ( .not. add ) zz=zz+1
 
       j = 0
       k = 1
-      DO i=1, A % NumberOFRows 
+      DO i=1, A % NumberOFRows
         IF ( Permutation(i) /= 0 ) THEN
            j = j + 1
            DO l = A % Rows(i),A % Rows(i+1)-1
@@ -288,10 +288,10 @@ if ( .not. add ) zz=zz+1
       END DO
    ELSE
       j = 0
-      DO i=1, A % NumberOFRows 
+      DO i=1, A % NumberOFRows
         IF ( Permutation(i) /= 0 ) THEN
            j = j + 1
-           F(j) = B(i) 
+           F(j) = B(i)
            U(j) = X(i)
            DO l = A % Rows(i), A % Rows(i+1)-1
               t = A % Cols(l)
@@ -437,7 +437,7 @@ if ( .not. add ) zz=zz+1
   ! TotTime = CPUTime(Solver,.FALSE.) - TotTime
   TotTime = CPUTime() - TotTime
 
-  WRITE( Message, * ) 'Total time spent in DirichletReduction (CPU): ', TotTime 
+  WRITE( Message, * ) 'Total time spent in DirichletReduction (CPU): ', TotTime
   CALL Info( 'Dirichlet', Message, Level=5 )
   WRITE( Message, * ) 'Additional time spent in DirichletReduction (CPU): ', TotTime - LinTime
   CALL Info( 'Dirichlet', Message, Level=5 )

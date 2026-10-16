@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,16 +13,16 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !/******************************************************************************
 ! *
-! *  A monolithic compressible Navier-Stokes solver 
+! *  A monolithic compressible Navier-Stokes solver
 ! *
 ! ******************************************************************************
 ! *
@@ -32,13 +32,13 @@
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
 ! *           P.O. Box 405
-! *           FI-02101 Espoo, Finland 
+! *           FI-02101 Espoo, Finland
 ! *
 ! *****************************************************************************/
 
 !------------------------------------------------------------------------------
 !> A monolithic compressible Navier-Stokes solver. The equation includes
-!> velocity components, pressure and temperature. Ideal gas law is assumed. 
+!> velocity components, pressure and temperature. Ideal gas law is assumed.
 !------------------------------------------------------------------------------
 SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -98,7 +98,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
 
   IF ( CurrentDoneTime == 0 ) THEN
      FirstSolve = .TRUE.
-  ELSE 
+  ELSE
      FirstSolve = .FALSE.
   END IF
 
@@ -110,7 +110,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   END IF
 
   dim = CoordinateSystemDimension()
-  CoordSys = CurrentCoordinateSystem()  
+  CoordSys = CurrentCoordinateSystem()
   ! Check whether convection stabilization is used...
   !ExplicitStabilization = ListGetLogical( Solver % Values, 'Stabilize', GotIt )
   !IF (.NOT. GotIt) ExplicitStabilization = .false.
@@ -120,7 +120,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   IF ( NonlinearIterationMethod /= 'picard') THEN
      PicardIteration = .FALSE.
   ELSE
-     PicardIteration = .TRUE.     
+     PicardIteration = .TRUE.
   END IF
 
   !--------------------------------------------------------------------------
@@ -164,7 +164,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   NonlinearTol = ListGetConstReal( Solver % Values, &
        'Nonlinear System Convergence Tolerance',minv=0.0d0 )
 
-  
+
   CALL DefaultStart()
 
   DO iter=1, NonlinearIter
@@ -208,7 +208,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
         IF (.NOT. Found) bulkvisc = 0.0d0
         lambda = bulkvisc - 2.0d0/3.0d0 * mu(1)
         T0 = ListGetConstReal( Material, 'Equilibrium Temperature')
-        rho0 = ListGetConstReal( Material, 'Equilibrium Density')          
+        rho0 = ListGetConstReal( Material, 'Equilibrium Density')
 
         !---------------------------------------------------------------------
         ! Get previous elementwise velocity, temperature and density iterates:
@@ -225,7 +225,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
               DO i=1,dim
                  Velocity(i,1:nd) = Solver % Variable % PrevValues( &
                       Solver % Variable % DOFs*(Solver % Variable % &
-                      Perm(Indexes(1:nd))-1)+i,1) 
+                      Perm(Indexes(1:nd))-1)+i,1)
               END DO
               Temperature(1:nd) = Solver % Variable % PrevValues( &
                    Solver % Variable % DOFs*(Solver % Variable % &
@@ -285,7 +285,7 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
      stime = CPUTime() - stime
      WRITE(Message, '(a,F8.2)') ' Assembly:  (s)', atime
      CALL Info( 'NavierStokesSolver', Message, Level=4)
-     WRITE(Message, '(a,F8.2)') ' Solution:  (s)', stime    
+     WRITE(Message, '(a,F8.2)') ' Solution:  (s)', stime
      CALL Info( 'NavierStokesSolver', Message, Level=4)
 
      IF ( Solver % Variable % NonlinConverged > 0 ) EXIT
@@ -293,8 +293,8 @@ SUBROUTINE CompressibleNS( Model,Solver,dt,TransientSimulation )
   END DO
 
   CALL DefaultFinish()
-  
-  
+
+
 CONTAINS
 
 
@@ -326,7 +326,7 @@ CONTAINS
     !------------------------------------------------------------------------------
     PicardIteration = .TRUE.
     Stabilization = .FALSE.
- 
+
     CALL GetElementNodes( Nodes )
     STIFF = 0.0d0
     FORCE = 0.0d0
@@ -335,12 +335,12 @@ CONTAINS
     !----------------------
     ! Numerical integration:
     !-----------------------
-    IP = GaussPoints( Element )  
+    IP = GaussPoints( Element )
 
     !AK = 0.0d0
-    !ch = (sqrt( (Nodes % x(2) - Nodes % x(1))**2 + (Nodes % y(2) - Nodes % y(1))**2) + & 
+    !ch = (sqrt( (Nodes % x(2) - Nodes % x(1))**2 + (Nodes % y(2) - Nodes % y(1))**2) + &
     !     sqrt( (Nodes % x(2) - Nodes % x(3))**2 + (Nodes % y(2) - Nodes % y(3))**2) + &
-    !     sqrt( (Nodes % x(1) - Nodes % x(3))**2 + (Nodes % y(1) - Nodes % y(3))**2) )/ 3.0d0 
+    !     sqrt( (Nodes % x(1) - Nodes % x(3))**2 + (Nodes % y(1) - Nodes % y(3))**2) )/ 3.0d0
     !rotterm = 0.0d0
 
     R = (gamma - 1.0d0) * cv
@@ -365,9 +365,9 @@ CONTAINS
        GradV1(2) = SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )
        GradV2(1) = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,1) )
        GradV2(2) = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,2) )
-        
+
        !w3 = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,1) ) - &
-       !     SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )     
+       !     SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )
 
        !----------------------------------------------
        ! Material parameters at the integration point:
@@ -383,7 +383,7 @@ CONTAINS
        !rotterm = rotterm + s * ( w3*w3 * (Velo(1) * Velo(1) + Velo(2) * Velo(2)) )
 
        !----------------------------------------------------------------------------------
-       ! The system matrix with only the velocity space augmented by bubbles  
+       ! The system matrix with only the velocity space augmented by bubbles
        !---------------------------------------------------------------------------------
        DO p=1,nd
           DO q=1,nd
@@ -410,15 +410,15 @@ CONTAINS
                    END IF
 
                 END DO
-                
+
                 IF ( (CoordSys == AxisSymmetric) .AND. i==1 ) THEN
                    A(i,i) = A(i,i) + s * 2.0d0 * mu * 1/rpos**2 * Basis(q) * Basis(p)
                 END IF
-                   
+
 
                 M(i,i) = M(i,i) + s * rho * Basis(p) * Basis(q)
-                
-                ! Temperature and density bubbles are handled elsewhere... 
+
+                ! Temperature and density bubbles are handled elsewhere...
                 IF (q <= n) THEN
                    ! Testing w.r.t. all velocity test functions and omitting temperature/density bubbles...
                    A(i,dim+1) = A(i,dim+1) - s * R * rho * Basis(q) * dBasisdx(p,i)
@@ -443,8 +443,8 @@ CONTAINS
                 END IF
              END DO
 
-             M(dim+1,dim+1) = M(dim+1,dim+1) + s * rho * cv / PrevT * Basis(p) * Basis(q)  
-             M(dim+2,dim+2) = M(dim+2,dim+2) + s * Basis(p) * Basis(q) 
+             M(dim+1,dim+1) = M(dim+1,dim+1) + s * rho * cv / PrevT * Basis(p) * Basis(q)
+             M(dim+2,dim+2) = M(dim+2,dim+2) + s * Basis(p) * Basis(q)
 
              A(dim+1,dim+1) = A(dim+1,dim+1) + s * k / PrevT * SUM( dBasisdx(p,1:dim) * dBasisdx(q,1:dim) )
              A(dim+1,dim+1) = A(dim+1,dim+1) + s * rho * cv / PrevT * &
@@ -456,52 +456,52 @@ CONTAINS
                 A(dim+1,dim+1) = A(dim+1,dim+1) + s * rho * cv / PrevT * &
                       Velo(3) * dBasisdx(q,3) * Basis(p)
                 A(dim+2,dim+2) = A(dim+2,dim+2) + s * Velo(3) * dBasisdx(q,3) * &
-                  Basis(p)                
+                  Basis(p)
              END IF
 
- 
+
              IF (.FALSE.) THEN
-!             IF ( PicardIteration ) THEN 
+!             IF ( PicardIteration ) THEN
                 Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) = Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) + &
-                     rho * s * Velo(2) * dBasisdx(q,2) * Basis(p) 
+                     rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                 Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+2 ) = Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+2 ) - &
-                     rho * s * Velo(2) * dBasisdx(q,1) * Basis(p) 
+                     rho * s * Velo(2) * dBasisdx(q,1) * Basis(p)
 
                 Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+1 ) = Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+1 ) - &
-                     rho * s * Velo(1) * dBasisdx(q,2) * Basis(p) 
+                     rho * s * Velo(1) * dBasisdx(q,2) * Basis(p)
                 Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) = Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) + &
                      rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
              ELSE
                 Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) = Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) + &
-                     rho * s * Velo(2) * dBasisdx(q,2) * Basis(p) 
+                     rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                 Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) = Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) + &
-                     rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                     rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
 
                 Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) = Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) + &
-                     rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                     rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
                 Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) = Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) + &
                      rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
 
                 IF (dim > 2) THEN
 
                    Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) = Stiff( (dim+2)*(p-1)+1, (dim+2)*(q-1)+1 ) + &
-                        rho * s * Velo(3) * dBasisdx(q,3) * Basis(p) 
+                        rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
                    Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) = Stiff( (dim+2)*(p-1)+2, (dim+2)*(q-1)+2 ) + &
-                        rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)                       
+                        rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
 
                    Stiff( (dim+2)*(p-1)+3, (dim+2)*(q-1)+3 ) = Stiff( (dim+2)*(p-1)+3, (dim+2)*(q-1)+3 ) + &
-                        rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                        rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
                    Stiff( (dim+2)*(p-1)+3, (dim+2)*(q-1)+3 ) = Stiff( (dim+2)*(p-1)+3, (dim+2)*(q-1)+3 ) + &
-                        rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)                  
+                        rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                    Stiff( (dim+2)*(p-1)+3, (dim+2)*(q-1)+3 ) = Stiff( (dim+2)*(p-1)+3, (dim+2)*(q-1)+3 ) + &
-                        rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)                       
+                        rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
 
                 END IF
 
              END IF
 
 
-             
+
 
           END DO
 
@@ -509,7 +509,7 @@ CONTAINS
           F => FORCE(i:i+dim+1)
           F = F + s * LoadAtIP * Basis(p)
 
-          ! The explicit treatment of the convection term grad(v*v) 
+          ! The explicit treatment of the convection term grad(v*v)
           !F(1) = F(1) - s * rho * ( Velo(1) * GradV1(1) + Velo(2) * GradV2(1) )
           !F(2) = F(2) - s * rho * ( Velo(1) * GradV1(2) + Velo(2) * GradV2(2) )
 
@@ -517,12 +517,12 @@ CONTAINS
        END DO
     END DO
 
-    !print *, 'Average rot = ', sqrt(rotterm)/sqrt(AK)   
-    !rotterm = sqrt(rotterm)/sqrt(AK)  
+    !print *, 'Average rot = ', sqrt(rotterm)/sqrt(AK)
+    !rotterm = sqrt(rotterm)/sqrt(AK)
     !ch = ch * sqrt(rotterm)
-    
+
     !-------------------------------------------------------------------------------------------
-    ! The system matrix may have been allocated for the case where all approximation spaces 
+    ! The system matrix may have been allocated for the case where all approximation spaces
     ! are augmented by bubbles. This nullifies the effect of the temperature/density bubbles.
     !-------------------------------------------------------------------------------------------
     DO p = n+1,nd

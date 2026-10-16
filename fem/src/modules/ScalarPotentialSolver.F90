@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 20.06.2007
 ! *
@@ -65,7 +65,7 @@
       CALL ListAddNewInteger(SolverParams,'Linear System Residual Output',10)
       CALL ListAddNewConstReal(SolverParams,'Linear System Convergence Tolerance',1.0e-10_dp)
     END IF
-      
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ScalarPotentialSolver_Init
 !------------------------------------------------------------------------------
@@ -99,10 +99,10 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: ForceVector(:,:), SaveRHS(:)
   REAL(KIND=dp) :: at0,at1,at2
   TYPE(Variable_t), POINTER :: ScalarPotentialSol
-  
+
   SAVE Visited
 
- 
+
   CALL Info( 'ScalarPotentialSolver', '-------------------------------------',Level=4 )
   CALL Info( 'ScalarPotentialSolver','Computing scalar potential of a vector field',Level=4 )
   CALL Info( 'ScalarPotentialSolver', '-------------------------------------',Level=4 )
@@ -113,24 +113,24 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
   IF ( COUNT( Solver % Variable % Perm > 0 ) <= 0 ) RETURN
-  
+
   SolverParams => GetSolverParams()
-  
+
   CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
       CurrentCoordinateSystem() == CylindricSymmetric
-  
+
   VarName = GetString(SolverParams,'Flux Variable')
   CondName = ListGetString(SolverParams,'Flux Coefficient',GotIt)
   IF(.NOT. GotIt) CondName = 'none'
 
   at0 = RealTime()
-  
+
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', GotIt )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
       ASSOCIATED(Solver % Matrix % BulkValues)
-  
+
   CALL DefaultInitialize(Solver, ConstantBulkMatrixInUse)
-  
+
   CALL BulkAssembly()
   IF ( ConstantBulkMatrix ) THEN
     CALL DefaultFinishBulkAssembly(BulkUpdate = .NOT.ConstantBulkMatrixInUse, RHSUpdate = .FALSE.)
@@ -143,31 +143,31 @@ SUBROUTINE ScalarPotentialSolver( Model,Solver,dt,Transient )
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
 
-  
+
   at1 = RealTime()
   WRITE(Message,* ) 'Assembly Time: ',at1-at0
   CALL Info( 'ScalarPotentialSolver', Message, Level=5 )
-!        
-!------------------------------------------------------------------------------     
+!
+!------------------------------------------------------------------------------
 
   TotNorm = DefaultSolve()
 
-!------------------------------------------------------------------------------     
+!------------------------------------------------------------------------------
 
   at2 = RealTime()
   WRITE(Message,* ) 'Solution Time: ',at2-at1
   CALL Info( 'ScalarPotentialSolver', Message, Level=5 )
-  
+
   WRITE( Message, * ) 'Result Norm: ',TotNorm
   CALL Info( 'ScalarPotentialSolver', Message, Level=4 )
-  
+
 CONTAINS
 
 
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
-       
+
     INTEGER :: elem,t,i,j,p,q,n,nd, Rank
     REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:)
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
@@ -179,22 +179,22 @@ CONTAINS
     LOGICAL :: Found, GotCoeff
     TYPE(ValueList_t), POINTER :: Material
     REAL(KIND=dp), POINTER :: Conductivity(:,:,:)=>NULL()
-    
+
     SAVE Conductivity, Nodes
-    
+
     n = MAX( Solver % Mesh % MaxElementDOFs, Solver % Mesh % MaxElementNodes )
     ALLOCATE( STIFF(n,n), FORCE(n) )
     ALLOCATE( VectorField(3,n), Basis(n), dBasisdx(n,3) )
 
     DO elem = 1,Solver % NumberOFActiveElements
-         
+
       ! Element information
       ! ---------------------
       Element => GetActiveElement(elem)
       CALL GetElementNodes( Nodes )
       nd = GetElementNOFDOFs()
       n  = GetElementNOFNodes()
-      
+
       CALL GetRealArray( GetMaterial(), Conductivity, CondName, GotCoeff )
       IF ( GotCoeff ) THEN
         C = 0.0_dp
@@ -210,16 +210,16 @@ CONTAINS
       IntegStuff = GaussPoints( Element )
       STIFF  = 0.0_dp
       FORCE  = 0.0_dp
-      
-      
+
+
       DO t=1,IntegStuff % n
         Found = ElementInfo( Element, Nodes, IntegStuff % u(t), &
             IntegStuff % v(t), IntegStuff % w(t), detJ, Basis, dBasisdx )
-        
+
         Weight = IntegStuff % s(t) * detJ
         IF ( CSymmetry ) Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
 
-       IF ( .NOT. ConstantBulkMatrixInUse ) THEN 
+       IF ( .NOT. ConstantBulkMatrixInUse ) THEN
          IF(GotCoeff) THEN
            SELECT CASE(Rank)
            CASE(1)
@@ -238,7 +238,7 @@ CONTAINS
              END DO
            END SELECT
 
-           ! Use negative sign! 
+           ! Use negative sign!
            DO p=1,nd
              DO q=1,nd
                DO i=1,dim
@@ -250,7 +250,7 @@ CONTAINS
              END DO
            END DO
          ELSE
-           DO p=1,nd           
+           DO p=1,nd
              DO q=1,nd
                STIFF(p,q) = STIFF(p,q) + Weight * &
                    SUM( dBasisdx(q,1:dim) * dBasisdx(p,1:dim) )
@@ -258,27 +258,27 @@ CONTAINS
            END DO
          END IF
        END IF
-        
+
        DO p=1,nd
          DO i=1,dim
            FORCE(p) = FORCE(p) + Weight * &
                dBasisdx(p,i) * SUM( Basis(1:nd) * VectorField(i,1:nd))
          END DO
        END DO
-       
+
      END DO
 
 !------------------------------------------------------------------------------
-!      Update global matrices from local matrices 
+!      Update global matrices from local matrices
 !------------------------------------------------------------------------------
      IF ( .NOT. ConstantBulkMatrixInUse ) THEN
        CALL DefaultUpdateEquations( STIFF, FORCE(1:nd) )
      ELSE
-       CALL DefaultUpdateForce( FORCE(1:nd) )       
+       CALL DefaultUpdateForce( FORCE(1:nd) )
      END IF
-     
+
    END DO
-   
+
    DEALLOCATE( VectorField, STIFF, FORCE, Basis, dBasisdx )
 !------------------------------------------------------------------------------
   END SUBROUTINE BulkAssembly

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12 Dec 2003
 ! *
@@ -68,9 +68,9 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
   INTEGER :: i, j, k, n, nb, nd, t, istat, dim, active, NonlinearIter, iter, &
        CurrentDoneTime = 0
   REAL(KIND=dp) :: Norm, PrevNorm, RelC, NonlinearTol, NonLinError, at0
-  
+
   INTEGER, ALLOCATABLE :: Indexes(:)
-  
+
   TYPE(Variable_t), POINTER :: PresVar, FlowVar
 
   TYPE(ValueList_t), POINTER :: BodyForce, Material, BC, SolverParams
@@ -84,7 +84,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   Parallel = ParEnv % PEs > 1
-  SolverParams => GetSolverParams()  
+  SolverParams => GetSolverParams()
   Convect = GetLogical( SolverParams, 'Convective', Found )
   IF ( .NOT. Found ) Convect = .TRUE.
   BlockPreconditioning = GetLogical( SolverParams, 'Block Preconditioning', Found )
@@ -99,35 +99,35 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
 
   ConstantBulkMatrix = GetLogical( SolverParams, 'Constant Bulk Matrix', Found )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
-       ASSOCIATED(Solver % Matrix % BulkValues) .AND. ( .NOT. NewTimeStep )  
- 
+       ASSOCIATED(Solver % Matrix % BulkValues) .AND. ( .NOT. NewTimeStep )
+
 
 
   IF ( ConstantBulkMatrix) THEN
      ! Optimize performance if ILU preconditioning is used...
      str = ListGetString( Solver % Values, &
-          'Linear System Preconditioning', Found )          
+          'Linear System Preconditioning', Found )
      IF ( Found .AND. SEQL(str, 'ilu') ) THEN
         IF (NewTimeStep) THEN
-           CALL ListAddLogical(Solver % Values, 'No Precondition Recompute', .FALSE.) 
+           CALL ListAddLogical(Solver % Values, 'No Precondition Recompute', .FALSE.)
         ELSE
-           CALL ListAddLogical(Solver % Values, 'No Precondition Recompute', .TRUE.)     
+           CALL ListAddLogical(Solver % Values, 'No Precondition Recompute', .TRUE.)
         END IF
      END IF
   END IF
- 
+
 
   IF (Convect) THEN
 
      ConvectionForm = ListGetString(Solver % Values, 'Convection Form', Found)
-     IF ( .NOT. Found ) ConvectionForm = 'standard' 
+     IF ( .NOT. Found ) ConvectionForm = 'standard'
      IF ( ConvectionForm /= 'rotational') THEN
         IF ( ConvectionForm == 'standard') THEN
            PicardIteration = .TRUE.
            Newton = .FALSE.
            Hybrid = .FALSE.
         ELSE
-           CALL Fatal( 'VelocitySolver', 'Convection Form must be rotational or standard' )   
+           CALL Fatal( 'VelocitySolver', 'Convection Form must be rotational or standard' )
         END IF
 
      ELSE
@@ -144,7 +144,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
            IF ( NonlinearIterationMethod /= 'picard') THEN
               PicardIteration = .FALSE.
               Newton = .TRUE.
-              Hybrid = .FALSE.        
+              Hybrid = .FALSE.
            ELSE
               PicardIteration = .TRUE.
               Newton = .FALSE.
@@ -163,11 +163,11 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
              'Nonlinear System Convergence Tolerance',minv=0.0d0 )
      END IF
   ELSE
-     
+
      NonlinearIter = 1
 
   END IF
-   
+
 
   dim = CoordinateSystemDimension()
   Mesh => GetMesh()
@@ -193,14 +193,14 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
      END IF
 
      IF ( .NOT. Parallel) THEN
-        ALLOCATE(   &  
+        ALLOCATE(   &
              PrevSol(Solver % Matrix % NumberOfRows), &
-             NonLinRes(Solver % Matrix % NumberOfRows), &    
+             NonLinRes(Solver % Matrix % NumberOfRows), &
              STAT=istat )
         IF ( istat /= 0 ) &
              CALL Fatal( 'VelocitySolver', 'Memory allocation error.' )
      END IF
-    
+
      AllocationsDone = .TRUE.
 
   END IF
@@ -216,7 +216,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
   IF (BlockPreconditioning) THEN
      FlowVar => VariableGet( Mesh % Variables, 'Flow' )
      IF ( .NOT. ASSOCIATED(FlowVar) ) &
-          CALL Fatal( 'VelocitySolver', 'The coupled flow variable Flow was not found' )     
+          CALL Fatal( 'VelocitySolver', 'The coupled flow variable Flow was not found' )
   ELSE
      PresVar => VariableGet( Mesh % Variables, 'TotalPressure' )
      IF ( .NOT. ASSOCIATED(PresVar) ) &
@@ -231,13 +231,13 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------
      Active = GetNOFActive()
      IF ( ConstantBulkMatrixInUse ) THEN
-        Solver % Matrix % Values = Solver % Matrix % BulkValues        
+        Solver % Matrix % Values = Solver % Matrix % BulkValues
         Solver % Matrix % RHS = 0.0_dp
      ELSE
         CALL DefaultInitialize()
      END IF
 
-     DO t=1,Active 
+     DO t=1,Active
 
         !IF ( RealTime() - at0 > 2.0 ) THEN
         !   WRITE(Message,'(a,i3,a)' ) '   Assembly: ', INT(100.0 - 100.0 * &
@@ -279,7 +279,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
            END DO
            Pressure(1,1:nd) = FlowVar % Values( &
                 FlowVar % DOFs*(FlowVar % &
-                Perm(Indexes(1:nd))-1)+dim+1)      
+                Perm(Indexes(1:nd))-1)+dim+1)
 
         ELSE
            IF ( NewTimeStep ) THEN
@@ -318,7 +318,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
         !-----------------------------------------
         CALL LocalMatrix( MASS, STIFF, FORCE, LOAD, rho, &
              mu,  Velocity, Pressure, Element, n, nd, nd+nb, dim, Stabilization)
-      
+
         ! Update global matrix and rhs vector from local matrix & vector:
         !----------------------------------------------------------------
         !CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -326,23 +326,23 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
         IF ( .NOT. ConstantBulkMatrixInUse ) THEN
            CALL DefaultUpdateEquations( STIFF, FORCE )
         ELSE
-           CALL DefaultUpdateForce( FORCE ) 
+           CALL DefaultUpdateForce( FORCE )
         END IF
 
      END DO
 
-     ! This routine is used to save the bulk values after bulk assembly 
+     ! This routine is used to save the bulk values after bulk assembly
      IF(.NOT. ConstantBulkMatrixInUse ) THEN
        CALL DefaultFinishBulkAssembly()
      END IF
-    
+
 
      ! Terms on outflow boundary
      !--------------------------------------------------------------
      IF (Convect .AND. ConvectionForm == 'rotational') THEN
 
         Active = GetNOFBoundaryElements()
-        DO t=1, Active       
+        DO t=1, Active
            Element => GetBoundaryElement(t)
            IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
@@ -383,22 +383,22 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
 
      IF (Parallel) THEN
 
-        CALL DefaultDirichletBCs()     
+        CALL DefaultDirichletBCs()
         Norm = DefaultSolve()
 
      ELSE
         !------------------------------------------------------------------------------------
         ! In serial runs the P2P1/Q2Q1 approximation utilizing the shape functions of
-        ! p-elements may be used. The boundary conditions are therefore handled by 
+        ! p-elements may be used. The boundary conditions are therefore handled by
         ! the following nonstandard subroutines, so that the mid-edge/face dofs
-        ! are simply set to be zero. This may cause non-optimal accuracy, but this is the 
-        ! way we do this. Better ways could be developed... 
+        ! are simply set to be zero. This may cause non-optimal accuracy, but this is the
+        ! way we do this. Better ways could be developed...
         !------------------------------------------------------------------------------------
         CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 1), &
              1, dim,  Solver % Variable % Perm, Solver % Matrix % RHS)
         CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 2), &
-             2, dim,  Solver % Variable % Perm, Solver % Matrix % RHS)  
-        IF ( dim > 2) &   
+             2, dim,  Solver % Variable % Perm, Solver % Matrix % RHS)
+        IF ( dim > 2) &
              CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 3), &
              3, dim,  Solver % Variable % Perm, Solver % Matrix % RHS)
 
@@ -409,7 +409,7 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
         ELSE
 
            !PrevNorm = Norm
-           
+
            !n = Solver % Matrix % NumberOfRows
            !IF ( iter == 1) THEN
            !   PrevSol(1:n) = Solver % Variable % PrevValues(1:n,1)
@@ -424,13 +424,13 @@ SUBROUTINE VelocitySolver( Model,Solver,dt,TransientSimulation )
            ! IF ( NonLinError < 1.0d-2 ) Newton = .TRUE.
            !WRITE(Message, '(a,E12.4)') 'Nonlinear iteration residual: ', NonLinError
            !CALL Info( 'VelocitySolver', Message, Level=4)
-           
+
            !IF (NonLinError < NonLinearTol ) THEN !.OR. iter == (NonlinearIter+1) ) THEN
            !   EXIT
            !ELSE
            !   Norm = DefaultSolve()
            !END IF
-    
+
            Norm = DefaultSolve()
 
         END IF
@@ -475,7 +475,7 @@ CONTAINS
     IP = GaussPoints( Element )
 
     ! ch = ElementDiameter(Element, Nodes)
-    ! rotterm = 0.0d0    
+    ! rotterm = 0.0d0
     ! AK = 0.0d0
 
     DO t=1,IP % n
@@ -501,11 +501,11 @@ CONTAINS
 
        IF ( dim > 2) THEN
           w1 = SUM( NodalVelo(3,1:nd) * dBasisdx(1:nd,2) ) - &
-               SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,3) )             
+               SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,3) )
           w2 = SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,3) ) - &
                SUM( NodalVelo(3,1:nd) * dBasisdx(1:nd,1) )
           w3 = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,1) ) - &
-               SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )         
+               SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )
 
           !rotterm = rotterm + s * ( ( w2*Velo(3) - w3*Velo(2) )**2 + &
           !     ( w3*Velo(1) - w1*Velo(3) )**2 + &
@@ -513,7 +513,7 @@ CONTAINS
 
        ELSE
           w3 = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,1) ) - &
-               SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )     
+               SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )
 
           !rotterm = rotterm + s * ( w3*w3 * (Velo(1) * Velo(1) + Velo(2) * Velo(2)) )
        END IF
@@ -548,28 +548,28 @@ CONTAINS
                       ! standard form
 
                       Stiff( dim*(p-1)+1, dim*(q-1)+1 ) = Stiff( dim*(p-1)+1, dim*(q-1)+1 ) + &
-                           rho * s * Velo(2) * dBasisdx(q,2) * Basis(p) 
+                           rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                       Stiff( dim*(p-1)+1, dim*(q-1)+1 ) = Stiff( dim*(p-1)+1, dim*(q-1)+1 ) + &
-                           rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                           rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
 
                       Stiff( dim*(p-1)+2, dim*(q-1)+2 ) = Stiff( dim*(p-1)+2, dim*(q-1)+2 ) + &
-                           rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                           rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
                       Stiff( dim*(p-1)+2, dim*(q-1)+2 ) = Stiff( dim*(p-1)+2, dim*(q-1)+2 ) + &
-                           rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)                  
+                           rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
 
                       IF (dim > 2) THEN
 
                          Stiff( dim*(p-1)+1, dim*(q-1)+1 ) = Stiff( dim*(p-1)+1, dim*(q-1)+1 ) + &
-                              rho * s * Velo(3) * dBasisdx(q,3) * Basis(p) 
+                              rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
                          Stiff( dim*(p-1)+2, dim*(q-1)+2 ) = Stiff( dim*(p-1)+2, dim*(q-1)+2 ) + &
-                              rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)                       
+                              rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
 
                          Stiff( dim*(p-1)+3, dim*(q-1)+3 ) = Stiff( dim*(p-1)+3, dim*(q-1)+3 ) + &
-                              rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                              rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
                          Stiff( dim*(p-1)+3, dim*(q-1)+3 ) = Stiff( dim*(p-1)+3, dim*(q-1)+3 ) + &
-                              rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)                  
+                              rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                          Stiff( dim*(p-1)+3, dim*(q-1)+3 ) = Stiff( dim*(p-1)+3, dim*(q-1)+3 ) + &
-                              rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)                       
+                              rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
 
                       END IF
 
@@ -583,9 +583,9 @@ CONTAINS
                               rho * s * Velo(2) * dBasisdx(q,2) * Basis(p) + &
                               rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
                          Stiff( dim*(p-1)+1, dim*(q-1)+2 ) = Stiff( dim*(p-1)+1, dim*(q-1)+2 ) - &
-                              rho * s * Velo(2) * dBasisdx(q,1) * Basis(p) 
+                              rho * s * Velo(2) * dBasisdx(q,1) * Basis(p)
                          Stiff( dim*(p-1)+1, dim*(q-1)+3 ) = Stiff( dim*(p-1)+1, dim*(q-1)+3 ) - &
-                              rho * s * Velo(3) * dBasisdx(q,1) * Basis(p)                   
+                              rho * s * Velo(3) * dBasisdx(q,1) * Basis(p)
 
                          Stiff( dim*(p-1)+2, dim*(q-1)+1 ) = Stiff( dim*(p-1)+2, dim*(q-1)+1 ) - &
                               rho * s * Velo(1) * dBasisdx(q,2) * Basis(p)
@@ -593,14 +593,14 @@ CONTAINS
                               rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) + &
                               rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
                          Stiff( dim*(p-1)+2, dim*(q-1)+3 ) = Stiff( dim*(p-1)+2, dim*(q-1)+3 ) - &
-                              rho * s * Velo(3) * dBasisdx(q,2) * Basis(p) 
+                              rho * s * Velo(3) * dBasisdx(q,2) * Basis(p)
 
 
                          Stiff( dim*(p-1)+3, dim*(q-1)+1 ) = Stiff( dim*(p-1)+3, dim*(q-1)+1 ) - &
                               rho * s * Velo(1) * dBasisdx(q,3) * Basis(p)
 
                          Stiff( dim*(p-1)+3, dim*(q-1)+2 ) = Stiff( dim*(p-1)+3, dim*(q-1)+2 ) - &
-                              rho * s * Velo(2) * dBasisdx(q,3) * Basis(p) 
+                              rho * s * Velo(2) * dBasisdx(q,3) * Basis(p)
 
                          Stiff( dim*(p-1)+3, dim*(q-1)+3 ) = Stiff( dim*(p-1)+3, dim*(q-1)+3 ) + &
                               rho * s * Velo(2) * dBasisdx(q,2) * Basis(p) + &
@@ -610,19 +610,19 @@ CONTAINS
                          IF ( Newton) THEN
 
                             Stiff( dim*(p-1)+1, dim*(q-1)+2 ) = Stiff( dim*(p-1)+1, dim*(q-1)+2 ) - &
-                                 rho * s * w3 * Basis(q) * Basis(p) 
+                                 rho * s * w3 * Basis(q) * Basis(p)
                             Stiff( dim*(p-1)+1, dim*(q-1)+3 ) = Stiff( dim*(p-1)+1, dim*(q-1)+3 ) + &
-                                 rho * s * w2 * Basis(q) * Basis(p) 
+                                 rho * s * w2 * Basis(q) * Basis(p)
 
                             Stiff( dim*(p-1)+2, dim*(q-1)+1 ) = Stiff( dim*(p-1)+2, dim*(q-1)+1 ) + &
                                  rho * s * w3 * Basis(q) * Basis(p)
                             Stiff( dim*(p-1)+2, dim*(q-1)+3 ) = Stiff( dim*(p-1)+2, dim*(q-1)+3 ) - &
-                                 rho * s * w1 * Basis(q) * Basis(p) 
+                                 rho * s * w1 * Basis(q) * Basis(p)
 
                             Stiff( dim*(p-1)+3, dim*(q-1)+1 ) = Stiff( dim*(p-1)+3, dim*(q-1)+1 ) - &
                                  rho * s * w2 * Basis(q) * Basis(p)
                             Stiff( dim*(p-1)+3, dim*(q-1)+2 ) = Stiff( dim*(p-1)+3, dim*(q-1)+2 ) + &
-                                 rho * s * w1 * Basis(q) * Basis(p) 
+                                 rho * s * w1 * Basis(q) * Basis(p)
 
                          END IF
 
@@ -633,22 +633,22 @@ CONTAINS
                          !-----------------------------------------
 
                          Stiff( dim*(p-1)+1, dim*(q-1)+1 ) = Stiff( dim*(p-1)+1, dim*(q-1)+1 ) + &
-                              rho * s * Velo(2) * dBasisdx(q,2) * Basis(p) 
+                              rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                          Stiff( dim*(p-1)+1, dim*(q-1)+2 ) = Stiff( dim*(p-1)+1, dim*(q-1)+2 ) - &
-                              rho * s * Velo(2) * dBasisdx(q,1) * Basis(p) 
+                              rho * s * Velo(2) * dBasisdx(q,1) * Basis(p)
 
                          Stiff( dim*(p-1)+2, dim*(q-1)+1 ) = Stiff( dim*(p-1)+2, dim*(q-1)+1 ) - &
-                              rho * s * Velo(1) * dBasisdx(q,2) * Basis(p) 
+                              rho * s * Velo(1) * dBasisdx(q,2) * Basis(p)
                          Stiff( dim*(p-1)+2, dim*(q-1)+2 ) = Stiff( dim*(p-1)+2, dim*(q-1)+2 ) + &
-                              rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                              rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
 
 
                          IF (Newton) THEN
 
                             Stiff( dim*(p-1)+1, dim*(q-1)+2 ) = Stiff( dim*(p-1)+1, dim*(q-1)+2 ) - &
-                                 rho * s * w3 * Basis(q) * Basis(p) 
+                                 rho * s * w3 * Basis(q) * Basis(p)
                             Stiff( dim*(p-1)+2, dim*(q-1)+1 ) = Stiff( dim*(p-1)+2, dim*(q-1)+1 ) +  &
-                                 rho * s * w3 * Basis(q) * Basis(p) 
+                                 rho * s * w3 * Basis(q) * Basis(p)
 
                          END IF
 
@@ -674,19 +674,19 @@ CONTAINS
           F => FORCE(i+1:i+dim)
           F(1:dim) = F(1:dim) +  &
                s * ( LoadAtIP(1:dim) * Basis(p) + Pressure * dBasisdx(p,1:dim) )
- 
+
           ! This should be revised for generality...
           IF (Convect .AND. Newton) THEN
 
              F(1) = F(1) - rho * s * Basis(p) * Velo(2) * w3
-             F(2) = F(2) + rho * s * Basis(p) * Velo(1) * w3        
+             F(2) = F(2) + rho * s * Basis(p) * Velo(1) * w3
 
              IF ( dim > 2 ) THEN
-                
+
                 F(1) = F(1) + rho * s * Basis(p) * Velo(3) * w2
-                F(2) = F(2) - rho * s * Basis(p) * Velo(3) * w1                                    
+                F(2) = F(2) - rho * s * Basis(p) * Velo(3) * w1
                 F(3) = F(3) - rho * s * Basis(p) * Velo(1) * w2
-                F(3) = F(3) + rho * s * Basis(p) * Velo(2) * w1        
+                F(3) = F(3) + rho * s * Basis(p) * Velo(2) * w1
 
              END IF
 
@@ -736,10 +736,10 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t),  detJ, Basis, dBasisdx )
       s = IP % s(t) * detJ
-      
+
       Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       Velo = MATMUL( Velocity(1:dim,1:nd), Basis(1:nd) )
-      SquaredVelo = rho * SUM( Velo(1:dim) * Velo(1:dim) ) 
+      SquaredVelo = rho * SUM( Velo(1:dim) * Velo(1:dim) )
 
 
       IF ( Newton ) THEN
@@ -772,17 +772,17 @@ CONTAINS
                     s * c * Basis(p) * Normal(i) * Velo(1) * Basis(q)
 
                Stiff( dim*(p-1)+i, dim*(q-1)+2 ) = Stiff( dim*(p-1)+i, dim*(q-1)+2 )  + &
-                    s * c * Basis(p) * Normal(i) * Velo(2) * Basis(q)                  
- 
+                    s * c * Basis(p) * Normal(i) * Velo(2) * Basis(q)
+
                IF (dim > 2) &
                     Stiff( dim*(p-1)+i, dim*(q-1)+3 ) = Stiff( dim*(p-1)+i, dim*(q-1)+3 )  + &
-                   s * c * Basis(p) * Normal(i) * Velo(3) * Basis(q)                    
+                   s * c * Basis(p) * Normal(i) * Velo(3) * Basis(q)
 
             END DO
 
          END DO
       END DO
- 
+
     END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBoundary
@@ -822,9 +822,9 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Matrix_t), POINTER :: StiffMatrix
 
-    CHARACTER(LEN=*) :: Name 
+    CHARACTER(LEN=*) :: Name
     INTEGER :: DOF, NDOFs, Perm(:)
-    REAL(KIND=dp), OPTIONAL :: rhs(:)    
+    REAL(KIND=dp), OPTIONAL :: rhs(:)
 !------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: CurrentElement
@@ -856,7 +856,7 @@ CONTAINS
 
            Work(1:n) = ListGetReal( Model % BCs(i) % Values, &
                 Name,n,NodeIndexes, gotIt )
-  
+
            IF ( gotIt ) THEN
               DO j=1,n
                  k = Perm(NodeIndexes(j))
@@ -864,16 +864,16 @@ CONTAINS
                     k = NDOFs * (k-1) + DOF
                     CALL ZeroRow( StiffMatrix,k )
                     CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 )
-                    IF ( PRESENT(rhs) ) rhs(k) = work(j) 
+                    IF ( PRESENT(rhs) ) rhs(k) = work(j)
                  END IF
               END DO
 
               DO j=n+1,nd
                  k = Perm(Indexes(j))
-                 k = NDOFs * (k-1) + DOF              
+                 k = NDOFs * (k-1) + DOF
                  CALL ZeroRow( StiffMatrix,k )
                  CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 )
-                 IF ( PRESENT(rhs) ) rhs(k) = 0.0d0  
+                 IF ( PRESENT(rhs) ) rhs(k) = 0.0d0
               END DO
 
            END IF

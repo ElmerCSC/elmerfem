@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12 Dec 2003
 ! *
@@ -82,7 +82,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,TransientSimulation )
   ConstantBulkMatrixInUse = ConstantBulkMatrix .AND. &
        ASSOCIATED(Solver % Matrix % BulkValues)
 
- 
+
   VeloVar => VariableGet( Mesh % Variables, "VelocityTot" )
 
   ! Allocate some permanent storage, this is done first time only:
@@ -128,9 +128,9 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,TransientSimulation )
      IF ( .NOT. ConstantBulkMatrixInUse ) THEN
         CALL DefaultUpdateEquations( STIFF, FORCE )
      ELSE
-        CALL DefaultUpdateForce( FORCE ) 
+        CALL DefaultUpdateForce( FORCE )
      END IF
-        
+
   END DO
 
   IF ( ConstantBulkMatrix ) THEN
@@ -142,7 +142,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
-  
+
 !------------------------------------------------------------------------------
 
   ! Solve the system:
@@ -216,12 +216,12 @@ CONTAINS
 
 
    ! Eliminate the bubble and edge degrees of freedom if any
-    
+
    DO i = n+1,ntot
       FORCE(i)   = 0.0d0
       STIFF(i,:) = 0.0d0
       STIFF(:,i) = 0.0d0
-      STIFF(i,i) = 1.0d0      
+      STIFF(i,i) = 1.0d0
    END DO
 
 

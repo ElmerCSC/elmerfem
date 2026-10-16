@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 31 May 2017
 ! *
@@ -45,7 +45,7 @@
 MODULE H1Basis
   USE Messages
   USE Types, ONLY : dp, VECTOR_BLOCK_LENGTH
-  
+
   ! Module contains vectorized version of FE basis
   ! functions for selected elements
 
@@ -75,7 +75,7 @@ CONTAINS
       END IF
     END DO
   END SUBROUTINE H1Basis_GetEdgeDirection
-  
+
   SUBROUTINE H1Basis_GetTetraEdgeDirection(ttype, direction)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: ttype
@@ -100,12 +100,12 @@ CONTAINS
                         1,3, &
                         1,4, &
                         2,4, &
-                        3,4 ]      
+                        3,4 ]
     CASE DEFAULT
       CALL Fatal('H1Basis_GetTetraEdgeDirection','Unknown tetra type')
     END SELECT
   END SUBROUTINE H1Basis_GetTetraEdgeDirection
-  
+
   SUBROUTINE H1Basis_GetFaceDirection(ecode, nfaces, globalind, direction)
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: ecode, nfaces
@@ -120,8 +120,8 @@ CONTAINS
     DO face=1,nfaces
       IF (direction(H1Basis_MaxPElementFaceNodes, face) == 0) THEN
         ! Triangle face (last local index 0)
-        
-        ! Global face direction is consistent when the local indices are chosen such 
+
+        ! Global face direction is consistent when the local indices are chosen such
         ! that the global index is sorted
 
         ! Sort globalind(direction(:,face))
@@ -150,7 +150,7 @@ CONTAINS
         DO i=2,4
           IF (globalind(direction(i,face))<globalind(direction(minI,face))) minI=i
         END DO
-        
+
         ! In place rotate face to left or right cyclically to move minI as first element
         ! sqface(1:4)=cshift(direction(1:4,face),minI-1)
         SELECT CASE(minI-1)
@@ -188,7 +188,7 @@ CONTAINS
           direction(4,face)=tmp
         END IF
 
-        ! Let C be the remaining index next to the global minimum A and 
+        ! Let C be the remaining index next to the global minimum A and
         ! D the index opposite of A -> [A,B,D,C] forms a globally consistent ordering
       END IF
     END DO
@@ -206,7 +206,7 @@ CONTAINS
     flatdir(1:H1Basis_MaxPElementFaceNodes*H1Basis_MaxPElementFaces) => direction
     SELECT CASE (ttype)
     CASE (1)
-      flatdir(1:16) = [ 1,2,3,0, & 
+      flatdir(1:16) = [ 1,2,3,0, &
                         1,2,4,0, &
                         2,3,4,0, &
                         1,3,4,0 ]
@@ -338,7 +338,7 @@ CONTAINS
       CALL Fatal('H1Basis_GetFaceMap','Not fully implemented yet!')
     END SELECT
   END SUBROUTINE H1Basis_GetFaceMap
-  
+
   SUBROUTINE H1Basis_LineNodal(nvec, u, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
@@ -408,14 +408,14 @@ CONTAINS
 
     IF (invert) THEN
       DO p=1,pmax-1
-        !_ELMER_OMP_SIMD 
+        !_ELMER_OMP_SIMD
         DO j=1,nvec
            fval(j,nbasis+p) = H1Basis_Phi(p+1,-u(j))
         END DO
       END DO
     ELSE
       DO p=1,pmax-1
-        !_ELMER_OMP_SIMD 
+        !_ELMER_OMP_SIMD
         DO j=1,nvec
           fval(j,nbasis+p) = H1Basis_Phi(p+1,u(j))
         END DO
@@ -478,7 +478,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(Kind=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     INTEGER :: j
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
 !DIR$ ASSUME_ALIGNED u:64, v:64, fval:64
@@ -495,7 +495,7 @@ CONTAINS
   FUNCTION H1Basis_TriangleL(node, u, v) RESULT(fval)
     IMPLICIT NONE
 
-    ! Parameters 
+    ! Parameters
     INTEGER, INTENT(IN) :: node
     REAL(KIND=dp), INTENT(IN) :: u,v
     ! Result
@@ -503,7 +503,7 @@ CONTAINS
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
     !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE(1)
       fval = c*(1-u-d*v)
@@ -556,18 +556,18 @@ CONTAINS
     END DO
     nbasis = nbasis + 3
   END SUBROUTINE H1Basis_dTriangleNodalP
-  
+
   FUNCTION H1Basis_dTriangleL(node) RESULT(grad)
     IMPLICIT NONE
 
-    ! Parameters 
+    ! Parameters
     INTEGER, INTENT(IN) :: node
     ! REAL(KIND=dp), INTENT(IN) :: u,v
     ! Result
     REAL(KIND=dp) :: grad(2)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE(1)
       grad = c*[REAL(-1,dp), REAL(-d,dp)]
@@ -577,7 +577,7 @@ CONTAINS
       grad = [REAL(0,dp), REAL(d,dp)]
     END SELECT
   END FUNCTION H1Basis_dTriangleL
-  
+
   SUBROUTINE H1Basis_TriangleEdgeP(nvec, u, v, pmax, nbasismax, fval, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -669,7 +669,7 @@ CONTAINS
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER, INTENT(INOUT) :: nbasis
     INTEGER, INTENT(IN), DIMENSION(3), OPTIONAL :: localnumbers
-      
+
     ! Variables
     INTEGER :: i,j,k
     REAL (KIND=dp) :: La, Lb, Lc
@@ -759,7 +759,7 @@ CONTAINS
 
             Lb_Lai = H1Basis_PowInt((Lb-La), i)
             Lc_1n = H1Basis_PowInt((2*Lc-1), j-1)
-            
+
             ! Calculate value of function from general form
             grad(k,nbasis+j,1) = -c*Lb*Lc*Lb_Lai*Lc_1n + La*c*Lc*Lb_Lai*Lc_1n + &
                     La*Lb*Lc*i*(H1Basis_PowInt((Lb-La),i-1))*Lc_1n
@@ -873,7 +873,7 @@ CONTAINS
       grad(j,nbasis+3,1) =  c*(1+v(j))
       grad(j,nbasis+4,1) = -c*(1+v(j))
     END DO
-    
+
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -882,7 +882,7 @@ CONTAINS
       grad(j,nbasis+3,2) =  c*(1+u(j))
       grad(j,nbasis+4,2) =  c*(1-u(j))
     END DO
-    
+
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_dQuadNodal
 
@@ -1327,7 +1327,7 @@ CONTAINS
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
     !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) NOTINBRANCH
-    
+
     SELECT CASE (node)
     CASE (1)
       fval = c*(2-u-v)
@@ -1348,7 +1348,7 @@ CONTAINS
     REAL(KIND=dp) :: grad(2)
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE (1)
       grad(1:2) = c*[-1,-1 ]
@@ -1394,7 +1394,7 @@ CONTAINS
   FUNCTION H1Basis_TetraL(node, u, v, w) RESULT(fval)
     IMPLICIT NONE
 
-    ! Parameters 
+    ! Parameters
     INTEGER, INTENT(IN) :: node
     REAL(KIND=dp), INTENT(IN) :: u,v,w
     ! Result
@@ -1403,7 +1403,7 @@ CONTAINS
             e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0), g = SQRT(3D0)*f
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
     !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) _ELMER_LINEAR_REF(w) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE(1)
       fval = c*(1-u-d*v-e*w)
@@ -1412,10 +1412,10 @@ CONTAINS
     CASE(3)
       fval = d*(v-f*w)
     CASE(4)
-      fval = g*w      
+      fval = g*w
     END SELECT
   END FUNCTION H1Basis_TetraL
-  
+
   SUBROUTINE H1Basis_dTetraNodalP(nvec, u, v, w, nbasismax, grad, nbasis)
     IMPLICIT NONE
 
@@ -1448,7 +1448,7 @@ CONTAINS
     DO j=1,nvec
       grad(j,nbasis+4,1) = 0
     END DO
-    
+
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -1466,7 +1466,7 @@ CONTAINS
     DO j=1,nvec
       grad(j,nbasis+4,2) = 0
     END DO
-    
+
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -1486,18 +1486,18 @@ CONTAINS
     END DO
     nbasis = nbasis + 4
   END SUBROUTINE H1Basis_dTetraNodalP
-  
+
   FUNCTION H1Basis_dTetraL(node) RESULT(grad)
     IMPLICIT NONE
 
-    ! Parameters 
+    ! Parameters
     INTEGER, INTENT(IN) :: node
     ! Result
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0), &
             e = 1D0/SQRT(6D0), f = 1D0/SQRT(8D0), g = SQRT(3._dp)*f
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE(1)
       grad = c*[-1D0, -d, -e]
@@ -1544,7 +1544,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_TetraEdgeP
-  
+
   SUBROUTINE H1Basis_dTetraEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -1631,7 +1631,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_TetraFaceP
-  
+
   SUBROUTINE H1Basis_dTetraFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
     IMPLICIT NONE
 
@@ -1690,7 +1690,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_dTetraFaceP
-  
+
   SUBROUTINE H1Basis_TetraBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
@@ -1700,7 +1700,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     ! Variables
     INTEGER :: i, j, k, l
     ! Variables
@@ -1805,7 +1805,7 @@ CONTAINS
 
 ! --- start serendipity wedge
 
-  
+
   SUBROUTINE H1Basis_SD_WedgeEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -1865,7 +1865,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_SD_WedgeEdgeP
-  
+
   SUBROUTINE H1Basis_SD_dWedgeEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -1945,7 +1945,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_SD_dWedgeEdgeP
-  
+
   SUBROUTINE H1Basis_SD_WedgeFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
     IMPLICIT NONE
 
@@ -1997,7 +1997,7 @@ CONTAINS
                      facedir(2,i) >= 1 .AND. facedir(2,i) <= 3) .OR. &
                     (facedir(1,i) >= 4 .AND. facedir(1,i) <= 6 .AND.&
                      facedir(2,i) >= 4 .AND. facedir(2,i) <= 6)
-      
+
       DO j=2,pmax(i)-2
         DO k=1,pmax(i)-j-1
           IF (nonpermuted) THEN
@@ -2028,7 +2028,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_SD_WedgeFaceP
-  
+
   SUBROUTINE H1Basis_SD_dWedgeFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
     IMPLICIT NONE
 
@@ -2119,7 +2119,7 @@ CONTAINS
               Lb = H1Basis_WedgeL(facedir(2,i), u(l), v(l))
               Na = H1Basis_WedgeH(facedir(1,i), w(l))
               Nc = H1Basis_WedgeH(facedir(4,i), w(l))
-              
+
               vPhi = H1Basis_varPhi(j, Lb-La)
               Phi = H1Basis_Phi(k+1, Nc-Na)
 
@@ -2137,7 +2137,7 @@ CONTAINS
               Lb = H1Basis_WedgeL(facedir(4,i), u(l), v(l))
               Na = H1Basis_WedgeH(facedir(1,i), w(l))
               Nc = H1Basis_WedgeH(facedir(2,i), w(l))
-              
+
               vPhi = H1Basis_varPhi(k+1, Lb-La)
               Phi = H1Basis_Phi(j, Nc-Na)
 
@@ -2154,7 +2154,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_SD_dWedgeFaceP
-  
+
   SUBROUTINE H1Basis_SD_WedgeBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
@@ -2164,7 +2164,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     INTEGER :: i, j, k, l
     REAL(KIND=dp) :: L1, L2, L3, L2_L1, L3_1
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH) :: L1v, L2v, L3v
@@ -2209,7 +2209,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     ! Parameters
     INTEGER :: i,j,k,l
     ! Variables
@@ -2240,14 +2240,14 @@ CONTAINS
             Legi = H1Basis_LegendreP(i,L2_L1)
             Legj = H1Basis_LegendreP(j,L3_1)
             phiW = H1Basis_Phi(k+1,w(l))
-            
+
             grad(l,nbasis+k,1) = ((-1d0/2)*L2*L3*Legi*Legj + &
                     L1*(1d0/2)*L3*Legi*Legj +&
                     L1*L2*L3*H1Basis_dLegendreP(i,L2_L1)*Legj)*phiW
             grad(l,nbasis+k,2) = ((-sq3_6)*L2*L3*Legi*Legj + &
                     L1*(-sq3_6)*L3*Legi*Legj +&
                     L1*L2*(sq3_3)*Legi*Legj + &
-                    L1*L2*L3*Legi*H1Basis_dLegendreP(j,L3_1)*(2d0*sq3_3))*phiW 
+                    L1*L2*L3*Legi*H1Basis_dLegendreP(j,L3_1)*(2d0*sq3_3))*phiW
             grad(l,nbasis+k,3) = L1*L2*L3*Legi*Legj*H1Basis_dPhi(k+1,w(l))
           END DO
         END DO
@@ -2304,7 +2304,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     ! Variables
     INTEGER :: j
     REAL(KIND=dp), PARAMETER :: c = 1D0/4D0, d = 1D0/SQRT(3D0), &
@@ -2315,13 +2315,13 @@ CONTAINS
     !_ELMER_OMP_SIMD
     DO j=1,nvec
       grad(j,nbasis+1,1) = -c*(1-w(j))
-      grad(j,nbasis+2,1) =  c*(1-w(j))  
+      grad(j,nbasis+2,1) =  c*(1-w(j))
       grad(j,nbasis+3,1) =  0
       grad(j,nbasis+4,1) = -c*(1+w(j))
       grad(j,nbasis+5,1) =  c*(1+w(j))
       grad(j,nbasis+6,1) =  0
     END DO
-    
+
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -2332,7 +2332,7 @@ CONTAINS
       grad(j,nbasis+5,2) = -f*(1+w(j))
       grad(j,nbasis+6,2) =  e*(1+w(j))
     END DO
-    
+
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -2357,7 +2357,7 @@ CONTAINS
     REAL(KIND=dp), PARAMETER :: a=1/SQRT(3.0_dp)
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) &
     !_ELMER_OMP _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE (1,4)
       fval = (1-u-a*v)/2
@@ -2377,7 +2377,7 @@ CONTAINS
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0, d = 1D0/SQRT(3D0)
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE(1,4)
       grad = c*[REAL(-1,dp), REAL(-d,dp), 0D0]
@@ -2385,7 +2385,7 @@ CONTAINS
       grad = c*[REAL(1,dp), REAL(-d,dp), 0D0]
     CASE(3,6)
       grad =   [REAL(0,dp), REAL(d,dp), 0D0]
-    END SELECT    
+    END SELECT
   END FUNCTION H1Basis_dWedgeL
 
   FUNCTION H1Basis_WedgeH(node, w) RESULT(fval)
@@ -2397,7 +2397,7 @@ CONTAINS
     ! Result
     REAL(KIND=dp) :: fval
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) _ELMER_LINEAR_REF(w) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE (1,2,3)
       fval = -w/2
@@ -2415,7 +2415,7 @@ CONTAINS
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1D0/2D0
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE (1,2,3)
       grad = [0D0, 0D0, -c]
@@ -2423,7 +2423,7 @@ CONTAINS
       grad = [0D0, 0D0,  c]
     END SELECT
   END FUNCTION H1Basis_dWedgeH
-  
+
   SUBROUTINE H1Basis_WedgeEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -2485,7 +2485,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_WedgeEdgeP
-  
+
   SUBROUTINE H1Basis_dWedgeEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -2570,7 +2570,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_dWedgeEdgeP
-  
+
   SUBROUTINE H1Basis_WedgeFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
     IMPLICIT NONE
 
@@ -2628,7 +2628,7 @@ CONTAINS
                     (node1 >= 4 .AND. node1 <= 6 .AND.&
                      node2 >= 4 .AND. node2 <= 6)
 
-      
+
       DO j=0,pmax(i)-2
         DO k=1,pmax(i)-1
           IF (nonpermuted) THEN
@@ -2666,7 +2666,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_WedgeFaceP
-  
+
   SUBROUTINE H1Basis_dWedgeFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
     IMPLICIT NONE
 
@@ -2753,7 +2753,7 @@ CONTAINS
                      node2 >= 1 .AND. node2 <= 3) .OR. &
                     (node1 >= 4 .AND. node1 <= 6 .AND.&
                      node2 >= 4 .AND. node2 <= 6)
-      
+
       IF (nonpermuted) THEN
         dLa  = H1Basis_dWedgeL(node1)
         dLb  = H1Basis_dWedgeL(node2)
@@ -2822,7 +2822,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_dWedgeFaceP
-  
+
 
   SUBROUTINE H1Basis_WedgeBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
     IMPLICIT NONE
@@ -2833,7 +2833,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     INTEGER :: i, j, k, l
     REAL(KIND=dp) :: L1, L2, L3, s,t
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH) :: L1v, L2v, L3v
@@ -2876,7 +2876,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     ! Parameters
     INTEGER :: i,j,k,l
     ! Variables
@@ -2904,7 +2904,7 @@ CONTAINS
             L1 = L1v(l)
             L2 = L2v(l)
             L3 = L3v(l)
-            
+
             s = L2-L1
             t = 2*L3-1
             ds = dL2-dL1
@@ -3018,10 +3018,10 @@ CONTAINS
       REAL(KIND=dp), INTENT(IN) :: u,v
       ! Variables
       REAL(KIND=dp) :: value
-      
+
       SELECT CASE (which)
       CASE (1)
-         value = ((1-u)+(1-v))/2 
+         value = ((1-u)+(1-v))/2
       CASE (2)
          value = ((1+u)+(1-v))/2
       CASE (3)
@@ -3035,7 +3035,7 @@ CONTAINS
 
     FUNCTION H1Basis_dPyramidL(which) RESULT(grad)
       IMPLICIT NONE
-      
+
       ! Parameters
       INTEGER, INTENT(IN) :: which
       ! Variables
@@ -3058,13 +3058,13 @@ CONTAINS
 
     FUNCTION H1Basis_PyramidTL(which, u, v, w) RESULT(value)
       IMPLICIT NONE
-      
+
       ! Parameters
       INTEGER, INTENT(IN) :: which
-      REAL(KIND=dp), INTENT(IN) :: u,v,w 
+      REAL(KIND=dp), INTENT(IN) :: u,v,w
       ! Variables
       REAL(KIND=dp) :: value,s
-      
+
       value = 0
       s = w/SQRT(2.0_dp)
       SELECT CASE(which)
@@ -3085,12 +3085,12 @@ CONTAINS
 
     FUNCTION H1Basis_dPyramidTL(which) RESULT(grad)
       IMPLICIT NONE
-      
+
       ! Parameters
       INTEGER, INTENT(IN) :: which
       ! Variables
       REAL(KIND=dp) :: grad(3),s
-      
+
       grad = 0
       SELECT CASE(which)
       CASE (1)
@@ -3553,7 +3553,7 @@ CONTAINS
     ! Variables
     REAL(KIND=dp) :: fval(VECTOR_BLOCK_LENGTH,nbasismax)
     INTEGER, INTENT(INOUT) :: nbasis
-    
+
     REAL(Kind=dp), PARAMETER :: c = 1D0/8D0
     INTEGER :: j
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
@@ -3606,7 +3606,7 @@ CONTAINS
       grad(j,nbasis+7,1) =  c*(1+v(j))*(1+w(j))
       grad(j,nbasis+8,1) = -c*(1+v(j))*(1+w(j))
     END DO
-    
+
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -3619,7 +3619,7 @@ CONTAINS
       grad(j,nbasis+7,2) =  c*(1+u(j))*(1+w(j))
       grad(j,nbasis+8,2) =  c*(1-u(j))*(1+w(j))
     END DO
-    
+
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -3644,7 +3644,7 @@ CONTAINS
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) _ELMER_LINEAR_REF(u) &
     !_ELMER_OMP _ELMER_LINEAR_REF(v) _ELMER_LINEAR_REF(w) NOTINBRANCH
-    
+
     SELECT CASE (node)
     CASE (1)
       fval = c*(3-u-v-w)
@@ -3673,7 +3673,7 @@ CONTAINS
     REAL(KIND=dp) :: grad(3)
     REAL(KIND=dp), PARAMETER :: c = 1/2D0
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(node) NOTINBRANCH
-    
+
     SELECT CASE(node)
     CASE (1)
       grad(1:3) = c*[-1,-1,-1 ]
@@ -3702,7 +3702,7 @@ CONTAINS
     REAL(KIND=dp), INTENT(OUT) :: La, Lb
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(edge) _ELMER_LINEAR_REF(u) _ELMER_LINEAR_REF(v) &
     !_ELMER_OMP _ELMER_LINEAR_REF(w) _ELMER_LINEAR_REF(La) _ELMER_LINEAR_REF(Lb) NOTINBRANCH
-    
+
     SELECT CASE(edge)
     CASE (1)
       La=1-v
@@ -3749,7 +3749,7 @@ CONTAINS
     INTEGER, INTENT(IN) :: edge
     REAL(KIND=dp), INTENT(OUT) :: dLa(3), dLb(3)
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(edge) NOTINBRANCH
-    
+
     SELECT CASE(edge)
     CASE (1)
       dLa=[ 0,-1, 0 ] ! 1-v
@@ -3792,7 +3792,7 @@ CONTAINS
 
 ! --- start serendipity brick
 
-  
+
   SUBROUTINE H1Basis_SD_BrickEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -3831,7 +3831,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_SD_BrickEdgeP
-  
+
   SUBROUTINE H1Basis_SD_dBrickEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -3884,7 +3884,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_SD_dBrickEdgeP
-  
+
   SUBROUTINE H1Basis_SD_BrickFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
     IMPLICIT NONE
 
@@ -3928,7 +3928,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_SD_BrickFaceP
-  
+
   SUBROUTINE H1Basis_SD_dBrickFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
     IMPLICIT NONE
 
@@ -3988,7 +3988,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_SD_dBrickFaceP
-  
+
   SUBROUTINE H1Basis_SD_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
@@ -4060,7 +4060,7 @@ CONTAINS
 
 
 ! --- end serendipity brick
-  
+
   SUBROUTINE H1Basis_BrickEdgeP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -4100,7 +4100,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_BrickEdgeP
-  
+
   SUBROUTINE H1Basis_dBrickEdgeP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, edgedir)
     IMPLICIT NONE
 
@@ -4159,7 +4159,7 @@ CONTAINS
       nbasis = nbasis + pmax(i) - 1
     END DO
   END SUBROUTINE H1Basis_dBrickEdgeP
-  
+
   SUBROUTINE H1Basis_BrickFaceP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, facedir)
     IMPLICIT NONE
 
@@ -4205,7 +4205,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_BrickFaceP
-  
+
   SUBROUTINE H1Basis_dBrickFaceP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, facedir)
     IMPLICIT NONE
 
@@ -4249,7 +4249,7 @@ CONTAINS
             La = Lp(l,node1)
             Lb = Lp(l,node2)
             Ld = Lp(l,node4)
-            
+
             PhiU = H1Basis_LegendreP(j, Lb-La)
             PhiV = H1Basis_LegendreP(k-1, Ld-La)
 
@@ -4271,7 +4271,7 @@ CONTAINS
       END DO
     END DO
   END SUBROUTINE H1Basis_dBrickFaceP
-  
+
   SUBROUTINE H1Basis_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
     IMPLICIT NONE
 
@@ -4345,7 +4345,7 @@ CONTAINS
     ! Return value
     REAL (KIND=dp) :: fval
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
-    
+
     ! Phi function values (autogenerated to Horner form)
     SELECT CASE(k)
     CASE(2)
@@ -4416,7 +4416,7 @@ CONTAINS
     ! Return value
     REAL (KIND=dp) :: fval
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
-    
+
     ! Phi function values (autogenerated to Horner form)
     SELECT CASE(k)
     CASE(2)
@@ -4521,7 +4521,7 @@ CONTAINS
     ! Return value
     REAL (KIND=dp) :: fval
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
-    
+
     SELECT CASE(k)
     CASE(2)
       fval = 0
@@ -4571,7 +4571,7 @@ CONTAINS
     ! Return value
     REAL (KIND=dp) :: fval
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
-    
+
     SELECT CASE(k)
     CASE(0)
       fval = 1
@@ -4599,7 +4599,7 @@ CONTAINS
     CASE(7)
       fval = (-0.35D2 / 0.16D2 + (0.315D3 / 0.16D2 + (-0.693D3 / 0.16D2 + 0.429D3 / &
               0.16D2 * x ** 2) * x ** 2) * x ** 2) * x
-    CASE(8)                              
+    CASE(8)
       fval = 0.35D2 / 0.128D3 + (-0.315D3 / 0.32D2 + (0.3465D4 / 0.64D2 + &
               (-0.3003D4 / 0.32D2 + 0.6435D4 / 0.128D3 * x ** 2) * x ** 2) * x ** 2) * x ** 2
     CASE(9)
@@ -4642,7 +4642,7 @@ CONTAINS
     ! Return value
     REAL (KIND=dp) :: fval
     !_ELMER_OMP_DECLARE_SIMD UNIFORM(k) _ELMER_LINEAR_REF(x) NOTINBRANCH
-    
+
     SELECT CASE(k)
     CASE(0)
       fval = 0
@@ -4691,7 +4691,7 @@ CONTAINS
   END FUNCTION H1Basis_dLegendreP
 
   ! To be deprecated
-  
+
   ! WARNING: this is not a barycentric triangle
   SUBROUTINE H1Basis_TriangleNodal(nvec, u, v, nbasismax, fval)
     IMPLICIT NONE
@@ -4740,7 +4740,7 @@ CONTAINS
     DO j=1,nvec
       grad(j,3,1) =  0
     END DO
-    
+
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -4755,7 +4755,7 @@ CONTAINS
       grad(j,3,2) =  1
     END DO
   END SUBROUTINE H1Basis_dTriangleNodal
-  
+
   ! WARNING: this is not a barycentric tetra
   SUBROUTINE H1Basis_TetraNodal(nvec, u, v, w, nbasismax, fval)
     IMPLICIT NONE
@@ -4810,7 +4810,7 @@ CONTAINS
     DO j=1,nvec
       grad(j,4,1) =  0
     END DO
-    
+
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -4828,7 +4828,7 @@ CONTAINS
     DO j=1,nvec
       grad(j,4,2) =  0
     END DO
-    
+
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -4901,7 +4901,7 @@ CONTAINS
       grad(j,5,1) =  c*(1+w(j))
       grad(j,6,1) =  0
     END DO
-    
+
     ! Second coordinate (eta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec
@@ -4912,7 +4912,7 @@ CONTAINS
       grad(j,5,2) =  0
       grad(j,6,2) =  c*(1+w(j))
     END DO
-    
+
     ! Third coordinate (zeta)
     !_ELMER_OMP_SIMD
     DO j=1,nvec

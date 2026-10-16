@@ -168,7 +168,7 @@ cholmod STDCALLBULL *FC_FUNC_(spqr_ffactorize,SPQR_FFACTORIZE)(int *n,int *rows,
   }
   handle->nz=nsize;
   cholmod_l_free_dense(&db, &handle->c);
-  
+
   return handle;
 }
 

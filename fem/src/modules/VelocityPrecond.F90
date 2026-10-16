@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,17 +13,17 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 ! * A dummy solver to generate a velocity preconditioning matrix for block
-! * preconditioning. Some default initializations for using this especially in 
-! * connection with the ParStokes solver are introduced to simplify the writing 
-! * of sif files. 
+! * preconditioning. Some default initializations for using this especially in
+! * connection with the ParStokes solver are introduced to simplify the writing
+! * of sif files.
 ! *
 ! ******************************************************************************
 ! *
@@ -32,7 +32,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2009-06-24
 ! *
@@ -58,17 +58,17 @@ SUBROUTINE VelocityPrecond_Init0(Model, Solver, dt, Transient)
   SolverParams => GetSolverParams()
 
   CALL ListAddString(SolverParams, 'Exec Solver', 'before simulation' )
-  CALL ListAddNewLogical(SolverParams, 'Variable Output', .FALSE.) 
-  CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)  
-  CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.) 
-  CALL ListAddLogical(SolverParams, 'Back Rotate N-T Solution', .FALSE.) 
+  CALL ListAddNewLogical(SolverParams, 'Variable Output', .FALSE.)
+  CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .FALSE.)
+  CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.)
+  CALL ListAddLogical(SolverParams, 'Back Rotate N-T Solution', .FALSE.)
 
   CALL ListAddNewString(SolverParams, 'Variable', 'V')
 
   CALL ListAddNewString(SolverParams, 'Linear System Solver', 'Iterative')
-  CALL ListAddNewString(SolverParams, 'Linear System Iterative Method', 'BiCGStabL') 
+  CALL ListAddNewString(SolverParams, 'Linear System Iterative Method', 'BiCGStabL')
   CALL ListAddNewInteger(SolverParams, 'Linear System Max Iterations', 1000)
-  CALL ListAddNewString(SolverParams, 'Linear System Preconditioning', 'ILU0') 
+  CALL ListAddNewString(SolverParams, 'Linear System Preconditioning', 'ILU0')
   CALL ListAddNewConstReal(SolverParams, 'Linear System Convergence Tolerance', 1.0d-4)
   CALL ListAddNewLogical(SolverParams, 'Linear System Abort Not Converged', .FALSE.)
 

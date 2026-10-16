@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -109,7 +109,7 @@ MODULE NavierStokes
 !
 !  LOGICAL :: Rotating
 !      INPUT: Is the coordinate system rotating
-!  
+!
 !  REAL(KIND=dp) :: Omega(:)
 !      INPUT: If previous is True, components of angular velocity
 !
@@ -180,7 +180,7 @@ MODULE NavierStokes
 
      TYPE(ElementType_t), POINTER :: LinearType, SaveType
      INTEGER :: LinearBasis, LinearCode(3:8) = (/ 303,404,504,605,706,808 /)
-  
+
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
      INTEGER :: N_Integ, NBasis, deg(100), Order
      REAL(KIND=dp), POINTER :: NodalC(:,:,:)
@@ -191,7 +191,7 @@ MODULE NavierStokes
                 VMS, P2P1, Isotropic, drhodp_found, Compressible, ViscNewtonLin, &
                 ViscNonnewtonian, LaplaceDiscretization,OutOfPlaneFlow
 
-     ! local transposed values 
+     ! local transposed values
      REAL(KIND=dp) :: dBasisdxp(n*2)
      REAL(KIND=dp) :: muderq(n*2)
      REAL(KIND=dp),target :: StiffMatrixTrabsp(n*2*4, n*2*4)
@@ -205,9 +205,9 @@ MODULE NavierStokes
      REAL(KIND=dp) :: gradPDiscConst, CmodelConst
      REAL(KIND=dp) ::SWxSU(n), StrainS(2*n, 4)
      INTEGER :: P2P1stop, ii, jj, kk, ll
-     ! end of transposed variable 
+     ! end of transposed variable
 
-     
+
 !------------------------------------------------------------------------------
 
      dim = CoordinateSystemDimension()
@@ -319,7 +319,7 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
 !------------------------------------------------------------------------------
-    
+
      hK = element % hK*hscale
      mK = element % StabilizationMK
 
@@ -438,8 +438,8 @@ MODULE NavierStokes
       END SELECT
 
       IF ( PseudoCompressible ) THEN
-        Pressure = SUM( NodalPressure(1:n) * Basis(1:n) )        
-        Compress = rho * SUM(NodalCompressibility(1:n)*Basis(1:n))      
+        Pressure = SUM( NodalPressure(1:n) * Basis(1:n) )
+        Compress = rho * SUM(NodalCompressibility(1:n)*Basis(1:n))
       END IF
 
 !------------------------------------------------------------------------------
@@ -465,7 +465,7 @@ MODULE NavierStokes
         Force(i) = SUM( LoadVector(i,1:n) * Basis(1:n) )
       END DO
 
-      ! The relative change in temperature is the source term 
+      ! The relative change in temperature is the source term
       ! for continuity equation.
       !------------------------------------------------------
       IF ( Compressible .AND. Cmodel==PerfectGas1 ) THEN
@@ -482,7 +482,7 @@ MODULE NavierStokes
         Coord(1) = SUM( Basis(1:n) * Nodes % x(1:n) )
         Coord(2) = SUM( Basis(1:n) * Nodes % y(1:n) )
         Coord(3) = SUM( Basis(1:n) * Nodes % z(1:n) )
-        
+
         ! langranges formula is used to simplify the triple product
         ! omega x ( omega x coord ) = omega(omega.coord) - coord(omega.omega)
 
@@ -518,7 +518,7 @@ MODULE NavierStokes
 
         DO i=1,dim
           DO j=1,dim
-            Force(i) = Force(i) + Grad(i,j) * Uvelo(j) 
+            Force(i) = Force(i) + Grad(i,j) * Uvelo(j)
           END DO
         END DO
       END IF
@@ -556,7 +556,7 @@ MODULE NavierStokes
         IF ( Convect ) THEN
            VNorm = MAX( SQRT( SUM(Velo(1:DIM)**2) ), 1.0d-12 )
            Re = MIN( 1.0d0, rho * mK * hK * VNorm / (4 * mu) )
- 
+
            Tau = hK * Re / (2 * rho * VNorm)
            Delta = rho * Lambda * Re * hK * VNorm
         ELSE
@@ -633,7 +633,7 @@ MODULE NavierStokes
             DO k=1,dim
               Gmat(i,j) = Gmat(i,j) + SUM(LC(k,1:n)*dBasisdx(1:n,i)) * &
                             SUM(LC(k,1:n)*dBasisdx(1:n,j))
-                                     
+
             END DO
           END DO
         END DO
@@ -689,7 +689,7 @@ MODULE NavierStokes
 
 !------------------------------------------------------------------------------
 !    Loop over basis functions (of both unknowns and weights)
-!    Vectroized first 
+!    Vectroized first
 !------------------------------------------------------------------------------
 !
     IF (ViscNewtonLin) THEN
@@ -697,8 +697,8 @@ MODULE NavierStokes
         !$omp simd
         DO p=1,NBasis
           StrainS(p, j) = SUM(Strain(j,:)*dBasisdx(p,:))
-        END DO  
-      END DO  
+        END DO
+      END DO
       DO i=1,dim
         DO j=1,dim
           !DIR$ Unroll(2)
@@ -706,7 +706,7 @@ MODULE NavierStokes
           !$omp simd
             DO p=1,NBasis
               !Jac(j,i)=Jac(j,i)
-              JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) & 
+              JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) &
               + (q)) + s * 2 * muder0 * 4 * StrainS(q, i) * StrainS(p, j)
             END DO
           END DO
@@ -739,19 +739,19 @@ MODULE NavierStokes
             dBasisdxPtrP => dBasisdx(:,j)
           END IF
           !DIR$ Unroll(2)
-          DO q=1,NBasis           
+          DO q=1,NBasis
             !$omp simd
             DO p=1,NBasis
               !A(i,i) = A(i,i)
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((i-1)*(NBasis)) + (q)) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
             END DO ! p nbasis simd
 
-            IF ( divDiscretization .or. .NOT.LaplaceDiscretization) THEN 
+            IF ( divDiscretization .or. .NOT.LaplaceDiscretization) THEN
               !$omp simd
               DO p=1,NBasis
                 !A(i,j) = A(i,j)
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                   ((j-1)*(NBasis)) + (q)) + s * mu * dBasisdxPtrQ(q) * dBasisdxPtrP(p)
               END DO ! p nbasis simd
             END IF
@@ -759,11 +759,11 @@ MODULE NavierStokes
             IF ( Compressible ) THEN
               !$omp simd
               DO p=1,NBasis
-                !A(i,j) = A(i,j) 
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                !A(i,j) = A(i,j)
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                   ((j-1)*(NBasis)) + (q)) - s * ( 2._dp / 3._dp ) * mu * dBasisdx(q,j) * dBasisdx(p,i)
               END DO ! p nbasis simd
-            END IF ! compressible 
+            END IF ! compressible
           END DO ! q basis
         END DO ! j dim
       END DO ! i dim
@@ -777,7 +777,7 @@ MODULE NavierStokes
             !$omp simd
             DO p=1,NBasis
               !A(i,i) = A(i,i)
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((i-1)*(NBasis)) + (q)) + s * rho * dBasisdx(q,j) * Velo(j) * Basis(p)
             END DO ! p nbasis simd
 
@@ -787,8 +787,8 @@ MODULE NavierStokes
             IF (NewtonLinearization ) THEN
               !$omp simd
               DO p=1,NBasis
-                !A(i,j) = A(i,j) 
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                !A(i,j) = A(i,j)
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                   ((j-1)*(NBasis)) + (q)) + s * rho * Grad(i,j) * Basis(q) * Basis(p)
               END DO ! p nbasis simd
             END IF ! NewtonLinearization
@@ -799,7 +799,7 @@ MODULE NavierStokes
 
 
     DO i=1,dim
-      IF (P2P1) THEN ! this could be done with pointers 
+      IF (P2P1) THEN ! this could be done with pointers
         P2P1stop = LinearBasis
         IF ( gradPDiscretization  ) THEN
           gradPDiscPtrQ => PdBasisdx(:,i)
@@ -829,7 +829,7 @@ MODULE NavierStokes
          !$omp simd
          DO p=1,NBasis
            !A(i,c) = A(i,c)
-           StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+           StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
             ((c-1)*(NBasis)) + (q)) + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
          END DO ! p nbasis simd
        END DO ! q NBasis
@@ -857,12 +857,12 @@ MODULE NavierStokes
         !$omp simd
         DO p=1,NBasis
           !A(c,i) = A(c,i) &
-          StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+          StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), &
             ((i-1)*(NBasis)) + (q)) + gradPDiscConst * gradPDiscPtrQ(q) * gradPDiscPtrP(p)
         END DO ! p nbasis simd
       END DO ! q nbasis
     END DO ! i dim
-    
+
     IF ( .NOT. gradPDiscretization .AND. (Cmodel==PerfectGas1 .OR. Cmodel==UserDefined1 .OR. Cmodel==Thermal &
       .OR. Cmodel==UserDefined2) ) THEN
       DO i=1,dim
@@ -873,30 +873,30 @@ MODULE NavierStokes
               !$omp simd
               DO p=1,NBasis
                 !A(c,i) = A(c,i) &
-                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), &
                   ((i-1)*(NBasis)) + (q)) + s * ( rho / Pressure ) * Basis(q) * dPressuredx(i) * BasePVec(p) / 2
                 !A(c,c) = A(c,c) &
-                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), &
                   ((c-1)*(NBasis)) + (q)) + s * ( rho / Pressure ) * Velo(i) * dBasisdx(q,i) * BasePVec(p) / 2
                 !A(c,i) = A(c,i) &
-                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), &
                   ((i-1)*(NBasis)) + (q)) - s * ( rho / Temperature ) * Basis(q) * dTemperaturedx(i) *  BasePVec(p)
               END DO ! p nbasis simd
             CASE(UserDefined1, Thermal)
               !$omp simd
               DO p=1,NBasis
                 !A(c,i) = A(c,i) &
-                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), &
                   ((i-1)*(NBasis)) + (q)) + s * drhodx(i) * Basis(q) * BasePVec(p)
               END DO ! p nbasis simd
             CASE(UserDefined2)
               !$omp simd
               DO p=1,NBasis
                 !A(c,c) = A(c,c) &
-                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), &
                   ((c-1)*(NBasis)) + (q)) + s * drhodp*dBasisdx(q,i)*Velo(i)*BasePVec(p)/2
                 !A(c,i) = A(c,i) &
-                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((c-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((c-1)*(NBasis)) + (p), &
                   ((i-1)*(NBasis)) + (q)) + s * drhodp*dPressuredx(i)*Basis(q)*BasePVec(p)/2
               END DO ! p nbasis simd
           END SELECT ! Cmodel
@@ -914,7 +914,7 @@ MODULE NavierStokes
             !$omp simd
             DO p=1,NBasis
               !A(i,i) = A(i,i)
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((i-1)*(NBasis)) + (q)) + s * mu * Drag(i) * Basis(q) * Basis(p)
             END DO ! p nbasis simd
         END DO ! q nbasis
@@ -933,14 +933,14 @@ MODULE NavierStokes
       !$omp simd
         DO p=1,NBasis
           !M(i,i) = M(i,i)
-          MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+          MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
             ((i-1)*(NBasis)) + (q)) + s*rho*Basis(q)*Basis(p)
         END DO
       END DO
     END DO ! i dim
 
-    IF ( Cmodel==PerfectGas1 .OR. Cmodel==UserDefined2) THEN 
-      IF ( Cmodel==PerfectGas1 ) THEN 
+    IF ( Cmodel==PerfectGas1 .OR. Cmodel==UserDefined2) THEN
+      IF ( Cmodel==PerfectGas1 ) THEN
         CmodelConst = ( rho / Pressure )
       ELSE IF ( Cmodel==UserDefined2) THEN
         CmodelConst = drhodp
@@ -950,14 +950,14 @@ MODULE NavierStokes
         !$omp simd
         DO p=1,NBasis
           !M(c,c) = M(c,c) &
-          MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((c-1)*(NBasis)) + (p), & 
+          MassMatrixTrabsp(((c-1)*(NBasis)) + (p),((c-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((c-1)*(NBasis)) + (p), &
             ((c-1)*(NBasis)) + (q)) + s * CmodelConst * Basis(q) * BasePVec(p)
         END DO ! p nbasis simd
       END DO
 
     END IF
-    
-    IF (PseudoCompressible) THEN 
+
+    IF (PseudoCompressible) THEN
       DO q=1,NBasis
           !$omp simd
           DO p=1,NBasis
@@ -974,10 +974,10 @@ MODULE NavierStokes
         DO p=1,NBasis
           masscoeff = 2 * s * rho * Basis(q) * Basis(p)
           !A(1,2) = A(1,2)&
-          StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((2-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), & 
+          StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((2-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), &
           ((2-1)*(NBasis)) + (q)) - masscoeff * Omega(3)
           !A(2,1) = A(2,1)&
-          StiffMatrixTrabsp(((2-1)*(NBasis)) + (p),((1-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((2-1)*(NBasis)) + (p), & 
+          StiffMatrixTrabsp(((2-1)*(NBasis)) + (p),((1-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((2-1)*(NBasis)) + (p), &
           ((1-1)*(NBasis)) + (q)) + masscoeff * Omega(3)
         END DO ! p nbasis simd
         IF( dim == 3) THEN
@@ -985,16 +985,16 @@ MODULE NavierStokes
           DO p=1,NBasis
             masscoeff = 2 * s * rho * Basis(q) * Basis(p)
             !A(1,3) = A(1,3) &
-            StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((3-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), & 
-              ((3-1)*(NBasis)) + (q)) + masscoeff * Omega(2)          
+            StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((3-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), &
+              ((3-1)*(NBasis)) + (q)) + masscoeff * Omega(2)
             !A(2,3) = A(2,3) &
-            StiffMatrixTrabsp(((2-1)*(NBasis)) + (p),((3-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((2-1)*(NBasis)) + (p), & 
+            StiffMatrixTrabsp(((2-1)*(NBasis)) + (p),((3-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((2-1)*(NBasis)) + (p), &
               ((3-1)*(NBasis)) + (q)) - masscoeff * Omega(1)
             !A(3,2) = A(3,2) &
-            StiffMatrixTrabsp(((3-1)*(NBasis)) + (p),((2-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((3-1)*(NBasis)) + (p), & 
+            StiffMatrixTrabsp(((3-1)*(NBasis)) + (p),((2-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((3-1)*(NBasis)) + (p), &
               ((2-1)*(NBasis)) + (q)) + masscoeff * Omega(1)
             !A(3,1) = A(3,1) &
-            StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((3-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), & 
+            StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((3-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), &
               ((3-1)*(NBasis)) + (q)) - masscoeff * Omega(2)
           END DO ! p nbasis simd
         END IF
@@ -1005,7 +1005,7 @@ MODULE NavierStokes
 !!    Loop over basis functions (of both unknowns and weights)
 !!    Then the stuff I haven't vectorized yet
 !!------------------------------------------------------------------------------
-    
+
 !------------------------------------------------------------------------------
 !    Loop over basis functions (of both unknowns and weights)
 !------------------------------------------------------------------------------
@@ -1040,23 +1040,23 @@ MODULE NavierStokes
         END DO
       END DO
     END IF ! .NOT.Isotropic
-    
-            
-    IF ( Stabilize ) THEN 
-      
-      DO q=1,NBasis 
+
+
+    IF ( Stabilize ) THEN
+
+      DO q=1,NBasis
         DO j=1,c
           DO i=1,c
             SWxSU = 0.0
-            DO k=1,dim 
-              !$omp simd 
+            DO k=1,dim
+              !$omp simd
               DO p=1,NBasis
                 SWxSU(p) = SWxSU(p) + (SW(p, i, k) * SU(q, k, j))
               END DO
-            END DO 
-            !$omp simd 
+            END DO
+            !$omp simd
             DO p=1,NBasis
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) + s*Tau* SWxSU(p)
             END DO ! p nbasis simd
           END DO ! i c
@@ -1065,10 +1065,10 @@ MODULE NavierStokes
             DO p=1,NBasis
               !M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
               !M(j,i) = M(j,i) &
-              MassMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((j-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((j-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) + s * Tau * rho * Basis(q) * SW(p,j,i)
             END DO ! p nbasis simd
-          END DO ! q nbasis 
+          END DO ! q nbasis
         END DO ! j c
         DO i=1,dim
           DO j=1,dim
@@ -1076,12 +1076,12 @@ MODULE NavierStokes
             DO p=1,NBasis
               !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
               !A(j,i) = A(j,i) &
-              StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((j-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((j-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) + s * Delta * dBasisdx(q,i) * dBasisdx(p,j)
             END DO ! p nbasis simd
         END DO ! j dims
       END DO ! i dims
-    END DO ! q nbasis 
+    END DO ! q nbasis
 
     ELSE IF ( Vms ) THEN
       DO i=1,dim
@@ -1090,7 +1090,7 @@ MODULE NavierStokes
           DO q=1,NBasis
             !M => MassMatrixTrabsp ( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
             !M(dim+1,i) = M(dim+1,i) &
-            MassMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((dim+1-1)*(NBasis)) + (p), & 
+            MassMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((dim+1-1)*(NBasis)) + (p), &
             ((i-1)*(NBasis)) + (q)) + s * rho*Tau_M*rho*Basis(q)*dBasisdx(p,i)
           END DO ! p nbasis simd
         END DO ! Q nbasis
@@ -1100,7 +1100,7 @@ MODULE NavierStokes
             DO p=1,NBasis
               !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
               !A(dim+1,k) = A(dim+1,k) &
-              StiffMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((dim+1-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((dim+1-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((dim+1-1)*(NBasis)) + (p), &
               ((k-1)*(NBasis)) + (q)) + s * rho*Tau_M*RM(q,i,k)*dBasisdx(p,i)
             END DO ! p nbasis simd
           END DO ! Q nbasis
@@ -1113,44 +1113,44 @@ MODULE NavierStokes
               !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
 
               !A(i,j) = A(i,j) &
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) + s * rho * Tau_M * PRM(i) * Basis(q) * dBasisdx(p,j)/2
               !A(i,i) = A(i,i) &
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) - s * rho * Tau_M * PRM(j) * dBasisdx(q,j) * Basis(p)/2
               !A(i,j) = A(i,j) &
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M * rho*Force(i) * Basis(q) * dBasisdx(p,j)
               !A(i,i) = A(i,i) &
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) + s * rho * Tau_M * rho*Force(j) * dBasisdx(q,j) * Basis(p)
               !A(i,j) = A(i,j) &
-              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) + s * rho*Tau_C*RM(q,dim+1,j) * dBasisdx(p,i)
 
               !M(i,j) = M(i,j) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M * rho*Basis(q) * Grad(i,j) * Basis(p)
               !M(i,i) = M(i,i) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) + s * rho * Tau_M * rho*Basis(q) * Velo(j) * dBasisdx(p,j)
               !M(i,j) = M(i,j) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * PRM(i) * rho*Basis(q) * dBasisdx(p,j)
               !M(i,i) = M(i,i) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * rho*Basis(q) * PRM(j) * dBasisdx(p,j)
               !M(i,i) = M(i,i) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(j) * dBasisdx(p,j)
               !M(i,j) = M(i,j) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(i) * dBasisdx(p,j)
               !M(i,i) = M(i,i) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((i-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * rho*Basis(q) * PVelo(j) * dBasisdx(p,j)
               !M(i,j) = M(i,j) &
-              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+              MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * PVelo(i) * rho*Basis(q) * dBasisdx(p,j)
 
             END DO ! p nbasis simd
@@ -1161,22 +1161,22 @@ MODULE NavierStokes
               DO p=1,NBasis
                 !A => StiffMatrixTrabsp( p:NBasis*c: NBasis, q:NBasis*c: NBasis )
                 !A(i,k) = A(i,k) &
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((k-1)*(NBasis)) + (q)) - s * rho * Tau_M * RM(q,j,k) * Grad(i,j) * Basis(p)/2
                 !A(i,k) = A(i,k) &
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((k-1)*(NBasis)) + (q)) + s * rho * Tau_M * RM(q,i,k) * Velo(j) * dBasisdx(p,j)/2
                 !A(i,k) = A(i,k) &
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((k-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * RM(q,i,k) * PRM(j) * dBasisdx(p,j)/2
                 !A(i,k) = A(i,k) &
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((k-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * PRM(i) * RM(q,j,k) * dBasisdx(p,j)/2
                 !A(i,k) = A(i,k) &
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((k-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * RM(q,i,k) * rho*Force(j) * dBasisdx(p,j)
                 !A(i,k) = A(i,k) &
-                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), & 
+                StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
                 ((k-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Force(i) * RM(q,j,k) * dBasisdx(p,j)
               END DO ! p nbasis simd
             END DO ! Q nbasis
@@ -1239,9 +1239,9 @@ MODULE NavierStokes
          END DO
        END IF
      END DO
-   END DO 
+   END DO
 
-! untranspose the matrixes once the integration is done 
+! untranspose the matrixes once the integration is done
     DO i=1,c
       DO j = 1,c
         DO q=1,NBasis
@@ -1283,7 +1283,7 @@ MODULE NavierStokes
        StiffMatrix( c*i, c*q ) = -0.5_dp
      END DO
    END IF
-   
+
    ! Produce zero values for pressure at the nodes which are not needed
    ! in the lowest-order pressure interpolation. We shall return consistent
    ! values after the nonlinear iteration has terminated:
@@ -1319,7 +1319,7 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
  SUBROUTINE NavierStokesBoundary( BoundaryMatrix,BoundaryVector,LoadVector,   &
     NodalAlpha, NodalBeta, NodalExtPressure, NodalSlipCoeff, NormalTangential, Element, n, Nodes )
-             
+
 !------------------------------------------------------------------------------
 !
 !  REAL(KIND=dp) :: BoundaryMatrix(:,:)
@@ -1459,7 +1459,7 @@ MODULE NavierStokes
         Tangent(3) =  0.0_dp
         Tangent2   =  0.0_dp
      CASE(2)
-        CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+        CALL TangentDirections( Normal, Tangent, Tangent2 )
      END SELECT
 
      IF ( ANY( NodalSlipCoeff(:,:) /= 0.0d0 ) ) THEN
@@ -1679,13 +1679,13 @@ MODULE NavierStokes
 !    Normal & tangent directions
 !------------------------------------------------------------------------------
      Normal = NormalVector( Element,Nodes,u,v,.FALSE. )
- 
+
      IF ( dim <= 2 ) THEN
        Tangent(1) =  Normal(2)
        Tangent(2) = -Normal(1)
        Tangent(3) =  0.0d0
      ELSE
-       CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+       CALL TangentDirections( Normal, Tangent, Tangent2 )
      END IF
      TangentialVelocity(1) = SUM( Velo(1:dim) * Tangent(1:dim) )
 
@@ -1860,13 +1860,13 @@ MODULE NavierStokes
 !    Normal & tangent directions
 !------------------------------------------------------------------------------
      Normal = NormalVector( Element,Nodes,u,v,.FALSE. )
- 
+
      IF ( dim <= 2 ) THEN
        Tangent(1) =  Normal(2)
        Tangent(2) = -Normal(1)
        Tangent(3) =  0.0d0
      ELSE
-       CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+       CALL TangentDirections( Normal, Tangent, Tangent2 )
      END IF
 
 

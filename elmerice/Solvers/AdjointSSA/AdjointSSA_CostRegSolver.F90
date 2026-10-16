@@ -103,7 +103,7 @@ SUBROUTINE AdjointSSA_CostRegSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL :: Apriori,Reset
 
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
   save Firsttime,Parallel 
   save SolverName,CostSolName,VarSolName,Lambda,CostFile

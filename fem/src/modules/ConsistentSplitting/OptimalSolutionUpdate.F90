@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: Dec 10th, 2003
 ! *
@@ -37,15 +37,15 @@
 !> This subroutine performs a single GCR step to solve the fully coupled incompressible
 !> Navier-Stokes system. The search direction is obtained by solving decoupled
 !> equations which arise from the consistent splitting algorithm. This solver
-!> assumes that such equations are already solved. The search direction 
-!> can thus be constructed without performing linear solves in this module. 
+!> assumes that such equations are already solved. The search direction
+!> can thus be constructed without performing linear solves in this module.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
 SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
   USE ParallelUtils, ONLY : ParallelUpdateResult, ParallelUpdateSolve
-  
+
   IMPLICIT NONE
   !------------------------------------------------------------------------------
   TYPE(Solver_t), TARGET :: Solver
@@ -97,17 +97,17 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
        CurrentDoneTime, Indexes, MLocal, Norm, &
        PLocal, PrevSol, NonLinRes, Round, Snew, R, S, V
   !------------------------------------------------------------------------------
-  
-  NewTimeStep = .FALSE.  
+
+  NewTimeStep = .FALSE.
   IF (CurrentDoneTime /= Solver % DoneTime) THEN
      CurrentDoneTime = CurrentDoneTime + 1
      NewTimeStep = .TRUE.
      Round = 0
   END IF
-  Round = Round + 1 
+  Round = Round + 1
 
   SolverParams => GetSolverParams()
-  ConstantSystem = GetLogical( SolverParams, 'Constant System', Found )  
+  ConstantSystem = GetLogical( SolverParams, 'Constant System', Found )
   ConstantBulkMatrixInUse = ConstantSystem .AND. &
        ASSOCIATED(Solver % Matrix % BulkValues) .AND. ( .NOT. NewTimeStep ) .AND. &
        ASSOCIATED(Solver % Matrix % BulkRHS)
@@ -119,7 +119,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
   IF (.NOT. GotIt) ConvectionStabilization = .FALSE.
   ConvectionStabilization = .FALSE.
 
-  ! The option for using grad-div stabilization is not available currently... 
+  ! The option for using grad-div stabilization is not available currently...
   GradDivStabilization = ListGetLogical( Solver % Values, 'Grad-Div Stabilization', GotIt )
   IF ( GotIt .AND. GradDivStabilization) THEN
      GradDivParam =  ListGetConstReal( Solver % Values, &
@@ -141,7 +141,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
      IF ( NonlinearIterationMethod /= 'picard') THEN
         PicardIteration = .FALSE.
         Newton = .TRUE.
-        Hybrid = .FALSE.        
+        Hybrid = .FALSE.
      ELSE
         PicardIteration = .TRUE.
         Newton = .FALSE.
@@ -152,7 +152,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
   !print *, NonlinearIterationMethod
   !print *, 'Newton = ', Newton
   !print *, 'Hybrid = ', Hybrid
-  !print *, 'Picard = ', PicardIteration   
+  !print *, 'Picard = ', PicardIteration
 
 
   !--------------------------------------------------------------------------
@@ -183,18 +183,18 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
           rho(p), &
           mu(p), &
           Velocity(dim+1,p), &
-          ALocal(m,m), & 
+          ALocal(m,m), &
           Indexes(p), &
           MLocal(p,p), &
           PLocal(p,p), &
           PrevSol(Solver % Matrix % NumberOfRows), &
-          NonLinRes(Solver % Matrix % NumberOfRows), & 
+          NonLinRes(Solver % Matrix % NumberOfRows), &
           Snew( Solver % Matrix % NumberOfRows ), &        ! Consistent splitting update
           R( Solver % Matrix % NumberOfRows ), &         ! Residual
           S( Solver % Matrix % NumberOfRows, MaxIterations), &      ! Search directions
-          V( Solver % Matrix % NumberOfRows, MaxIterations), &      ! The range of coefficient matrix 
+          V( Solver % Matrix % NumberOfRows, MaxIterations), &      ! The range of coefficient matrix
           STAT=istat )
-     
+
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'NavierStokesSolver', 'Memory allocation error.' )
      END IF
@@ -206,7 +206,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
   Convect = GetLogical( GetSolverParams(), 'Convective', Found )
   IF ( .NOT. Found ) Convect = .TRUE.
   IF ( .NOT. Convect ) ConvectionStabilization = .FALSE.
-  
+
   atime = CPUTime()
   at0 = RealTime()
 
@@ -221,7 +221,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
 
   IF ( ConstantBulkMatrixInUse ) THEN
 
-    Solver % Matrix % Values = Solver % Matrix % BulkValues 
+    Solver % Matrix % Values = Solver % Matrix % BulkValues
     Solver % Matrix % RHS  = Solver % Matrix % BulkRHS
 
   ELSE
@@ -370,20 +370,20 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
      CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 1), &
           1, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)
      CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 2), &
-          2, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)     
+          2, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)
      CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 3), &
-          3, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)          
+          3, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)
      IF ( dim > 2 ) CALL SetBoundaryConditions(Model, Solver % Matrix, ComponentName(Solver % Variable % name, 4), &
-          4, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)               
+          4, dim+1,  Solver % Variable % Perm, Solver % Matrix % RHS)
   END IF
 
 
   atime = CPUTime() - atime
   CALL Info( 'CoupledNSUpdate', 'Assembly done', Level=4 )
 
-  
+
   !-------------------------------------------------------------------------
-  ! Substitute consistent splitting iterate into the search direction variable  
+  ! Substitute consistent splitting iterate into the search direction variable
   !------------------------------------------------------------------------
   Snew = 0.0d0
 
@@ -397,7 +397,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
      Element => GetActiveElement(t)
      !n  = GetElementNOFNodes()
      nd = GetElementDOFs( Indexes )
-    
+
      DO i=1,nd
         j = Solver % Variable % Perm( Indexes(i) )
         k = FlowSol % Perm( Indexes(i) )
@@ -417,7 +417,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
      Element => GetActiveElement(t)
      !n  = GetElementNOFNodes()
      nd = GetElementDOFs( Indexes )
-    
+
      DO i=1,nd
         j = Solver % Variable % Perm( Indexes(i) )
         k = FlowSol % Perm( Indexes(i) )
@@ -428,7 +428,7 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
      END DO
   END DO
 
-  ! PRINT *, 'Search direction was found: Starting minimal residual update...'       
+  ! PRINT *, 'Search direction was found: Starting minimal residual update...'
 
   !---------------------------------------------------------------------------------
   ! Find minimal residual update
@@ -440,12 +440,12 @@ SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
 
     n =  Solver % Matrix % NumberOfRows
     ALLOCATE( Residual(n) )
-    Residual = 0.0d0    
+    Residual = 0.0d0
 
     CALL ParallelInitSolve( Solver % Matrix, Solver % Variable % Values, &
          Solver % Matrix % RHS, Residual )
 
-    CALL ParallelUpdateSolve( Solver % Matrix,  & 
+    CALL ParallelUpdateSolve( Solver % Matrix,  &
                      Solver % Variable % Values, Residual )
 
     MMatrix => ParallelMatrix( Solver % Matrix, Mx, Mb, Mr )
@@ -474,14 +474,14 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: n, Round
     TYPE(Matrix_t), POINTER :: A, M
-    REAL(KIND=dp) :: x(:), b(:), r(:), Snew(:)  
+    REAL(KIND=dp) :: x(:), b(:), r(:), Snew(:)
     REAL(KIND=dp) :: S(:,:), V(:,:), RR(:)
 !--------------------------------------------------------------------------------
     REAL(KIND=dp) :: T1(n), T2(n), beta, alpha, res !, Snew(n)
     INTEGER :: i,j,k
 !--------------------------------------------------------------------------------
 
-    IF ( Parallel ) CALL ParallelVector(A,Snew)   
+    IF ( Parallel ) CALL ParallelVector(A,Snew)
 
     !j = 0
     !DO i=1,Solver % Matrix % NumberofRows
@@ -494,7 +494,7 @@ CONTAINS
     !END DO
 
     IF ( Round == 1) THEN
-      CALL Mymv( A, x, r ) 
+      CALL Mymv( A, x, r )
       r(1:n) = b(1:n)-r(1:n)
     ELSE
       r(1:n) = RR(1:n)
@@ -508,7 +508,7 @@ CONTAINS
     DO i=1,Round-1
        beta = Mydot( n, V(1:n,i), T2(1:n) )
        T1(1:n) = T1(1:n) - beta * S(1:n,i)
-       T2(1:n) = T2(1:n) - beta * V(1:n,i)    
+       T2(1:n) = T2(1:n) - beta * V(1:n,i)
     END DO
 
     alpha = Mynorm(n,T2)
@@ -517,7 +517,7 @@ CONTAINS
 
     !-------------------------------------------------------------
     ! The update of the solution and save the search data...
-    !------------------------------------------------------------- 
+    !-------------------------------------------------------------
     beta = Mydot(n, T2, r)
     !PRINT *, 'beta = ', beta
 
@@ -572,7 +572,7 @@ CONTAINS
     DO i=1,Round-1
        beta = Mydot( n, V(1:n,i), T2(1:n) )
        T1(1:n) = T1(1:n) - beta * S(1:n,i)
-       T2(1:n) = T2(1:n) - beta * V(1:n,i)    
+       T2(1:n) = T2(1:n) - beta * V(1:n,i)
     END DO
 
     alpha = Mynorm(n,T2)
@@ -581,7 +581,7 @@ CONTAINS
 
     !-------------------------------------------------------------
     ! The update of the solution and save the search data...
-    !------------------------------------------------------------- 
+    !-------------------------------------------------------------
     beta = Mydot(n, T2, r)
     x(1:n) = x(1:n) + beta * T1(1:n)
     r(1:n) = r(1:n) - beta * T2(1:n)
@@ -663,11 +663,11 @@ CONTAINS
 
           IF ( (dim > 2) .AND. ( Newton .OR. Stabilization ) ) THEN
              w1 = SUM( NodalVelo(3,1:nd) * dBasisdx(1:nd,2) ) - &
-                  SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,3) )             
+                  SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,3) )
              w2 = SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,3) ) - &
-                  SUM( NodalVelo(3,1:nd) * dBasisdx(1:nd,1) )          
+                  SUM( NodalVelo(3,1:nd) * dBasisdx(1:nd,1) )
           END IF
-       
+
           IF (Stabilization ) THEN
              IF ( dim > 2 ) THEN
                 rotterm = rotterm + s * ( ( w2*Velo(3) - w3*Velo(2) )**2 + &
@@ -682,8 +682,8 @@ CONTAINS
        !Grad(1,1) = SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,1) )
        !Grad(1,2) = SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )
        !Grad(2,1) = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,1) )
-       !Grad(2,2) = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,2) )      
-     
+       !Grad(2,2) = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,2) )
+
        !----------------------------------------------
        ! Material parameters at the integration point:
        !----------------------------------------------
@@ -695,7 +695,7 @@ CONTAINS
        LoadAtIP(1:dim+1) = MATMUL( Basis(1:n), LOAD(1:n,1:dim+1) )
 
        !----------------------------------------------------------------------------------
-       ! The system matrix with only the velocity space augmented by bubbles  
+       ! The system matrix with only the velocity space augmented by bubbles
        !---------------------------------------------------------------------------------
        DO p=1,nd
           DO q=1,nd
@@ -707,14 +707,14 @@ CONTAINS
                 DO j = 1,dim
                    A(i,i) = A(i,i) + s * mu * dBasisdx(q,j) * dBasisdx(p,j)
                    A(i,j) = A(i,j) + s * mu * dBasisdx(q,i) * dBasisdx(p,j)
-                   
+
                    IF (.FALSE.) THEN
                       A(i,j) = A(i,j) + s * 1.0d-0 * dBasisdx(q,j) * dBasisdx(p,i)
                    END IF
 
                 END DO
-                M(i,i) = M(i,i) + s * rho * Basis(p) * Basis(q)            
-                !M(i,i) = M(i,i) + s * StNumber * Basis(p) * Basis(q)    
+                M(i,i) = M(i,i) + s * rho * Basis(p) * Basis(q)
+                !M(i,i) = M(i,i) + s * StNumber * Basis(p) * Basis(q)
                 IF ( Stabilization ) THEN
                    A(i,dim+1) = A(i,dim+1) - s * Basis(q) * dBasisdx(p,i)
                 ELSE
@@ -723,9 +723,9 @@ CONTAINS
                         A(i,dim+1) = A(i,dim+1) - s * Basis(q) * dBasisdx(p,i)
                 END IF
 
-                IF (p <= n) &   
-                     ! Testing w.r.t  standard pressure test functions...                
-                     ! Pressure bubbles are constructed elsewhere... 
+                IF (p <= n) &
+                     ! Testing w.r.t  standard pressure test functions...
+                     ! Pressure bubbles are constructed elsewhere...
                      A(dim+1,i) = A(dim+1,i) - s * dBasisdx(q,i) * Basis(p)
              END DO
 
@@ -742,15 +742,15 @@ CONTAINS
 
 
                 IF ( .TRUE. ) THEN
-                   ! The standard convection form in 2d for testing purposes 
+                   ! The standard convection form in 2d for testing purposes
 
                    Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) + &
-                        rho * s * Velo(2) * dBasisdx(q,2) * Basis(p) 
+                        rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                    Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) + &
-                        rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
-                   
+                        rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
+
                    Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) + &
-                        rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                        rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
                    Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) + &
                         rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
 
@@ -758,16 +758,16 @@ CONTAINS
                    IF (dim > 2) THEN
 
                       Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) + &
-                           rho * s * Velo(3) * dBasisdx(q,3) * Basis(p) 
+                           rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
                       Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) + &
-                           rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)                       
+                           rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
 
                       Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) + &
-                           rho * s * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                           rho * s * Velo(1) * dBasisdx(q,1) * Basis(p)
                       Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) + &
-                           rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)                  
+                           rho * s * Velo(2) * dBasisdx(q,2) * Basis(p)
                       Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) + &
-                           rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)                       
+                           rho * s * Velo(3) * dBasisdx(q,3) * Basis(p)
 
                    END IF
 
@@ -783,9 +783,9 @@ CONTAINS
                            s * rho * Velo(2) * dBasisdx(q,2) * Basis(p) + &
                            s * rho * Velo(3) * dBasisdx(q,3) * Basis(p)
                       Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) - &
-                           s * rho * Velo(2) * dBasisdx(q,1) * Basis(p) 
+                           s * rho * Velo(2) * dBasisdx(q,1) * Basis(p)
                       Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+3 ) - &
-                           s * rho * Velo(3) * dBasisdx(q,1) * Basis(p)                   
+                           s * rho * Velo(3) * dBasisdx(q,1) * Basis(p)
 
                       Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) - &
                            s * rho * Velo(1) * dBasisdx(q,2) * Basis(p)
@@ -793,36 +793,36 @@ CONTAINS
                            s * rho * Velo(1) * dBasisdx(q,1) * Basis(p) + &
                            s * rho * Velo(3) * dBasisdx(q,3) * Basis(p)
                       Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+3 ) - &
-                           s * rho * Velo(3) * dBasisdx(q,2) * Basis(p) 
+                           s * rho * Velo(3) * dBasisdx(q,2) * Basis(p)
 
 
                       Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+1 ) - &
                            s * rho * Velo(1) * dBasisdx(q,3) * Basis(p)
 
                       Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+2 ) - &
-                           s * rho * Velo(2) * dBasisdx(q,3) * Basis(p) 
+                           s * rho * Velo(2) * dBasisdx(q,3) * Basis(p)
 
                       Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+3 ) + &
                            s * rho * Velo(2) * dBasisdx(q,2) * Basis(p) + &
-                           s * rho * Velo(1) * dBasisdx(q,1) * Basis(p)                  
+                           s * rho * Velo(1) * dBasisdx(q,1) * Basis(p)
 
 
                       IF ( Newton ) THEN
 
                          Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) - &
-                              s * rho * w3 * Basis(q) * Basis(p) 
+                              s * rho * w3 * Basis(q) * Basis(p)
                          Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+3 ) + &
-                              s * rho * w2 * Basis(q) * Basis(p) 
+                              s * rho * w2 * Basis(q) * Basis(p)
 
                          Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) + &
                               s * rho * w3 * Basis(q) * Basis(p)
                          Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+3 ) - &
-                              s * rho * w1 * Basis(q) * Basis(p) 
+                              s * rho * w1 * Basis(q) * Basis(p)
 
                          Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+1 ) - &
                               s * rho * w2 * Basis(q) * Basis(p)
                          Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+3, (dim+1)*(q-1)+2 ) + &
-                              s * rho * w1 * Basis(q) * Basis(p) 
+                              s * rho * w1 * Basis(q) * Basis(p)
 
 
                       END IF
@@ -830,24 +830,24 @@ CONTAINS
 
                    ELSE
 
-                      
+
                       Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) + &
-                           s * rho * Velo(2) * dBasisdx(q,2) * Basis(p) 
+                           s * rho * Velo(2) * dBasisdx(q,2) * Basis(p)
                       Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) - &
-                           s * rho * Velo(2) * dBasisdx(q,1) * Basis(p) 
+                           s * rho * Velo(2) * dBasisdx(q,1) * Basis(p)
 
                       Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) - &
-                           s * rho * Velo(1) * dBasisdx(q,2) * Basis(p) 
+                           s * rho * Velo(1) * dBasisdx(q,2) * Basis(p)
                       Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) + &
-                           s * rho * Velo(1) * dBasisdx(q,1) * Basis(p) 
+                           s * rho * Velo(1) * dBasisdx(q,1) * Basis(p)
 
-                      
+
                       IF ( Newton ) THEN
 
                          Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) - &
-                              s * rho * w3 * Basis(q) * Basis(p) 
+                              s * rho * w3 * Basis(q) * Basis(p)
                          Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) + &
-                              s * rho * w3 * Basis(q) * Basis(p)                      
+                              s * rho * w3 * Basis(q) * Basis(p)
                       END IF
 
 
@@ -855,14 +855,14 @@ CONTAINS
 
                       IF ( Hybrid ) THEN
                          Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1 ) - &
-                              rho * s * Grad(1,1) * Basis(q) * Basis(p) 
+                              rho * s * Grad(1,1) * Basis(q) * Basis(p)
                          Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2 ) - &
-                              rho * s * Grad(1,2) * Basis(q) * Basis(p) 
-                   
+                              rho * s * Grad(1,2) * Basis(q) * Basis(p)
+
                          Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1 ) - &
-                              rho * s * Grad(2,1) * Basis(q) * Basis(p) 
+                              rho * s * Grad(2,1) * Basis(q) * Basis(p)
                          Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2 ) - &
-                              rho * s * Grad(2,2) * Basis(q) * Basis(p) 
+                              rho * s * Grad(2,2) * Basis(q) * Basis(p)
                       END IF
 
 
@@ -882,20 +882,20 @@ CONTAINS
           IF ( Newton ) THEN
 
              F(1) = F(1) - s * rho * Basis(p) * Velo(2) * w3
-             F(2) = F(2) + s * rho * Basis(p) * Velo(1) * w3                    
+             F(2) = F(2) + s * rho * Basis(p) * Velo(1) * w3
 
              ! Testing a hybrid linearization strategy...
              IF ( Hybrid .AND. (dim==2) ) THEN
                 F(1) = F(1) - s * rho * Basis(p) * ( Grad(1,1) * Velo(1) + Grad(1,2) * Velo(2) )
                 F(2) = F(2) - s * rho * Basis(p) * ( Grad(2,1) * Velo(1) + Grad(2,2) * Velo(2) )
              END IF
-             
+
              IF ( dim > 2 ) THEN
-                
+
                 F(1) = F(1) + s * rho * Basis(p) * Velo(3) * w2
-                F(2) = F(2) - s * rho * Basis(p) * Velo(3) * w1                                    
+                F(2) = F(2) - s * rho * Basis(p) * Velo(3) * w1
                 F(3) = F(3) - s * rho * Basis(p) * Velo(1) * w2
-                F(3) = F(3) + s * rho * Basis(p) * Velo(2) * w1        
+                F(3) = F(3) + s * rho * Basis(p) * Velo(2) * w1
 
              END IF
           END IF
@@ -913,12 +913,12 @@ CONTAINS
           !A(dim+1,dim+1) = A(dim+1,dim+1) + 1.0d-3/(AK*mu) * StabTerms(p) * StabTerms(q)
         END DO
       END DO
-    ! End Testing...    
+    ! End Testing...
 
 
-    
+
     !-------------------------------------------------------------------------------------------
-    ! The system matrix may have been allocated for the case where both velocities and pressure 
+    ! The system matrix may have been allocated for the case where both velocities and pressure
     ! are augmented by bubbles. This nullifies the effect of the pressure bubbles.
     !-------------------------------------------------------------------------------------------
     DO p = n+1,nd
@@ -935,13 +935,13 @@ CONTAINS
     IF ( .FALSE. ) THEN
 !    IF ( Stabilization ) THEN
        ! This is the convection stabilization part...
-       rotterm = SQRT(rotterm)/SQRT(AK)  
+       rotterm = SQRT(rotterm)/SQRT(AK)
        ch = ch/3.0d0 * SQRT(rotterm)
 
 
        hK = element % hK
        mK = element % StabilizationMK
-       
+
 
        DO t=1,IP % n
           !--------------------------------------------------------------
@@ -954,16 +954,16 @@ CONTAINS
 
           Velo = MATMUL( NodalVelo(1:dim,1:nd), Basis(1:nd) )
           w3 = SUM( NodalVelo(2,1:nd) * dBasisdx(1:nd,1) ) - &
-               SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )     
+               SUM( NodalVelo(1,1:nd) * dBasisdx(1:nd,2) )
           !c = -Velo(2)*dBasisdx(nd,1)+Velo(1)*dBasisdx(nd,2)
 
-           
+
           !VNorm = MAX( abs(Velo(1)), abs(Velo(2)), 1.0d-12 )
           a1 = MAXVAL( ABS( NodalVelo(1,1:nd) ) )
           a2 = MAXVAL( ABS( NodalVelo(2,1:nd) ) )
           VNorm = MAX( a1, a2 )
           Re = MIN( 1.0d0, rho * mK * hK * VNorm / (4 * mu) )
-          Vnorm = 1.0d0   ! The velocity norm over the entire domain 
+          Vnorm = 1.0d0   ! The velocity norm over the entire domain
           ch = SQRT(3.0d0/100.0d0) * SQRT( hK * Re * rho / VNorm )
 
 
@@ -972,39 +972,39 @@ CONTAINS
           !VNorm = MAX( a1, a2 )
           !Re = hK * VNorm / mu
           !ch = sqrt( 2.0d-2 * hK * 2.0d0 * Re / (1 + Re) )
-          
+
 
           !----------------------------------------------
-          ! The construction of the pressure bubbles 
+          ! The construction of the pressure bubbles
           !------------------------------------------------
           DO p=n+1,nd
              DO q=n+1,nd
-                Stiff( (dim+1)*p, (dim+1)*q ) = Stiff( (dim+1)*p, (dim+1)*q ) + 1.0d0 * &                 
-                     s * SUM( dBasisdx(p,1:dim) * dBasisdx(q,1:dim) )                
+                Stiff( (dim+1)*p, (dim+1)*q ) = Stiff( (dim+1)*p, (dim+1)*q ) + 1.0d0 * &
+                     s * SUM( dBasisdx(p,1:dim) * dBasisdx(q,1:dim) )
              END DO
 
              IF ( .TRUE. ) THEN
-                ! The robust version of Picard linearization                
+                ! The robust version of Picard linearization
                 c = -Velo(2)*dBasisdx(p,1)+Velo(1)*dBasisdx(p,2)
                 DO q=1,nd
 
-                   Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) + rho * &          
+                   Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) + rho * &
                         s * dBasisdx(q,1) * c
 
-                   Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) - rho * &          
+                   Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) - rho * &
                         s * dBasisdx(q,2) * c
-                
+
                 END DO
              ELSE
                 ! The alternative Picard
                 DO q=1,nd
-                   
-                   Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) - w3 * &          
+
+                   Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+2 ) - w3 * &
                         s * Basis(q) * dBasisdx(p,1)
-                   
-                   Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) + w3 * &          
+
+                   Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) = Stiff( (dim+1)*p, (dim+1)*(q-1)+1 ) + w3 * &
                         s * Basis(q) * dBasisdx(p,2)
-                   
+
                 END DO
              END IF
 
@@ -1018,18 +1018,18 @@ CONTAINS
           DO p=1,nd
 
              IF ( .TRUE. ) THEN
-                ! The robust version of Picard linearization   
+                ! The robust version of Picard linearization
                 DO q=n+1,nd
-                   Stiff( (dim+1)*(p-1)+1, (dim+1)*q) = Stiff( (dim+1)*(p-1)+1, (dim+1)*q) + &   
+                   Stiff( (dim+1)*(p-1)+1, (dim+1)*q) = Stiff( (dim+1)*(p-1)+1, (dim+1)*q) + &
                         ch**2 * s * dBasisdx(q,1) * dBasisdx(p,2) * Velo(2)
-             
-                   Stiff( (dim+1)*(p-1)+1, (dim+1)*q) = Stiff( (dim+1)*(p-1)+1, (dim+1)*q) - &   
+
+                   Stiff( (dim+1)*(p-1)+1, (dim+1)*q) = Stiff( (dim+1)*(p-1)+1, (dim+1)*q) - &
                         ch**2 * s * dBasisdx(q,2) * dBasisdx(p,2) * Velo(1)
-             
-                   Stiff( (dim+1)*(p-1)+2, (dim+1)*q) = Stiff( (dim+1)*(p-1)+2, (dim+1)*q) - &   
+
+                   Stiff( (dim+1)*(p-1)+2, (dim+1)*q) = Stiff( (dim+1)*(p-1)+2, (dim+1)*q) - &
                         ch**2 * s * dBasisdx(q,1) * dBasisdx(p,1) * Velo(2)
 
-                   Stiff( (dim+1)*(p-1)+2, (dim+1)*q) = Stiff( (dim+1)*(p-1)+2, (dim+1)*q) + &   
+                   Stiff( (dim+1)*(p-1)+2, (dim+1)*q) = Stiff( (dim+1)*(p-1)+2, (dim+1)*q) + &
                         ch**2 * s * dBasisdx(q,2) * dBasisdx(p,1) * Velo(1)
 
                 END DO
@@ -1039,48 +1039,48 @@ CONTAINS
 
                    Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1) + &
                         s * c2 * dBasisdx(q,2)
-                
+
                    Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+2) - &
-                        s * c2 * dBasisdx(q,1)   
+                        s * c2 * dBasisdx(q,1)
 
                 END DO
 
                 c2 = rho * ch**2 * dBasisdx(p,1) * ( Velo(1)*Velo(1) + Velo(2)*Velo(2) )
                 DO q = 1,nd
-                
+
                    Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+1) - &
                         s * c2 * dBasisdx(q,2)
 
                    Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2) + &
-                        s * c2 * dBasisdx(q,1)   
-                
+                        s * c2 * dBasisdx(q,1)
+
                 END DO
-                
+
              ELSE
                 ! The alternative Picard
 
-                DO q=n+1,nd       
-        
-                   Stiff( (dim+1)*(p-1)+1, (dim+1)*q) = Stiff( (dim+1)*(p-1)+1, (dim+1)*q) + &   
+                DO q=n+1,nd
+
+                   Stiff( (dim+1)*(p-1)+1, (dim+1)*q) = Stiff( (dim+1)*(p-1)+1, (dim+1)*q) + &
                         ch**2 * w3 * s * dBasisdx(q,2) * Basis(p)
 
-                   Stiff( (dim+1)*(p-1)+2, (dim+1)*q) = Stiff( (dim+1)*(p-1)+2, (dim+1)*q) - &   
+                   Stiff( (dim+1)*(p-1)+2, (dim+1)*q) = Stiff( (dim+1)*(p-1)+2, (dim+1)*q) - &
                         ch**2 * w3 * s * dBasisdx(q,1) * Basis(p)
 
                 END DO
 
                 DO q = 1,nd
-                   
+
                    Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1) = Stiff( (dim+1)*(p-1)+1, (dim+1)*(q-1)+1) + &
-                        w3 * w3 * ch**2 * s * Basis(p) * Basis(q) 
+                        w3 * w3 * ch**2 * s * Basis(p) * Basis(q)
 
                    Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2) = Stiff( (dim+1)*(p-1)+2, (dim+1)*(q-1)+2) + &
-                        w3 * w3 * ch**2 * s * Basis(p) * Basis(q) 
-                        
+                        w3 * w3 * ch**2 * s * Basis(p) * Basis(q)
+
                 END DO
 
              END IF
-                
+
           END DO
 
 
@@ -1088,12 +1088,12 @@ CONTAINS
 
 
        IF (.FALSE.) THEN
-          
+
           ! Condensate the pressure stabilization bubble dof
-          CALL LCondensateStabilizationBubble( n, nd, dim, Stiff)          
+          CALL LCondensateStabilizationBubble( n, nd, dim, Stiff)
 
           ! Finally nullify the effect of pressure bubbles
-          
+
           DO q=n+1,nd
              i = (dim+1) * q
              STIFF(i,:) = 0.0d0
@@ -1102,7 +1102,7 @@ CONTAINS
           END DO
 
        END IF
-       
+
     END IF
   !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
@@ -1174,10 +1174,10 @@ CONTAINS
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t),  detJ, Basis, dBasisdx )
       s = IP % s(t) * detJ
-      
+
       Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
       Velo = MATMUL( Velocity(1:dim,1:nd), Basis(1:nd) )
-      SquaredVelo = rho * SUM( Velo(1:dim) * Velo(1:dim) ) 
+      SquaredVelo = rho * SUM( Velo(1:dim) * Velo(1:dim) )
 
       IF ( Newton ) THEN
          c = 1.0d0
@@ -1186,10 +1186,10 @@ CONTAINS
       END IF
 
       IF ( .TRUE. ) THEN
-         
+
          DO p=1,nd
             DO i=1,dim
-               
+
                ! The force for the Newton iteration
                IF (Newton) &
                     FORCE( (dim+1)*(p-1)+i ) = FORCE( (dim+1)*(p-1)+i) + s * Normal(i) * Basis(p) * &
@@ -1201,32 +1201,32 @@ CONTAINS
                        c * s * Basis(p) * Normal(i) * Velo(1) * Basis(q) * rho
 
                   Stiff( (dim+1)*(p-1)+i, (dim+1)*(q-1)+2 ) = Stiff( (dim+1)*(p-1)+i, (dim+1)*(q-1)+2 )  + &
-                       c * s * Basis(p) * Normal(i) * Velo(2) * Basis(q) * rho             
+                       c * s * Basis(p) * Normal(i) * Velo(2) * Basis(q) * rho
 
                   IF ( dim > 2 ) &
                        Stiff( (dim+1)*(p-1)+i, (dim+1)*(q-1)+3 ) = Stiff( (dim+1)*(p-1)+i, (dim+1)*(q-1)+3 )  + &
-                       c * s * Basis(p) * Normal(i) * Velo(3) * Basis(q) * rho                 
-                  
+                       c * s * Basis(p) * Normal(i) * Velo(3) * Basis(q) * rho
+
                END DO
 
             END DO
          END DO
 
-         ! Change this so that entries are copied only!  
+         ! Change this so that entries are copied only!
          IF ( BlockPreconditioning) THEN
             DO p=1,nd
                DO q=1,nd
-                  DO i=1,dim            
-                     
+                  DO i=1,dim
+
                      ABlock( dim*(p-1)+i, dim*(q-1)+1 ) = ABlock( dim*(p-1)+i, dim*(q-1)+1 )  + &
                           c * s * Basis(p) * Normal(i) * Velo(1) * Basis(q) * rho
-                     
+
                      ABlock( dim*(p-1)+i, dim*(q-1)+2 ) = ABlock( dim*(p-1)+i, dim*(q-1)+2 )  + &
-                          c * s * Basis(p) * Normal(i) * Velo(2) * Basis(q) * rho            
+                          c * s * Basis(p) * Normal(i) * Velo(2) * Basis(q) * rho
 
                      IF ( dim > 2 ) &
                           ABlock( dim*(p-1)+i, dim*(q-1)+3 ) = ABlock( dim*(p-1)+i, dim*(q-1)+3 )  + &
-                          c * s * Basis(p) * Normal(i) * Velo(3) * Basis(q) * rho               
+                          c * s * Basis(p) * Normal(i) * Velo(3) * Basis(q) * rho
 
                   END DO
                END DO
@@ -1340,9 +1340,9 @@ CONTAINS
     TYPE(Model_t) :: Model
     TYPE(Matrix_t), POINTER :: StiffMatrix
 
-    CHARACTER(LEN=*) :: Name 
+    CHARACTER(LEN=*) :: Name
     INTEGER :: DOF, NDOFs, Perm(:)
-    REAL(KIND=dp), OPTIONAL :: rhs(:)    
+    REAL(KIND=dp), OPTIONAL :: rhs(:)
 !------------------------------------------------------------------------------
 
     TYPE(Element_t), POINTER :: CurrentElement
@@ -1382,16 +1382,16 @@ CONTAINS
                 k = NDOFs * (k-1) + DOF
                 CALL ZeroRow( StiffMatrix,k )
                 CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 )
-                IF ( PRESENT(rhs) ) rhs(k) = work(j) 
+                IF ( PRESENT(rhs) ) rhs(k) = work(j)
               END IF
             END DO
 
             DO j=n+1,nd
                k = Perm(Indexes(j))
-               k = NDOFs * (k-1) + DOF              
+               k = NDOFs * (k-1) + DOF
                CALL ZeroRow( StiffMatrix,k )
                CALL SetMatrixElement( StiffMatrix,k,k, 1.0d0 )
-               IF ( PRESENT(rhs) ) rhs(k) = 0.0d0  
+               IF ( PRESENT(rhs) ) rhs(k) = 0.0d0
             END DO
 
           END IF

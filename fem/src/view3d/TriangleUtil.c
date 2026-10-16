@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -136,7 +136,7 @@ void TriangleSubdivide( Geometry_t *Geometry, int SubLev,int Where )
         LeftTriangle->PolyFactors[0][1]  = X1 - X0;
         LeftTriangle->PolyFactors[1][1]  = Y1 - Y0;
         LeftTriangle->PolyFactors[2][1]  = Z1 - Z0;
- 
+
         LeftTriangle->PolyFactors[0][2]  = XN - X0;
         LeftTriangle->PolyFactors[1][2]  = YN - Y0;
         LeftTriangle->PolyFactors[2][2]  = ZN - Z0;
@@ -152,7 +152,7 @@ void TriangleSubdivide( Geometry_t *Geometry, int SubLev,int Where )
         RightTriangle->PolyFactors[0][2] = X2 - XN;
         RightTriangle->PolyFactors[1][2] = Y2 - YN;
         RightTriangle->PolyFactors[2][2] = Z2 - ZN;
-     } else 
+     } else
      {
         XN = TriangleValue( 0.5,0.5,Geometry->Triangle->PolyFactors[0] );
         YN = TriangleValue( 0.5,0.5,Geometry->Triangle->PolyFactors[1] );
@@ -181,7 +181,7 @@ void TriangleSubdivide( Geometry_t *Geometry, int SubLev,int Where )
         RightTriangle->PolyFactors[0][2] = X2 - X0;
         RightTriangle->PolyFactors[1][2] = Y2 - Y0;
         RightTriangle->PolyFactors[2][2] = Z2 - Z0;
-     } 
+     }
 
      for( i=0; i<3; i++ )
      for( j=0; j<3; j++ )
@@ -321,7 +321,7 @@ direct numerical integration.
 24 Aug 1995
 
 *******************************************************************************/
-double TriangleIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl, 
+double TriangleIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
   double FX,double FY,double FZ,double NFX,double NFY,double NFZ)
 {
     double DX,DY,DZ,NTX,NTY,NTZ,U,V;
@@ -378,7 +378,7 @@ double TriangleIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     {
        U = U_Integ3[i];
        V = V_Integ3[i];
-        
+
        DX  = TriangleValue(U,V,BX) - FX;
        DY  = TriangleValue(U,V,BY) - FY;
        DZ  = TriangleValue(U,V,BZ) - FZ;
@@ -609,7 +609,7 @@ void TriangleComputeViewFactors(Geometry_t *GA,Geometry_t *GB,
                 } else
                     DF = (*IntegrateDiffToArea[GB->GeometryType])(GB,NULL,FX,FY,FZ,DX,DY,DZ);
 
-                EA = 2*GA->Area;           
+                EA = 2*GA->Area;
                 F += S_Integ3[i]*EA*DF;
             }
 
@@ -667,7 +667,7 @@ subdivide:
         if ( !GB->Left ) (*Subdivide[GB->GeometryType])( GB, LevelB,1 );
 
         if ( GB->Flags & GEOMETRY_FLAG_LEAF )
-        {    
+        {
             GB->Flags &= ~GEOMETRY_FLAG_LEAF;
             GB->Left->Flags  |= GEOMETRY_FLAG_LEAF;
             GB->Right->Flags |= GEOMETRY_FLAG_LEAF;

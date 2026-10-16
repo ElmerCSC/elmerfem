@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -25,7 +25,7 @@
 ! *  Partition the finite element mesh using a set of different strategies.
 ! *  This is first a solver, but will perhaps eventually be made an internal routine.
 ! *
-! *  The idea is that one could use recursive strategies for different pieces of the 
+! *  The idea is that one could use recursive strategies for different pieces of the
 ! *  finite element mesh. This way the physics can be better taken into account than
 ! *  when using stand alone partitioning tools.
 ! *
@@ -37,7 +37,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *****************************************************************************/
 
@@ -79,9 +79,9 @@
 
      CALL PartitionMeshSerial( Model, Mesh, Params )
      ElementPart => Mesh % RePartition
-     
+
      CALL CreateNeighbourList()
-     
+
      DirectoryName = ListGetString( Params,'Output Directory',Found )
      IF( Found ) THEN
        CALL WriteMeshToDiskPartitioned( Model, Mesh,DirectoryName, &
@@ -100,34 +100,34 @@
 
 
      ! Create a variable for the output of the partitioning.
-     ! This is an elemental field, not a nodal one. 
+     ! This is an elemental field, not a nodal one.
      !------------------------------------------------------
      SUBROUTINE SetPartitionVariable()
-       
+
        TYPE(Variable_t), POINTER :: Var
        INTEGER :: t
        TYPE(Element_t), POINTER :: Element
        INTEGER :: n
 
-       Var => Solver % Variable 
+       Var => Solver % Variable
        IF( .NOT. ASSOCIATED( Var ) ) RETURN
-       
+
        CALL Info('PartitionMesh','Setting discontinuous field > Partition < ')
-       
+
        Var % Values = 0.0_dp
-       
-       n = Mesh % NumberOfBulkElements 
+
+       n = Mesh % NumberOfBulkElements
        DO t=1,n
-         Element => Solver % Mesh % Elements(t) 
+         Element => Solver % Mesh % Elements(t)
          IF( ASSOCIATED( Element % DGIndexes ) ) THEN
            Var % Values( Element % DGIndexes ) = 1.0_dp * ElementPart(t)
-         ELSE 
+         ELSE
            Var % Values( Element % NodeIndexes ) = 1.0_dp * ElementPart(t)
          END IF
        END DO
 
      END SUBROUTINE SetPartitionVariable
-      
+
 
 
     ! Given a partitioning create a list of Neighbours needed for the communication
@@ -142,7 +142,7 @@
       CALL Info('PartitionMesh','Creating neighbour list for parallel saving')
 
       n = Mesh % NumberOfNodes
-      ALLOCATE( NeighbourList(n) , STAT=allocstat ) 
+      ALLOCATE( NeighbourList(n) , STAT=allocstat )
       IF( allocstat /= 0 ) THEN
         CALL Fatal('PartitionMesh','Allocation error for NeighbourList')
       END IF
@@ -151,7 +151,7 @@
       DO i=1,n
         NULLIFY( NeighbourList(i) % Neighbours )
       END DO
-      
+
       DO i=1,Mesh % NumberOfBulkElements
         Element => Mesh % Elements(i)
         Partition = ElementPart(i)
@@ -162,7 +162,7 @@
             ALLOCATE( NeighbourList(k) % Neighbours(1), STAT = allocstat )
             IF( allocstat /= 0 ) THEN
               CALL Fatal('PartitionMesh','Allocation error for Neighbours')
-            END IF            
+            END IF
             NeighbourList(k) % Neighbours(1) = Partition
           ELSE IF( .NOT. ANY( NeighbourList(k) % Neighbours == Partition ) ) THEN
             l = SIZE( NeighbourList(k) % Neighbours )
@@ -173,7 +173,7 @@
             ALLOCATE( NeighbourList(k) % Neighbours(l+1), STAT = allocstat )
             IF( allocstat /= 0 ) THEN
               CALL Fatal('PartitionMesh','Allocation error for Neighbours')
-            END IF                       
+            END IF
             NeighbourList(k) % Neighbours(1:l) = TmpNeighbours(1:l)
             NeighbourList(k) % Neighbours(l+1) = Partition
           END IF
@@ -187,12 +187,12 @@
         lmax = MAX( lmax, l )
         lsum = lsum + l
       END DO
-      
+
       CALL Info('PartitionMesh','Maximum number of partitions for a node: '//I2S(lmax))
-      
+
       WRITE(Message,'(A,F8.3)') 'Average number of partitions for a node: ',1.0_dp*lsum/n
-      CALL Info('PartitionMesh',Message) 
-      
+      CALL Info('PartitionMesh',Message)
+
     END SUBROUTINE CreateNeighbourList
 
 

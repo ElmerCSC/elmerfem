@@ -8,7 +8,7 @@
 
 #include "viewfact.h"
 #include "../../config.h"
- 
+
 static Real r1, r2, z1, z2;     /* Katseltavan pinnan koordinaatit */
 static Real r3, r4, z3, z4;     /* Katselevan pinnan koordinaatit */
 static Real r12, r34, z12, z34; /* Keskilinjojen koordinaatit */
@@ -38,8 +38,8 @@ extern "C" void STDCALLBULL viewfactorsaxis
 
   nsurf = *n;
   coord = crd;
-  surfEltop = surf; 
-  
+  surfEltop = surf;
+
   div = *idiv;
   compact = *fast;
 
@@ -58,7 +58,7 @@ extern "C" void STDCALLBULL viewfactorsaxis
     printf("Combining original boundary elements for shading\n");
 
     int maxind = 0;
-    for (i=0; i<2*nsurf; i++) 
+    for (i=0; i<2*nsurf; i++)
       if(maxind < surfEltop[i]) maxind = surfEltop[i];
     // printf("Maximum node index is %d\n",maxind);
 
@@ -66,18 +66,18 @@ extern "C" void STDCALLBULL viewfactorsaxis
     nodehits = (int*) malloc((maxind+1)*sizeof(int));
     for(i=0;i<=maxind;i++)
       nodehits[i] = 0;
-    for (i=0; i<2*nsurf; i++)  
-      nodehits[surfEltop[i]] += 1; 
+    for (i=0; i<2*nsurf; i++)
+      nodehits[surfEltop[i]] += 1;
 
     int maxnodehits = 0;
-    for (i=0; i<=maxind; i++) 
+    for (i=0; i<=maxind; i++)
       if(nodehits[i] > maxnodehits) maxnodehits = nodehits[i];
     // printf("Maximum node hits is %d\n",maxnodehits);
-    
+
     int tablesize = (maxind+1)*maxnodehits;
     // nodetable = new int[tablesize];
     nodetable = (int*) malloc(tablesize*sizeof(int));
-    for (i=0; i< tablesize; i++) 
+    for (i=0; i< tablesize; i++)
       nodetable[i] = 0;
 
     for(i=0;i<=maxind;i++)
@@ -90,34 +90,34 @@ extern "C" void STDCALLBULL viewfactorsaxis
       nodehits[ind1] += 1;
       nodehits[ind2] += 1;
     }
- 
+
     // surfEltopShade = new int[2*nsurf];
     surfEltopShade = (int*) malloc(2*nsurf*sizeof(int));
     for(i=0;i<2*nsurf;i++)
       surfEltopShade[i] = surfEltop[i];
- 
+
     for (i=0; i<=maxind; i++) {
       int elem1,elem2;
       ind0 = i;
-      
+
       if( nodehits[ind0] != 2) continue;
 
       elem1 = nodetable[maxnodehits*ind0+0];
-      if( surfEltopShade[2*elem1+1] == ind0 ) 
+      if( surfEltopShade[2*elem1+1] == ind0 )
 	ind1 = surfEltopShade[2*elem1];
-      else 
+      else
 	ind1 = surfEltopShade[2*elem1+1];
 
       elem2 = nodetable[maxnodehits*ind0+1];
-      if( surfEltopShade[2*elem2+1] == ind0 ) 
+      if( surfEltopShade[2*elem2+1] == ind0 )
 	ind2 = surfEltopShade[2*elem2];
-      else 
+      else
 	ind2 = surfEltopShade[2*elem2+1];
 
       _r0 = coord[2 * ind0];
       _r1 = coord[2 * ind1];
       _r2 = coord[2 * ind2];
-      
+
       _z0 = coord[2 * ind0 + 1];
       _z1 = coord[2 * ind1 + 1];
       _z2 = coord[2 * ind2 + 1];
@@ -126,33 +126,33 @@ extern "C" void STDCALLBULL viewfactorsaxis
       dr2 = _r2 - _r0;
       dz1 = _z1 - _z0;
       dz2 = _z2 - _z0;
-      
+
       dp1 = dr1 * dr2 + dz1 * dz2;
       ds1 = sqrt(dr1*dr1+dz1*dz1);
       ds2 = sqrt(dr2*dr2+dz2*dz2);
-      
+
       dp1 /= (ds1*ds2);
 
       // Boundary elements mush be aligned
       if( dp1 > epsilon - 1. ) continue;
 
       // printf("Eliminating node %d\n",ind0);
-      
-      // Make the 1st element bigger 
-      if( surfEltopShade[2*elem1] == ind0 ) 
+
+      // Make the 1st element bigger
+      if( surfEltopShade[2*elem1] == ind0 )
 	surfEltopShade[2*elem1] = ind2;
-      else 
+      else
 	surfEltopShade[2*elem1+1] = ind2;
-      
-      // Destroy the 2nd element 
+
+      // Destroy the 2nd element
       surfEltopShade[2*elem2] = 0;
       surfEltopShade[2*elem2+1] = 0;
 
-      // Update the node information 
+      // Update the node information
       nodehits[ind0] = 0;
-      if( nodetable[maxnodehits*ind2] == elem2) 
+      if( nodetable[maxnodehits*ind2] == elem2)
 	nodetable[maxnodehits*ind2] = elem1;
-      else 
+      else
 	nodetable[maxnodehits*ind2+1] = elem1;
     }
 
@@ -161,14 +161,14 @@ extern "C" void STDCALLBULL viewfactorsaxis
 
     // Cannibalism of already used vector which does not need to be used again!
     shadeParent = nodehits;
-    for (i=0; i<nsurf; i++) 
+    for (i=0; i<nsurf; i++)
       shadeParent[i] = -1;
-    
+
     j = 0;
     for (i=0; i<nsurf; i++) {
       if(surfEltopShade[2*i+1] || surfEltopShade[2*i+0]) {
 	surfEltopShade[2*j+1] = surfEltopShade[2*i+1];
-	surfEltopShade[2*j+0] = surfEltopShade[2*i+0];	
+	surfEltopShade[2*j+0] = surfEltopShade[2*i+0];
 	j++;
       }
     }
@@ -178,58 +178,58 @@ extern "C" void STDCALLBULL viewfactorsaxis
 
     // This is a dummy N^2 algorithm of finding the parent superelements
     // The info could also be inhereted in time of creating the superelements...
-    
+
     int k, hit, parents = 0;
     maxerr = 0.;
     for (i=0; i<nsurfShade; i++) {
-      
+
       ind1 = surfEltopShade[2*i];
       ind2 = surfEltopShade[2*i+1];
-      
+
       _r1 = coord[2 * ind1];
       _r2 = coord[2 * ind2];
-      
+
       _z1 = coord[2 * ind1 + 1];
       _z2 = coord[2 * ind2 + 1];
-      
+
       dz1 = _z2 - _z1;
       dr1 = _r2 - _r1;
       ds1 = sqrt(dz1*dz1 + dr1*dr1);
-      
+
       // Unit vector in direction of superelement
       dz1 /= ds1;
       dr1 /= ds1;
 
-       
+
       for (j=0; j<nsurf; j++) {
 
 	if( shadeParent[j] >= 0) continue;
 	hit = 1;
-	
+
 	for(k=0;k<2;k++) {
-	  
+
 	  ind0 = surfEltop[2*j+k];
-	  
+
 	  // if node is joined, it is still a good candidate
 	  // this check avoids also singularity at division
 	  if(ind0 == ind1 || ind0 == ind1) continue;
-	  
+
 	  _r3 = coord[2 * ind0];
 	  _z3 = coord[2 * ind0 + 1];
-	  
+
 	  dz2 = _z3 - _z1;
 	  dr2 = _r3 - _r1;
 	  ds2 = sqrt(dz2*dz2 + dr2*dr2);
-	  
+
 	  // Dot product of the superelement and the candidate-node element
 	  dp1 = dz1*dz2 + dr1*dr2;
-	  
+
 	  // check that the node is on the line defined by the superelement
 	  if( dp1 / ds2 < 1-epsilon ) {
 	    hit = 0;
 	    break;
 	  }
-	  
+
 	  // check that node is within the segment of the superelement
 	  if( dp1 / ds1 > 1+epsilon  || dp1 / ds1 < -epsilon) {
 	    hit = 0;
@@ -244,7 +244,7 @@ extern "C" void STDCALLBULL viewfactorsaxis
       }
     }
     if(parents != nsurf) printf("Inconsistent number of parents found %d (vs. %d)\n",parents,nsurf);
-    
+
 
 
 
@@ -256,20 +256,20 @@ extern "C" void STDCALLBULL viewfactorsaxis
 
 
   // ************************************************************
-  // The main N^2*M loop where M is the size of the shading table  
+  // The main N^2*M loop where M is the size of the shading table
   for (i=0; i<nsurf; i++) {
 
-    inode = i;    
+    inode = i;
     sum = 0.;
     sumdvf = 0.;
 
     _r3 = coord[2 * surfEltop[2*i+1]];
     _r4 = coord[2 * surfEltop[2*i+0]];
-    
+
     _z3 = coord[2 * surfEltop[2*i+1]+1];
     _z4 = coord[2 * surfEltop[2*i+0]+1];
 
-    
+
     a = Area(_r3, _r4, _z3, _z4);
 
     for (j=0; j<nsurf; j++) {
@@ -277,13 +277,13 @@ extern "C" void STDCALLBULL viewfactorsaxis
       jnode = j;
       _r1 = coord[2 * surfEltop[2*j+1]];
       _r2 = coord[2 * surfEltop[2*j+0]];
-      
+
       _z1 = coord[2 * surfEltop[2*j+1]+1];
       _z2 = coord[2 * surfEltop[2*j+0]+1];
-      
+
       vf[i*nsurf+j] = 0.;
       vf2 = 0.;
- 
+
       if (a < eps) continue;
 
       for (ii=0; ii<div; ii++) {
@@ -296,7 +296,7 @@ extern "C" void STDCALLBULL viewfactorsaxis
 	z34 = .5*(z3+z4);
 	zd3=z3-z4;
 	rd3=r3-r4;
-	
+
 	for (jj=0; jj<div; jj++) {
 	  r1 = _r1 * (div - jj)/div + _r2 * jj/div;
 	  r2 = _r1 * (div - jj - 1)/div + _r2 * (jj + 1)/div;
@@ -309,34 +309,34 @@ extern "C" void STDCALLBULL viewfactorsaxis
 	  if (r2 < eps) r2 = eps;
 	  if (r3 < eps) r3 = eps;
 	  if (r4 < eps) r4 = eps;
-	  
+
 	  zd1=z1-z2;
-	  rd1=r1-r2; 
+	  rd1=r1-r2;
 	  z12 = .5*(z1+z2);
 	  zd = z12-z34;
-	  
-	  if (!InitialInterval(&c1, &c2)) continue;	  
+
+	  if (!InitialInterval(&c1, &c2)) continue;
 	  viewint = ViewIntegral(c1, c2, 0);
 
-	  
+
 	  // Code for verification
 	  if(verify) {
 	    int *surfEltopTmp;
 	    int nsurfTmp;
-	    
+
 	    surfEltopTmp = surfEltopShade;
-	    nsurfTmp = nsurfShade;	    
-	    
+	    nsurfTmp = nsurfShade;
+
 	    surfEltopShade = surfEltop;
 	    nsurfShade = nsurf;
-	    	    
-	    if (!InitialInterval(&c1, &c2)) continue;	  
-	    viewint2 = ViewIntegral(c1, c2, 0);	    
+
+	    if (!InitialInterval(&c1, &c2)) continue;
+	    viewint2 = ViewIntegral(c1, c2, 0);
 	    vf2 = vf2 + 4. * viewint2;
 
 	    surfEltopShade = surfEltopTmp;
 	    nsurfShade = nsurfTmp;
-	  }	      	    
+	  }
 
 	  vf[i*nsurf+j] += 4. * viewint;
 	  /* Kerroin 4 koostuu tekij�ist� 2 (peilisymmetria), 2pi */
@@ -355,11 +355,11 @@ extern "C" void STDCALLBULL viewfactorsaxis
     }
 
     if(verify) {
-      if(sumdvf > maxerr) maxerr = sumdvf;    
+      if(sumdvf > maxerr) maxerr = sumdvf;
       printf("Line sum: %d %g %g %g\n", i, sum, sumdvf, maxerr);
     }
     else {
-      //      printf("Line sum: %d %g\n", i, sum );      
+      //      printf("Line sum: %d %g\n", i, sum );
     }
   }
 
@@ -379,15 +379,15 @@ BOOL InitialInterval(Real *c1, Real *c2)
   /* yhdysjanan ja pintojen normaalien v�listen kulmien on oltava < pi/2.  */
   /* Palauta FALSE, jos ratkaisujoukko on tyhj� tai nollamittainen, */
   /* muutoin TRUE. */
-  /* Funktio olettaa, ett� r12 ja r34 eiv�t ole nollia. */ 
-  
-  Real cc1, cc3; 
-  
+  /* Funktio olettaa, ett� r12 ja r34 eiv�t ole nollia. */
+
+  Real cc1, cc3;
+
   *c1 = -1.; *c2 = 1.;
   if ( fabs(zd1) > eps ) {
-    cc1 = (- zd * rd1 + r12 * zd1) / (r34 * zd1);        
+    cc1 = (- zd * rd1 + r12 * zd1) / (r34 * zd1);
     if ( fabs(zd3) > eps ) {
-      cc3 = (zd * rd3 + r34 * zd3) / (r12 * zd3);        
+      cc3 = (zd * rd3 + r34 * zd3) / (r12 * zd3);
       if (zd1 > 0.) {
 	if (zd3 > 0.) *c1 = max(cc1, cc3);
 	else { *c1 = cc1; *c2 = cc3; }
@@ -413,7 +413,7 @@ BOOL InitialInterval(Real *c1, Real *c2)
 	{ *c1 = 1.; *c2 = -1.; }  /* Muutoin joukko = [-1, 1] */
     }
   }
-  
+
   *c1 = max(-1.+eps, *c1); *c2 = min(1.-eps, *c2);
   /* Epsilonilla estet��n nollalla jako integroinnissa */
   if (*c2 - *c1 < eps) return FALSE;
@@ -438,10 +438,10 @@ Real ViewIntegral (Real c1, Real c2, int k)
   rratio = r34/r12;
 
   while (k < nsurfShade) {
-    
+
     r5 = coord[2 * surfEltopShade[2*k+1]];
     r6 = coord[2 * surfEltopShade[2*k+0]];
-    
+
     z5 = coord[2 * surfEltopShade[2*k+1]+1];
     z6 = coord[2 * surfEltopShade[2*k+0]+1];
 
@@ -464,14 +464,14 @@ Real ViewIntegral (Real c1, Real c2, int k)
     zd5 = z5-z6;
     if ( fabs(zd5) < eps ) {
       /* Varjostava pinta on tasorengas */
-      
+
       /* Tasorengas ei voi varjostaa itse��n */
       /* T�m� lis�ys korjaa alirutiinissa pitk��n ollen bugin (P.R. 23.4.2004) */
       if(nsurf == nsurfShade && inode == k-1) continue;
 
       if ( fabs(zd) < eps ) continue;
 
-      t1 = (z12-z5)/zd; 
+      t1 = (z12-z5)/zd;
       tt1 = 1.-t1;
       if (t1 < eps || tt1 < eps) continue;
 
@@ -481,7 +481,7 @@ Real ViewIntegral (Real c1, Real c2, int k)
       cc2 = .5*(r6*r6/(r12*r34*t1*tt1) - t - 1./t);
 
       if (cc1 > cc2) { t = cc1; cc1 = cc2; cc2 = t; }
-    } 
+    }
     else  {
       /* Varjostava pinta on kartio tai lieri�       */
       /* Laske yhdysjanasta varjoon j��v� v�li z-suunnassa  */
@@ -492,21 +492,21 @@ Real ViewIntegral (Real c1, Real c2, int k)
 	  { t1 = 0.; t2 = 1; }
 	else continue;
       } else {
-	t1 = (z12-z5)/zd; 
+	t1 = (z12-z5)/zd;
 	t2 = t1 + zd5/zd;
 	if (t1 > t2) { t = t1; t1 = t2; t2 = t; }
       }
 
       if (! IntervalIsect(0., 1., t1, t2, &t1, &t2)) continue;
-      tt1 = 1.-t1; 
+      tt1 = 1.-t1;
       tt2 = 1.-t2;
-      
+
       /* Laske, mit� arvoja kiertokulman kosini saa v�lill� [t1, t2] */
       cc1 = 1.; cc2 = -1.;
       g1 = (r5 * (z12-z6) - r6 * (z12-z5)) / (r12 * zd5);
       g3 = (r5 * (z34-z6) - r6 * (z34-z5)) / (r34 * zd5);
-      d1 = g1*g1 - 1; 
-      d3 = g3*g3 - 1;  
+      d1 = g1*g1 - 1;
+      d3 = g3*g3 - 1;
       /* N�m� ilmaisevat, kummalla */
       /* puolen kartiota ovat katseleva ja katseltava piste */
 
@@ -556,7 +556,7 @@ BOOL IntervalIsect(Real x1, Real x2, Real y1, Real y2, Real *z1, Real *z2)
   /* Laske v�lien [x1, x2] ja [y1, y2] leikkaus ja palauta FALSE, jos */
   /* t�m� on tyhj� tai mit�t�n. Input-parametrien j�rjestyksen on oltava */
   /* oikea.*/
-  
+
   *z1 = x1; *z2 = x2;
   if (x2 - y1 < eps) return FALSE;
   if (y1 - x1 > eps) *z1 = y1;
@@ -573,7 +573,7 @@ void ExaminePoint (Real x, Real *mi, Real *ma)
     if (1.-x > eps) {
       t = rratio*x/(1.-x);
       y = .5*(d1/t + d3*t) + g1*g3;
-    } else 
+    } else
       if ( fabs(d3) < eps ) y = g1*g3;
       else y = sgn(d3);
   } else
@@ -586,9 +586,9 @@ void ExaminePoint (Real x, Real *mi, Real *ma)
 
 Real Integrate(Real c1, Real c2)
 {
-  /* c1 ja c2 ovat integrointiv�lin kulman kosinin rajat. */ 
+  /* c1 ja c2 ovat integrointiv�lin kulman kosinin rajat. */
   /* Integraali lasketaan ilman nimitt�j�n pi-tekij��. */
-  
+
   /* Ensimm�inen ja viimeinen integrointipiste eiv�t saa olla tasan */
   /* 0 ja 1, jottei vierekk�isten elementtien tapauksessa tule */
   /* nollalla jakoa */
@@ -599,23 +599,23 @@ Real Integrate(Real c1, Real c2)
   static const Real qp[] = { 0.112701665, 0.5, 0.887298334 },
 			     w[] = { 0.277777777, 0.444444444, 0.277777777 };
   static const int nqp = 3;
-    
+
   int i;
   Real c = zd1*zd1 + rd1*rd1;
   if (c < eps2) return 0.; /* Pinta kutistunut ympyr�nkaareksi; t�m� testi */
   /* tarvitaan nollalla jaon v�ltt�miseksi */
-  
+
   Real z, r, h, hh1, hh2, g1, g2, gg1, gg2, value, integral;
   Real d1, d2, e1, e2, f1, f2;
   Real zrd = r2*z1-r1*z2;
   Real a1 = rd3*r1, a2 = rd3*r2;
-  Real b1 = zd3*z1, b2 = zd3*z2; 
+  Real b1 = zd3*z1, b2 = zd3*z2;
   Real s1 = sqrt(1. - c1*c1), s2 = sqrt(1. - c2*c2);
   /* kosineissa ja sineiss� indeksit 1 ja 2 toisin p�in kuin */
   /* muissa muuttujissa! */
   Real cs = (1.+c1)*(1.+c2), cd = (1.-c1)*(1.-c2);
 
-  
+
   integral = 0.;
   for (i=0; i<nqp; i++) {
     z = z3 - qp[i] * zd3;  /* qp on integroimismuuttuja */
@@ -633,13 +633,13 @@ Real Integrate(Real c1, Real c2)
     h = zd3*z + rd3*r;
     gg1 = (g1+c2)*(g1+c1);
     gg2 = (g2+c2)*(g2+c1);
-    
+
     /* Kaarien osuus: */
     value  = (-.5 * (a1 + (h-b1)*g1) / sqrt(g1*g1-1) ) *
-      acos( .5 * ( (1.-g1) * sqrt(cd/gg1) - 
+      acos( .5 * ( (1.-g1) * sqrt(cd/gg1) -
 		   (1.+g1) * sqrt(cs/gg1) ) );
     value -= (-.5 * (a2 + (h-b2)*g2) / sqrt(g2*g2-1) ) *
-      acos( .5 * ( (1.-g2) * sqrt(cd/gg2) - 
+      acos( .5 * ( (1.-g2) * sqrt(cd/gg2) -
 		   (1.+g2) * sqrt(cs/gg2) ) );
     value += .25 * (b1-b2) * acos(c1*c2 + s1*s2);
 

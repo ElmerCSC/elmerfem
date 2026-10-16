@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -267,7 +267,7 @@
 
          KECmu(1:n) = ListGetConstReal( Material, 'KE Cmu', GotIt )
          IF ( .NOT. GotIt ) THEN
-            KECmu(1:n) = 0.22_dp 
+            KECmu(1:n) = 0.22_dp
             CALL ListAddConstReal( Material, 'KE Cmu', KECmu(1) )
          END IF
 
@@ -603,7 +603,7 @@ CONTAINS
 
        Re_T = K**2 / ((mu/Rho)*E)
        TimeScale = MAX( K/E, CT*SQRT((mu/rho)/E))
-       Lengthscale2 = CL**2 * MAX(K**3 /E**2, Cnu**2*SQRT((mu/rho)**3/E)) 
+       Lengthscale2 = CL**2 * MAX(K**3 /E**2, Cnu**2*SQRT((mu/rho)**3/E))
 
        Tmu = rho*Cmu*LV2*TimeScale
        EffVisc = mu + Tmu / SUM(V2FSigma(1:n)*Basis(1:n))

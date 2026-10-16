@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -173,19 +173,19 @@ void MakeTestModelCubic()
         GeomElem[s][0]  = n + 3*i + 3*(RN+1)*j + 0;
         GeomElem[s][1]  = n + 3*i + 3*(RN+1)*j + 3 ;
         GeomElem[s][2]  = n + 3*i + 3*(RN+1)*j + 3*(RN+1)+3;
-        GeomElem[s][3]  = n + 3*i + 3*(RN+1)*j + 3*(RN+1); 
-        GeomElem[s][4]  = n + 3*i + 3*(RN+1)*j + 1; 
-        GeomElem[s][5]  = n + 3*i + 3*(RN+1)*j + 2; 
+        GeomElem[s][3]  = n + 3*i + 3*(RN+1)*j + 3*(RN+1);
+        GeomElem[s][4]  = n + 3*i + 3*(RN+1)*j + 1;
+        GeomElem[s][5]  = n + 3*i + 3*(RN+1)*j + 2;
         GeomElem[s][6]  = n + 3*i + 3*(RN+1)*j + RN+1+3;
-        GeomElem[s][7]  = n + 3*i + 3*(RN+1)*j + 2*(RN+1)+3; 
-        GeomElem[s][8]  = n + 3*i + 3*(RN+1)*j + 3*(RN+1)+2; 
-        GeomElem[s][9]  = n + 3*i + 3*(RN+1)*j + 3*(RN+1)+1; 
-        GeomElem[s][10] = n + 3*i + 3*(RN+1)*j + 2*(RN+1); 
-        GeomElem[s][11] = n + 3*i + 3*(RN+1)*j + (RN+1); 
-        GeomElem[s][12] = n + 3*i + 3*(RN+1)*j + RN+1+1; 
-        GeomElem[s][13] = n + 3*i + 3*(RN+1)*j + RN+1+2; 
-        GeomElem[s][14] = n + 3*i + 3*(RN+1)*j + 2*(RN+1)+2; 
-        GeomElem[s][15] = n + 3*i + 3*(RN+1)*j + 2*(RN+1)+1; 
+        GeomElem[s][7]  = n + 3*i + 3*(RN+1)*j + 2*(RN+1)+3;
+        GeomElem[s][8]  = n + 3*i + 3*(RN+1)*j + 3*(RN+1)+2;
+        GeomElem[s][9]  = n + 3*i + 3*(RN+1)*j + 3*(RN+1)+1;
+        GeomElem[s][10] = n + 3*i + 3*(RN+1)*j + 2*(RN+1);
+        GeomElem[s][11] = n + 3*i + 3*(RN+1)*j + (RN+1);
+        GeomElem[s][12] = n + 3*i + 3*(RN+1)*j + RN+1+1;
+        GeomElem[s][13] = n + 3*i + 3*(RN+1)*j + RN+1+2;
+        GeomElem[s][14] = n + 3*i + 3*(RN+1)*j + 2*(RN+1)+2;
+        GeomElem[s][15] = n + 3*i + 3*(RN+1)*j + 2*(RN+1)+1;
     }
 
     NElements = s;
@@ -269,7 +269,7 @@ void MakeTestModelLinear()
 {
     double a,r,PI=2*acos(0.0),XMin,XMax,YMin,YMax,ZMin,ZMax,*nx,*ny,*nz;
     static char *ioptr;
-    
+
     int i,j,k,n,NN,NE;
 
     FILE *fp = fopen( "qq.qq", "r" );
@@ -290,7 +290,7 @@ void MakeTestModelLinear()
     ShapeFunctionMatrix3[2][1] =  0.0;
     ShapeFunctionMatrix3[2][2] =  1.0;
 
-    ioptr = fgets( str,100,fp ); 
+    ioptr = fgets( str,100,fp );
     sscanf( str, "%d %d", &NN, &NE );
 
     for( j=0; j<NN; j++ )
@@ -306,11 +306,11 @@ void MakeTestModelLinear()
     for( j=0; j<NE; j++ )
     {
        ioptr = fgets( str,100, fp );
-       sscanf( str, "%d %d %d %d %d %d %lf %lf %lf ", 
+       sscanf( str, "%d %d %d %d %d %d %lf %lf %lf ",
                &i, &Type[j],&GeomElem[j][0],&GeomElem[j][1],
           &GeomElem[j][2],&GeomElem[j][3], &nx[j],&ny[j],&nz[j] );
     }
- 
+
     for( j=0; j<NE; j++ )
     {
        GeomNorms[j][0] = nx[j];
@@ -376,7 +376,7 @@ void MakeTestModelTriangle()
 {
     double a,r,PI=2*acos(0.0),XMin,XMax,YMin,YMax,ZMin,ZMax;
     static char *ioptr;
- 
+
     int i,j,k,kk,n,NN,NE;
 
     FILE *fp = fopen( "qq.qq", "r" );
@@ -395,7 +395,7 @@ void MakeTestModelTriangle()
     ShapeFunctionMatrix3[2][2] =  1.0;
 
 
-    ioptr = fgets( str,100,fp ); 
+    ioptr = fgets( str,100,fp );
     sscanf( str, "%d %d", &NN, &NE );
 
     for( j=0; j<NN; j++ )
@@ -403,14 +403,14 @@ void MakeTestModelTriangle()
        ioptr = fgets( str,100, fp );
        sscanf( str, "%lf %lf %lf", &xx[j],&yy[j],&zz[j] );
     }
- 
+
     for( j=0; j<NE; j++ )
     {
        ioptr = fgets( str,100, fp );
        sscanf( str, "%*d %*d %d %d %d %d %lf %lf %lf ", &e[0][j],&e[1][j],&e[2][j],&e[3][j],&nx[j],&ny[j],&nz[j] );
     }
- 
-   
+
+
 #if 1
     i = 0;
     for( j=0; j<NE; j++ )
@@ -494,7 +494,7 @@ if ( n==0 ) {
 }
 #endif
         }
-      }  
+      }
    }
 
 #if 0

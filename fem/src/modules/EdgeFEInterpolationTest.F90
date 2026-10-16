@@ -3,20 +3,20 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
 ! *  of the License, or (at your option) any later version.
-! * 
+! *
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! *  GNU General Public License for more details.
 ! *
 ! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: Oct 12, 2015
 ! *
@@ -47,7 +47,7 @@ SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
   TYPE(ValueList_t), POINTER :: SolverParams
   LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs, Check
   INTEGER :: k
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
 
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
@@ -56,12 +56,12 @@ SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
     SELECT CASE(k)
     CASE(3)
       IF (SecondFamily) THEN
-        CALL Fatal('BestApproximationSolver', 'No ready support for the cubic element of the second kind' )        
+        CALL Fatal('BestApproximationSolver', 'No ready support for the cubic element of the second kind' )
       ELSE
         CALL ListAddString( SolverParams, "Element", &
             "n:0 e:3 -tri b:6 -tetra b:3 -tri_face b:6" )
-      END IF      
-      
+      END IF
+
     CASE(2)
       IF (SecondFamily) THEN
         CALL ListAddString( SolverParams, "Element", &
@@ -72,7 +72,7 @@ SUBROUTINE BestApproximationSolver_Init0(Model, Solver, dt, Transient)
       END IF
 
     CASE DEFAULT
-      
+
       IF (SecondFamily) THEN
         CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
       ELSE IF( PiolaVersion ) THEN
@@ -92,22 +92,22 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 !
 !  This is a tool for code developers to check the consistency/accuracy of H(curl)
 !  approximations. It solves the best approximation of the vector field
-! 
-!              U = (1,1,1), or              (Test Mode = Integer 1)   
+!
+!              U = (1,1,1), or              (Test Mode = Integer 1)
 !              U = (1+z-y,1-z+x,1-x+y)      (Test Mode = Integer 2)
 !              U = (0,0,-1/2(yx^2+xy^2))    (Test Mode = Integer 3)
-!              U = (xy^2,x^2y,0)            (Test Mode = Integer 4)   
+!              U = (xy^2,x^2y,0)            (Test Mode = Integer 4)
 !              U = (-xy^2,x^2y,0)           (Test Mode = Integer 5)
-!              U = (3/2 y^2,1/2 x^2,0)      (Test Mode = Integer 6)  
+!              U = (3/2 y^2,1/2 x^2,0)      (Test Mode = Integer 6)
 !
-!  with respect to the L2 norm (the default) or an energy norm using 
-!  H(curl)-conforming basis functions. Here the energy norm corresponds to 
+!  with respect to the L2 norm (the default) or an energy norm using
+!  H(curl)-conforming basis functions. Here the energy norm corresponds to
 !  the operator I + MatPar * curl curl, with MatPar a scalar field specified
-!  by the user. Additionally, compute the relative error of the solution or 
-!  of the curl field using the L2 norm. This solver can thus be used for checking 
+!  by the user. Additionally, compute the relative error of the solution or
+!  of the curl field using the L2 norm. This solver can thus be used for checking
 !  that the convergence rate is correct or that a simple solution lies in the
 !  FE space.
-!  
+!
 !------------------------------------------------------------------------------
   USE DefUtils
 
@@ -146,7 +146,7 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
   SAVE STIFF, LOAD, FORCE, Acoef, AllocationsDone, Nodes, Indices
 !------------------------------------------------------------------------------
   CALL EdgeElementStyle(GetSolverParams(), PiolaVersion, SecondFamily, BasisDegree = ElementOrder)
-  
+
   Simplicial = GetLogical( GetSolverParams(), 'Simplicial Mesh', Found)
 
   ErrorEstimation = GetLogical( GetSolverParams(), 'Error Computation', Found)
@@ -172,7 +172,7 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
     END IF
     AllocationsDone = .TRUE.
   END IF
-  
+
   Solver % Matrix % COMPLEX = .FALSE.
   A => GetMatrix()
 
@@ -210,7 +210,7 @@ SUBROUTINE BestApproximationSolver( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultDirichletBCs()
 
-  Norm = DefaultSolve()  
+  Norm = DefaultSolve()
 
   !-------------------------------------------------------------------
   ! Compute the norm of the error
@@ -260,8 +260,8 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder)    
-    
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder)
+
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 
     DO t=1,IP % n
@@ -276,13 +276,13 @@ CONTAINS
       MatPar = SUM( NodalMatPar(1:n) * Basis(1:n) )
 
       !----------------------------------------------------------------
-      ! The following branch could be used to produce the 
+      ! The following branch could be used to produce the
       ! Galerkin projection of a solution component for visualization.
       !------------------------------------------------------------------
       IF (np > 0) THEN
         DO p = 1,n
-          DO q = 1,n       
-            STIFF(p,q) = STIFF(p,q) + Basis(p) * Basis(q) * detJ * IP % s(t)    
+          DO q = 1,n
+            STIFF(p,q) = STIFF(p,q) + Basis(p) * Basis(q) * detJ * IP % s(t)
           END DO
 
           DO q = 1,nd-np
@@ -308,7 +308,7 @@ CONTAINS
         END DO
 
         !----------------------------------------
-        ! RHS corresponding to the exact solution 
+        ! RHS corresponding to the exact solution
         !----------------------------------------
         SELECT CASE(TestMode)
         CASE (1)
@@ -343,7 +343,7 @@ CONTAINS
               (0.5d0*xq**2)* EBasis(p,2) * detJ * IP % s(t) + &
               MatPar * (0.0d0) * CurlEBasis(p,1) * detJ * IP % s(t) + &
               MatPar * (0.0d0) * CurlEBasis(p,2) * detJ * IP % s(t) + &
-              MatPar * (xq - 3.0d0*yq) * CurlEBasis(p,3) * detJ * IP % s(t) 
+              MatPar * (xq - 3.0d0*yq) * CurlEBasis(p,3) * detJ * IP % s(t)
         END SELECT
       END DO
     END DO
@@ -376,7 +376,7 @@ CONTAINS
     !-------------------------------------
     ! Numerical integration over element:
     !-------------------------------------
-    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder) 
+    IP = GaussPoints(Element, PReferenceElement=PiolaVersion, EdgeBasisDegree=ElementOrder)
 
     np = 0  ! Set np = n, if nodal dofs are employed; otherwise set np = 0
 
@@ -396,7 +396,7 @@ CONTAINS
 
       rotu(1) = SUM( Load(1,np+1:nd) * CurlEBasis(1:nd-np,1) )
       rotu(2) = SUM( Load(1,np+1:nd) * CurlEBasis(1:nd-np,2) )
-      rotu(3) = SUM( Load(1,np+1:nd) * CurlEBasis(1:nd-np,3) )       
+      rotu(3) = SUM( Load(1,np+1:nd) * CurlEBasis(1:nd-np,3) )
 
       ! Compute the square of the energy norm of the solution and error:
       SELECT CASE(TestMode)
@@ -413,7 +413,7 @@ CONTAINS
       CASE (3)
         sol(1:2) = 0.0d0
         sol(3) = -0.5d0*(yq*xq**2+xq*yq**2)
-        rotsol(1) = -0.5d0*xq**2 - yq*xq 
+        rotsol(1) = -0.5d0*xq**2 - yq*xq
         rotsol(2) = 0.5d0*yq**2 + yq*xq
         rotsol(3) = 0.0d0
       CASE(4)
@@ -432,10 +432,10 @@ CONTAINS
         sol(2) = 0.5d0*xq**2
         sol(3) = 0.0d0
         rotsol(1:3) = 0.0d0
-        rotsol(3) = xq - 3.0d0*yq        
+        rotsol(3) = xq - 3.0d0*yq
       END SELECT
 
-      e(:) = sol(:) - u(:)  
+      e(:) = sol(:) - u(:)
       rote(:) = rotsol(:) - rotu(:)
 
       IF (UseCurlNorm) THEN
@@ -443,7 +443,7 @@ CONTAINS
         !-------------------
         SolNorm = SolNorm + SUM( rotsol(1:3) * rotsol(1:3) ) * detJ * IP % s(t)
         EK = EK + SUM( rote(1:3) * rote(1:3) ) * detJ * IP % s(t)
- 
+
         ! Energy norm:
         !--------------
         !SolNorm = SolNorm + (SUM( Sol(1:3) * Sol(1:3) ) + 1.0d0 * SUM( rotsol(1:3) * rotsol(1:3) )) * detJ * IP % s(t)

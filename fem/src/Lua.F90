@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -66,7 +66,7 @@ public :: lua_init, lua_close, lua_addfun, luaL_checkinteger, luaL_checknumber, 
 ! NOTE: lua_set_type removed — it patched internal Lua state to mask nil lookups
 
 !-Interfaces-{{{----------------------------------------------------------------
-interface ! 
+interface !
   type(c_ptr) function lua_touserdata(L, n) bind(C)
     import
     type(c_ptr), value :: L
@@ -128,7 +128,7 @@ interface !
   end subroutine
 
   function lua_init_c() result(L) bind(C, name="lua_init")
-    import 
+    import
     type(c_ptr) :: L
   end function
 
@@ -201,15 +201,15 @@ interface !
     integer(kind=c_int) :: len
   end subroutine
 
-end interface 
+end interface
 
-abstract interface 
+abstract interface
 function luafun(L) result(n)
   import
   type(c_ptr), value :: L
   integer(kind=c_int) :: n
 end function
-end interface 
+end interface
 !-}}}---------------------------------------------------------------------------
 
 CONTAINS
@@ -346,7 +346,7 @@ subroutine lua_eval_f(L, fname, X, y)
   lstat = lua_pcall(L%L, nx, ny, 0)
   call check_error(L, lstat)
   do i = ny,1,-1
-    Y(i) = lua_tonumber(L%L, -1) 
+    Y(i) = lua_tonumber(L%L, -1)
     CALL lua_pop(L%L,1)
   end do
 end subroutine

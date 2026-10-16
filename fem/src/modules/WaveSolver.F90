@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,21 +13,21 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !/******************************************************************************
 ! *
-! *  Solvers: WaveSolver 
+! *  Solvers: WaveSolver
 ! *  Authors: Juha Ruokolainen, Peter Råback, Mika Malinen
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: ~2013
 ! *
@@ -60,7 +60,7 @@ END SUBROUTINE WaveSolver_Init
 
 
 !------------------------------------------------------------------------------
-!> Solves the transient wave equation for a scalar variable using H1-conforming 
+!> Solves the transient wave equation for a scalar variable using H1-conforming
 !> basis functions and the Galerkin method.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
 
   CALL Info('WaveSolver','Solving the compressional pressure wave')
-  
+
   SolverPars => GetSolverParams()
   dim = CoordinateSystemDimension()
   maxiter = ListGetInteger(SolverPars, &
@@ -97,7 +97,7 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
   IF( NeedMass ) THEN
     CALL Info('WaveSolver','We have a harmonic or eigenmode system')
   END IF
-  
+
   CALL DefaultStart()
 
   DO iter=1,maxiter
@@ -142,7 +142,7 @@ SUBROUTINE WaveSolver(Model, Solver, dt, TransientSimulation)
 
     IF( GetLogical( Solver % Values, 'Set Average To Zero', Found ) ) THEN
       Pave = SUM( Solver % Variable % Values) / &
-          SIZE( Solver % Variable % Values ) 
+          SIZE( Solver % Variable % Values )
       Solver % Variable % Values = Solver % Variable % Values - Pave
     END IF
 
@@ -204,18 +204,18 @@ CONTAINS
       c = ListGetElementReal(SoundSpeed_h, Basis, Element)
       att = ListGetElementReal(DampingCoeff_h, Basis, Element, DampingActive)
       react = ListGetElementReal(ReactCoeff_h, Basis, Element, ReactiveMedium)
-      
+
       ! TO DO: Source is now a scalar field div(b). Rather than giving div(b)
       ! it would be better to give the vector b and to apply
       ! integration by parts to get always consistent flux BCs.
       IF (.NOT. Load_h % NotPresentAnywhere) &
-          LoadAtIP = ListGetElementReal(Load_h, Basis, Element, AssembleSource) 
+          LoadAtIP = ListGetElementReal(Load_h, Basis, Element, AssembleSource)
 
-      Weight = IP % s(t) * DetJ 
+      Weight = IP % s(t) * DetJ
 
-      rho = ListGetElementReal(Density_h, Basis, Element, Found ) 
+      rho = ListGetElementReal(Density_h, Basis, Element, Found )
       IF(Found) Weight = Weight / rho
-      
+
       ! The Laplace term:
       ! -----------------------------------------------
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
@@ -245,7 +245,7 @@ CONTAINS
       IF (AssembleSource) &
           FORCE(1:nd) = FORCE(1:nd) - Weight * LoadAtIP * Basis(1:nd)
     END DO
-    
+
     IF( TransientSimulation .OR. NeedMass ) THEN
       IF ( TransientSimulation ) THEN
         CALL Default2ndOrderTime( MASS, DAMP, STIFF, FORCE )
@@ -255,8 +255,8 @@ CONTAINS
       END IF
     END IF
 
-    ! Applying static condensation is a risky endeavour since the values of 
-    ! the bubble DOFs at previous time steps are not recovered, disable the 
+    ! Applying static condensation is a risky endeavour since the values of
+    ! the bubble DOFs at previous time steps are not recovered, disable the
     ! static condensation?
     CALL CondensateP( nd-nb, nb, STIFF, FORCE )
     CALL DefaultUpdateEquations(STIFF, FORCE)
@@ -281,7 +281,7 @@ CONTAINS
     REAL(KIND=dp) :: c, g, rho
     REAL(KIND=dp) :: Weight, Basis(nd), dBasisdx(nd,3), DetJ
     INTEGER :: t, p, q
- 
+
     SAVE Flux_h, SoundSpeed_h, Density_h, Nodes
 !------------------------------------------------------------------------------
     BC => GetBC()
@@ -292,7 +292,7 @@ CONTAINS
     IF (InitHandles) THEN
       CALL ListInitElementKeyword(Flux_h, 'Boundary Condition', &
           'Source Acceleration')
-    END IF    
+    END IF
     IF (.NOT. OutflowBC .AND. Flux_h % NotPresentAnywhere) RETURN
 
     IF (InitHandles) THEN
@@ -302,7 +302,7 @@ CONTAINS
           UnfoundFatal=.TRUE.)
       InitHandles = .FALSE.
     END IF
-    
+
     CALL GetElementNodes( Nodes )
 
     STIFF = 0._dp
@@ -318,8 +318,8 @@ CONTAINS
       !--------------------------------------------------------------
       stat = ElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
               IP % W(t), detJ, Basis, dBasisdx)
-      Weight = IP % s(t) * DetJ  
-           
+      Weight = IP % s(t) * DetJ
+
       rho = ListGetElementRealParent( Density_h, Basis, Element, Found )
       IF(Found) Weight = Weight / rho
 

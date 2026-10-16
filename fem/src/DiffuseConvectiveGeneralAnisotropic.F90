@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -53,7 +53,7 @@ MODULE DiffuseConvectiveGeneral
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices and RSH vector for diffusion-convection
-!>  equation (general euclidean coordinate system): 
+!>  equation (general euclidean coordinate system):
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveGenCompose( MassMatrix,StiffMatrix,ForceVector,  &
     LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,PhaseChange,Temperature,Enthalpy,&
@@ -157,6 +157,7 @@ MODULE DiffuseConvectiveGeneral
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      REAL(KIND=dp) :: C0,CT,CL,C1,C2(3,3),dC2dx(3,3,3),SU(n),SW(n),Density
+     REAL(KIND=dp), ALLOCATABLE :: dcG(:,:)
 
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
@@ -165,13 +166,13 @@ MODULE DiffuseConvectiveGeneral
      TYPE(ValueList_t), POINTER :: BodyForce, Material
 
      LOGICAL :: GotCondModel
-   
+
 !------------------------------------------------------------------------------
 
      CylindricSymmetry = (CurrentCoordinateSystem() == CylindricSymmetric .OR. &
                   CurrentCoordinateSystem() == AxisSymmetric)
 
-     
+
      IF ( CylindricSymmetry ) THEN
        dim = 3
      ELSE
@@ -203,11 +204,12 @@ MODULE DiffuseConvectiveGeneral
         Bubbles = .TRUE.
      END IF
 
-     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3) )
+     ALLOCATE( Basis(MAX(2*n,nd)), dBasisdx(MAX(2*n,nd),3), &
+               dcG(MAX(2*n,nd),3) )
 
      Material => GetMaterial()
      GotCondModel = ListCheckPresent( Material,'Heat Conductivity Model')
-     
+
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
@@ -221,7 +223,7 @@ MODULE DiffuseConvectiveGeneral
      W_Integ => IntegStuff % w
      S_Integ => IntegStuff % s
      N_Integ =  IntegStuff % n
- 
+
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
 !    If there is no convection term we don't need stabilization.
@@ -293,7 +295,7 @@ MODULE DiffuseConvectiveGeneral
         END DO
 
         CL = SQRT( dEnth / dTemp )
-        
+
         CT = CT + CL
       END IF
 !------------------------------------------------------------------------------
@@ -343,7 +345,7 @@ MODULE DiffuseConvectiveGeneral
              IF ( dim > 2 .AND. CurrentCoordinateSystem()/= AxisSymmetric ) &
                dVelodx(3,i) = SUM( Uz(1:n)*dBasisdx(1:n,i) )
            END DO
-  
+
            DivVelo = 0.0D0
            DO i=1,dim
              DivVelo = DivVelo + dVelodx(i,i)
@@ -367,13 +369,13 @@ MODULE DiffuseConvectiveGeneral
 !------------------------------------------------------------------------------
          IF ( Stabilize ) THEN
 !          VNorm = SQRT( SUM(Velo(1:dim)**2) )
- 
+
            Vnorm = 0.0D0
            DO i=1,dim
               Vnorm = Vnorm + Velo(i)*Velo(i) / Metric(i,i)
            END DO
            Vnorm = SQRT( Vnorm )
- 
+
 #if 1
            Pe = MIN(1.0D0,mK*hK*C1*VNorm/(2*ABS(C2(1,1))))
 
@@ -452,6 +454,8 @@ MODULE DiffuseConvectiveGeneral
            END DO
          END IF
        END IF
+       CALL GradDotTensor( NBasis, dim, dBasisdx, C2, dcG )
+
 !------------------------------------------------------------------------------
 !      Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -462,11 +466,17 @@ MODULE DiffuseConvectiveGeneral
 !------------------------------------------------------------------------------
          M = CT * Basis(q) * Basis(p)
          A = C0 * Basis(q) * Basis(p)
-         DO i=1,dim
+         SELECT CASE(dim)
+         CASE(3)
+           A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2) + &
+                   dcG(q,3) * dBasisdx(p,3)
+         CASE(2)
+           A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2)
+         CASE DEFAULT
            DO j=1,dim
-             A = A + C2(i,j) * dBasisdx(q,i) * dBasisdx(p,j)
+             A = A + dcG(q,j) * dBasisdx(p,j)
            END DO
-         END DO
+         END SELECT
 
          IF ( Convection ) THEN
            DO i=1,dim
@@ -599,7 +609,7 @@ MODULE DiffuseConvectiveGeneral
 
      BoundaryVector = 0.0D0
      BoundaryMatrix = 0.0D0
- 
+
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
@@ -609,7 +619,7 @@ MODULE DiffuseConvectiveGeneral
      W_Integ => IntegStuff % w
      S_Integ => IntegStuff % s
      N_Integ =  IntegStuff % n
- 
+
 !------------------------------------------------------------------------------
 !   Now we start integrating
 !------------------------------------------------------------------------------

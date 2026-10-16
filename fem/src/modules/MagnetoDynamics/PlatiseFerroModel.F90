@@ -68,7 +68,7 @@ FUNCTION PlatiseFerroModel( model, n, B ) RESULT( H )
 
     u0 = GetConstReal( model % Constants, 'Permeability Of Vacuum', gotIt);
     IF (.NOT. gotIt) THEN
-      u0 = 1.2566370614359173e-06
+      u0 = 1.2566370614359173d-06
     END IF
 
     Hm_sqr_ptr => ListGetConstRealArray(material, 'PFM Dipoles Field Strength', gotIt);
@@ -83,7 +83,7 @@ FUNCTION PlatiseFerroModel( model, n, B ) RESULT( H )
 
     tol = GetConstReal(material, 'PFM Relative Tolerance', gotIt);
     IF (.NOT. gotIt) THEN
-      tol = 1e-6
+      tol = 1d-6
     END IF
 
     max_iter = GetConstReal(material, 'PFM Max Iterations', gotIt);

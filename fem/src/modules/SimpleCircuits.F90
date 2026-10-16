@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -30,7 +30,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 30.11.2012
 ! *
@@ -121,7 +121,7 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   INTEGER, POINTER :: Rows(:), Cols(:), Cnts(:)
   LOGICAL(KIND=1), ALLOCATABLE :: Done(:)
   REAL(KIND=dp), POINTER :: Values(:)
-  
+
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
 !------------------------------------------------------------------------------
 
@@ -130,24 +130,24 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     First = .FALSE.
 
     ! Look for the solver we attach the circuit equations to:
-    DO i=1,Model % NumberOfSolvers      
+    DO i=1,Model % NumberOfSolvers
       sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
       j = INDEX( sname,'MagnetoDynamics2DHarmonic')
       IF( j > 0 ) CYCLE
       k = INDEX( sname,'MagnetoDynamics2D')
       IF( k > 0 ) THEN
-        ASolver => Model % Solvers(i) 
+        ASolver => Model % Solvers(i)
         EXIT
       END IF
     END DO
-    IF(.NOT. ASSOCIATED( ASolver ) ) THEN    
+    IF(.NOT. ASSOCIATED( ASolver ) ) THEN
       DO i=1,Model % NumberOfSolvers
         Asolver => Model % Solvers(i)
         IF(ListCheckPresent(Asolver % Values,'Export Lagrange Multiplier'))EXIT
       END DO
-    END IF    
+    END IF
     CALL Info('Circuits2D','Associated circuit with solver index: '//I2S(i),Level=10)
-    
+
     AngVar => DefaultVariableGet( 'Rotor Angle' )
     ! Variable should already exist as it was introduced in the _init section.
     IF(.NOT. ASSOCIATED( AngVar ) ) THEN
@@ -188,14 +188,14 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! Circuit variable values from previous timestep:
     ! -----------------------------------------------
     ip = 0._dp
-    
-    
+
+
     sname = LagrangeMultiplierName(ASolver)
-    LagrangeVar => VariableGet( ASolver % Mesh % Variables, sname, ThisOnly = .TRUE.)    
+    LagrangeVar => VariableGet( ASolver % Mesh % Variables, sname, ThisOnly = .TRUE.)
     IF(ASSOCIATED(LagrangeVar)) THEN
       IF(SIZE(LagrangeVar % Values)>=Circuit_tot_m) ip=LagrangeVar % Values(1:Circuit_tot_m)
     END IF
-   
+
     ! Export circuit & dynamic variables for "SaveScalars":
     ! -----------------------------------------------------
     CALL ListAddConstReal(GetSimulation(),'res: time', GetTime())
@@ -245,7 +245,7 @@ CONTAINS
     ! include references to "u_emf(body)"'s which are special kind of variables attached to
     ! volume integral of time derivative of the vector potential over a "body". These variables
     ! don't have independent equations, instead the corresponding matrix coefficients on the
-    ! rows of "u_emf" give the conversion factors from current -> current density over the 
+    ! rows of "u_emf" give the conversion factors from current -> current density over the
     ! "body" (modulo dividing by volume, which is done here).
     ! ---------------------------------------------------------------------------------------
     Circuit_tot_m = 0._dp
@@ -271,7 +271,7 @@ CONTAINS
 
         IF(name(1:6) == 'u_emf(') THEN
           DO j=7,slen
-            IF(name(j:j)==')') EXIT 
+            IF(name(j:j)==')') EXIT
           END DO
           READ(name(7:j-1),*) Circuits(p) % body(i)
         END IF
@@ -512,7 +512,7 @@ CONTAINS
     CM % Cols => Cols
     CM % Values => Values
     CALL CRS_SortMatrix(CM)
-    
+
     Asolver %  Matrix % AddMatrix => CM
   END SUBROUTINE Circuits_MatrixInit
 !------------------------------------------------------------------------------
@@ -655,7 +655,7 @@ CONTAINS
     IF(TransientSimulation) THEN
       CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
 
-      IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN 
+      IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN
         tscl=1.0_dp
       ELSE
         tscl=1.5_dp
@@ -788,7 +788,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
 
   CALL Info('CircuitsAndDynamics','-------------------------------------------',Level=8 )
   CALL Info('CircuitsAndDynamics','Assembling electric circuit equations',Level=5 )
-  
+
   omega = ListGetConstReal(Model % Simulation, 'Supply Angular Frequency', found)
   IF(.NOT.Found) omega = GetAngularFrequency(Found=Found)
 
@@ -802,18 +802,18 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
   IF (First) THEN
     First = .FALSE.
     NULLIFY(ASolver)
-    
+
     ! Look for the solver we attach the circuit equations to:
     ! -------------------------------------------------------
-    DO i=1,Model % NumberOfSolvers      
+    DO i=1,Model % NumberOfSolvers
       sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
       j = INDEX( sname,'MagnetoDynamics2DHarmonic')
       IF( j > 0 ) THEN
-        ASolver => Model % Solvers(i) 
+        ASolver => Model % Solvers(i)
         EXIT
       END IF
     END DO
-    IF(.NOT. ASSOCIATED( ASolver ) ) THEN    
+    IF(.NOT. ASSOCIATED( ASolver ) ) THEN
       DO i=1,Model % NumberOfSolvers
         Asolver => Model % Solvers(i)
         IF(ListCheckPresent(Asolver % Values,'Export Lagrange Multiplier'))EXIT
@@ -821,7 +821,7 @@ SUBROUTINE CircuitsAndDynamicsHarmonic( Model,Solver,dt,TransientSimulation )
     END IF
 
     CALL Info('HarmonicCircuits2D','Associated circuit with solver index: '//I2S(i),Level=10)
-    
+
     PiolaVersion = GetLogical(Asolver % Values, 'Use Piola Transform',Found)
 
     ! Initialize circuit matrices:
@@ -877,7 +877,7 @@ CONTAINS
     ! include references to "u_emf(body)"'s which are special kind of variables attached to
     ! volume integral of time derivative of the vector potential over a "body". These variables
     ! don't have independent equations, instead the corresponding matrix coefficients on the
-    ! rows of "u_emf" give the conversion factors from current -> current density over the 
+    ! rows of "u_emf" give the conversion factors from current -> current density over the
     ! "body" (modulo dividing by volume, which is done here).
     ! ---------------------------------------------------------------------------------------
     Circuit_tot_m = 0._dp
@@ -901,7 +901,7 @@ CONTAINS
 
         IF(name(1:6) == 'u_emf(') THEN
           DO j=7,slen
-            IF(name(j:j)==')') EXIT 
+            IF(name(j:j)==')') EXIT
           END DO
           READ(name(7:j-1),*) Circuits(p) % body(i)
         END IF
@@ -937,7 +937,7 @@ CONTAINS
       END DO
     END DO
 
-    ! Get circuit angular frequency, either from the 
+    ! Get circuit angular frequency, either from the
     ! circuit defs, or from the sif-file defs:
     ! -----------------------------------------------
     DO p=1,n_Circuits
@@ -1167,7 +1167,7 @@ return
     CM % Cols => Cols
     CM % Values => Values
     CALL CRS_SortMatrix(CM)
-    
+
     Asolver %  Matrix % AddMatrix => CM
 !------------------------------------------------------------------------------
   END SUBROUTINE Circuits_MatrixInit

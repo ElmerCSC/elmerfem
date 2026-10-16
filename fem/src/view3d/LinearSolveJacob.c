@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -57,7 +57,7 @@ static void LinearSolveGather( Geometry_t *Geom,double UpdateValue,double ViewFa
 
          return;
      }
-    
+
      LinearSolveGather( Geom->Left,UpdateValue,ViewFactorRowSum );
      LinearSolveGather( Geom->Right,UpdateValue,ViewFactorRowSum );
 }
@@ -199,7 +199,7 @@ T = second();
         {
             sprintf( str, "b%d.p", j );
             fp = fopen( str, "w" );
- 
+
             n = 0;
             for( i=0; i<NGeomElem; i++ ) PrintGeometry(&Geometry[i],&n);
 
@@ -234,7 +234,7 @@ T = second();
         {
             sprintf( str, "b%d.p", j );
             fp = fopen( str, "w" );
- 
+
             n = 0;
             for( i=0; i<NGeomElem; i++ ) PrintGeometry(&Geometry[i],&n);
 

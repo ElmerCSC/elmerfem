@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,18 +27,18 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 26 Mar 2003
 ! *
 ! ****************************************************************************/
- 
+
 
 !------------------------------------------------------------------------------
 !>  This solver may be used for optimization. It is not intended to provide
 !>  a full featured solution for optimization problems. However, sometimes
 !>  its nice that the optimization may be performed in one sweep without the
-!>  need for restarting the solver for each optimization trial. 
+!>  need for restarting the solver for each optimization trial.
 !> This is a dynamically loaded solver with a standard interface.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -75,7 +75,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t),POINTER :: Var
   INTEGER :: IOUnit
   TYPE(ValueList_t), POINTER :: OptList
-  
+
   SAVE Param, MinParam, MaxParam, PrevParam, NoParam, &
       OptimizationsDone, Method, Direction, x, c, PrevCost, &
       FixedParam, NoFreeParam, MinCost, BestParam, NoValues, &
@@ -83,10 +83,10 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       NoImprovements, FoundBetter, OptTol, OptList
 
   !------------------------------------------------------------------------------
-  ! In the 1st round perform initializations 
+  ! In the 1st round perform initializations
   !------------------------------------------------------------------------------
   IF( OptimizationsDone == 0) THEN
-    
+
     CALL Info('FindOptimum','--------------------------------------------------------------')
     CALL Info('FindOptimum','The functionality of the FindOptimum routine has been moved',Level=3)
     CALL Info('FindOptimum','into the library side and the definitions should be added',Level=3)
@@ -97,7 +97,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     CALL Info('FindOptimum','--------------------------------------------------------------')
     CALL Warn('FindOptimum','The solver will soon be removed!')
 
-    
+
     CALL Info('FindOptimum','Initializing solver for optimization')
 
     CALL DefaultVariableAdd('Found Better',Global=.TRUE.,InitValue = -1.0_dp)
@@ -115,7 +115,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     END IF
 
     OptList => Solver % Values
-    
+
     OptimalFinish = ListGetLogical( OptList,'Optimal Finish',GotIt)
     NoValues = ListGetInteger(Model % Simulation,'Timestep Intervals')
 
@@ -124,13 +124,13 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     ALLOCATE( MinParam(NoParam), BestParam(NoParam), MaxParam(NoParam), &
         dParam(NoParam), FixedParam(NoParam))
 
-    MinParam = -HUGE( MinParam ) 
+    MinParam = -HUGE( MinParam )
     BestParam = 0.0_dp
-    MaxParam = HUGE( MaxParam ) 
+    MaxParam = HUGE( MaxParam )
     dParam = 0.0_dp
     FixedParam = .FALSE.
     MinCost = HUGE(MinCost)
-   
+
     NoFreeParam = 0
     DO i=1,NoParam
       WRITE( ParamStr,'(A,I0)') 'Parameter ',i
@@ -147,18 +147,18 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
 
         IF( .NOT. GotInit ) THEN
           IF( GotIt .AND. GotIt2 ) THEN
-            Param(i) = 0.5_dp * ( minv + maxv ) 
+            Param(i) = 0.5_dp * ( minv + maxv )
           ELSE IF( GotIt ) THEN
-            Param(i) = minv 
+            Param(i) = minv
           ELSE IF( GotIt2 ) THEN
-            Param(i) = maxv 
+            Param(i) = maxv
           END IF
         END IF
       END IF
       dParam(i) = ListGetConstReal(OptList,'Scale '//TRIM(ParamStr),GotIt)
       IF(.NOT. GotIt) dParam(i) = 1.0_dp
     END DO
-    
+
     NoFreeParam = NoParam - COUNT(FixedParam)
     IF( NoFreeParam == 0 ) THEN
       CALL Warn('FindOptimum','All parameters are fixed, no optimization!')
@@ -169,7 +169,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
 
     ! Internal history could be used in more complicated optimization routines
     !--------------------------------------------------------------------------
-    InternalHistory = ListGetLogical( OptList,'Internal History',GotIt)    
+    InternalHistory = ListGetLogical( OptList,'Internal History',GotIt)
     IF( Method == 'bisect') InternalHistory = .TRUE.
     IF( InternalHistory ) THEN
       ALLOCATE( PrevParam(NoValues,NoParam), PrevCost(NoValues))
@@ -180,12 +180,12 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       CALL GuessOptimum()
       GOTO 100
     END IF
-    
+
   END IF
 
   !------------------------------------------------------------------------------
   ! If visiting for the second time inspect how good the previous solution was
-  ! and improve an it. 
+  ! and improve an it.
   !------------------------------------------------------------------------------
   IF( OptimizationsDone > 0 ) THEN
     FoundBetter = -1.0_dp
@@ -196,15 +196,15 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
     IF(.NOT. GotIt) THEN
       Name = ListGetString(OptList,'Cost Function Name',GotIt)
       IF(.NOT. GotIt) CALL Fatal('FindOptimum','Give Cost Function or its name')
-      Cost = ListGetConstReal(Model % Simulation,Name,GotIt)     
+      Cost = ListGetConstReal(Model % Simulation,Name,GotIt)
       IF(.NOT. GotIt) CALL Fatal('FindOptimum','Cost with the given name was not found')
     END IF
 
-    ! Whether to perform search rather than optimization. 
+    ! Whether to perform search rather than optimization.
     ! In this case reduce the goal so that the target will always be zero.
     !----------------------------------------------------------------------
-    CostTarget = ListGetConstReal( OptList,'Cost Function Target',GotIt)    
-    IF( GotIt ) Cost = Cost - CostTarget 
+    CostTarget = ListGetConstReal( OptList,'Cost Function Target',GotIt)
+    IF( GotIt ) Cost = Cost - CostTarget
 
     ! The cost function could be the absolute value
     ! or we could transfer a maximization problem into minimization.
@@ -223,7 +223,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       MinCost = Cost
       BestParam(1:NoParam) = Param(1:NoParam)
       NoImprovements = NoImprovements + 1
-      
+
       WRITE(Message,'(A,ES15.6E3)') 'Found New Minimum Cost:',MinCost
       CALL Info('FindOptimum',Message,Level=4)
 
@@ -236,7 +236,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
         END DO
         WRITE (IOUnit,'(ES17.8E3)') Cost
         WRITE (IOUnit,'(I0)') NoImprovements
-        WRITE (IOUnit,'(I0)') OptimizationsDone 
+        WRITE (IOUnit,'(I0)') OptimizationsDone
         CLOSE(IOUnit)
       END IF
     END IF
@@ -255,7 +255,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       ELSE
         OPEN (NEWUNIT=IOUnit, FILE=HistoryFile,POSITION='APPEND')
       END IF
-      
+
       WRITE (IOUnit,'(I8,ES17.8E3)',advance='no') OptimizationsDone, Cost
       DO i=1,NoParam
         WRITE (IOUnit,'(ES17.8E3)',advance='no') Param(i)
@@ -263,7 +263,7 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
       WRITE(IOUnit,'(A)') ' '
       CLOSE(IOUnit)
     END IF
-    
+
     IF( OptimalFinish .AND. OptimizationsDone == NoValues - 1 ) THEN
       CALL Info('FindOptimum','Peforming the last step with the best so far')
       Param = BestParam
@@ -273,10 +273,10 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
 
 
   CALL Info( 'FindOptimum', '-----------------------------------------', Level=4 )
-  WRITE( Message, '(A,I0,A,A)' ) 'Manipulating ',NoFreeParam,' parameters using ',TRIM(Method) 
+  WRITE( Message, '(A,I0,A,A)' ) 'Manipulating ',NoFreeParam,' parameters using ',TRIM(Method)
   CALL Info( 'FindOptimum', Message, Level=4 )
   IF(OptimizationsDone > 0) THEN
-    WRITE( Message, '(A,ES15.6E3)' ) 'Last evaluated cost: ',Cost    
+    WRITE( Message, '(A,ES15.6E3)' ) 'Last evaluated cost: ',Cost
     CALL Info('FindOptimim',Message,Level=5)
   END IF
   WRITE( Message, '(A,ES15.6E3)' ) 'Lowest cost so far: ',MinCost
@@ -284,10 +284,10 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
 
 
   SELECT CASE(Method)
-    
+
   CASE ('random')
     CALL RandomParameter()
-    
+
   CASE ('scanning')
     CALL ScanParameter()
 
@@ -296,20 +296,20 @@ SUBROUTINE FindOptimum( Model,Solver,dt,TransientSimulation )
 
   CASE ('genetic')
     CALL GeneticOptimize(NoParam, Param, Cost)
-    
-  CASE ('bisect')    
+
+  CASE ('bisect')
     CALL BisectOptimize()
 
-  CASE ('simplex')    
+  CASE ('simplex')
     CALL SimplexOptimize( NoParam, Param, Cost, MinParam, MaxParam, dParam )
-    
+
   CASE DEFAULT
     CALL Fatal('FindOptimum','Unknown method')
-    
+
   END SELECT
- 
+
   IF(.FALSE.) THEN
-    DO i=1,NoParam 
+    DO i=1,NoParam
       IF( FixedParam(i) ) CYCLE
       Param(i) = MAX(MinParam(i),Param(i))
       Param(i) = MIN(MaxParam(i),Param(i))
@@ -356,13 +356,13 @@ CONTAINS
     INTEGER :: parsize, no = 0
     REAL (KIND=dp) :: parameters(parsize), func
 
-    INTEGER :: popsize, i0, i1, i2, i3 
+    INTEGER :: popsize, i0, i1, i2, i3
     REAL(KIND=dp) :: popcoeff, popcross
     REAL(KIND=dp), ALLOCATABLE :: pars(:,:), vals(:) ,rnds(:)
     LOGICAL, ALLOCATABLE :: mask(:)
 
     SAVE no, i0, pars, vals, rnds, mask, popsize, popcoeff, popcross
-        
+
 
     no = no + 1
 
@@ -379,14 +379,14 @@ CONTAINS
         PRINT *,'popcoeff',popcoeff,'popcross',popcross
       END IF
     END IF
-    
+
     ! Read the cases into the population
     IF(no <= popsize) THEN
       pars(1:parsize,no) = parameters(1:parsize)
       vals(no) = func
-    ELSE   
+    ELSE
       IF(func < vals(i0)) THEN
-        pars(1:parsize,i0) = parameters(1:parsize) 
+        pars(1:parsize,i0) = parameters(1:parsize)
         vals(i0) = func
       END IF
     END IF
@@ -398,10 +398,10 @@ CONTAINS
       Param = MinParam + (MaxParam-MinParam) * rnd(parsize)
     END IF
 
-    ! Here use genetic algorithms 
+    ! Here use genetic algorithms
     IF(no >= popsize) THEN
-      ! Find the three vectors to recombine 
-      i0 = MOD(no,popsize) + 1 
+      ! Find the three vectors to recombine
+      i0 = MOD(no,popsize) + 1
       DO
         i1 = idx(popsize)
         IF (i1 /= i0) EXIT
@@ -414,18 +414,18 @@ CONTAINS
         i3 = idx(popsize)
         IF (ALL(i3 /= (/i0,i1,i2/))) EXIT
       END DO
-      
+
       rnds = rnd(parsize)
       mask = (rnds < popcross)
-      
+
       WHERE (mask)
         parameters = pars(:,i3) + popcoeff*(pars(:,i1)-pars(:,i2))
       ELSEWHERE
         parameters = pars(:,i0)
       END WHERE
 
-      parameters = MAX( parameters, MinParam ) 
-      parameters = MIN( parameters, MaxParam ) 
+      parameters = MAX( parameters, MinParam )
+      parameters = MIN( parameters, MaxParam )
 
     END IF
 
@@ -467,7 +467,7 @@ CONTAINS
       WRITE(Message,'(A,I0)') 'Applying scanning to parameter ',i
       CALL Info('FindOptimum',Message)
 
-      maxno = NoValues 
+      maxno = NoValues
       IF( OptimalFinish ) maxno = maxno -1
       IF( OptimalStart ) maxno = maxno - 1
     END IF
@@ -485,7 +485,7 @@ CONTAINS
   SUBROUTINE BisectOptimize()
 
     INTEGER :: j, no = 0
-    REAL(KIND=dp) :: step 
+    REAL(KIND=dp) :: step
 
     SAVE j, no, step
 
@@ -498,7 +498,7 @@ CONTAINS
       WRITE(Message,'(A,I0)') 'Applying bisection search to parameter ',j
       CALL Info('FindOptimum',Message)
     END IF
-    
+
     no = no + 1
 
     IF(no == 1) THEN
@@ -506,7 +506,7 @@ CONTAINS
       IF(.NOT. GotIt) step = (MaxParam(j)-Param(j))/2.0
       step = MIN((MaxParam(j)-Param(j))/2.0,step)
     END IF
-    
+
     IF(no <= 3) THEN
       Param(j) = Param(j) + step
       RETURN
@@ -525,7 +525,7 @@ CONTAINS
     END IF
 
     ! Order the previous points so that x1 < x2 < x3
-    DO k=1,2 
+    DO k=1,2
       DO i=k+1,3
         IF(x(i) < x(k)) THEN
           x(4) = x(k)
@@ -537,7 +537,7 @@ CONTAINS
         END IF
       END DO
     END DO
-    
+
     ! Monotonic line segment
     IF( (c(2)-c(1))*(c(3)-c(2)) > 0.0) THEN
       IF(c(3) < c(1)) THEN
@@ -547,7 +547,7 @@ CONTAINS
       ELSE
         Param(j) = x(1) + SIGN(step,x(1)-x(3))
       END IF
-    ELSE IF(c(2) < c(1) .OR. c(2) < c(3)) THEN 
+    ELSE IF(c(2) < c(1) .OR. c(2) < c(3)) THEN
       IF(c(3) < c(1)) THEN
         c(1) = c(3)
         x(1) = x(3)
@@ -582,7 +582,7 @@ CONTAINS
       WRITE(Message,'(A,I0)') 'Applying secant search to parameter ',j
       CALL Info('FindOptimum',Message)
     END IF
-    
+
     no = no + 1
 
     IF(no == 1) THEN
@@ -595,20 +595,20 @@ CONTAINS
 
     x0 = x1
     x1 = x2
-    f0 = f1 
+    f0 = f1
     f1 = Cost
-       
+
     IF(no <= 2) THEN
       x2 = Param(j) + (no-1)*step
     ELSE IF( ABS(f1) < OptTol ) THEN
       CALL Info('SecantSearch','Tolerance reached, doing nothing')
       x2 = x1
     ELSE
-      dx = relax * f1 * (x1-x0) / (f1-f0)      
+      dx = relax * f1 * (x1-x0) / (f1-f0)
       IF( ABS( dx ) > maxstep ) THEN
         dx = SIGN( maxstep, dx )
-      END IF	
-      x2 = x1 - dx 
+      END IF
+      x2 = x1 - dx
     END IF
 
     Param(j) = x2
@@ -637,7 +637,7 @@ CONTAINS
     no = no + 1
 
 !    PRINT *,'Simplex: ',no,mode,maxratio,Cost,ratio
-    
+
 
     ! Initialize the unit vectors
     !-----------------------------
@@ -653,7 +653,7 @@ CONTAINS
           IF( maxx(i) - x(i) > x(i) - minx(i) ) THEN
             ls(i) = lambda * (maxx(i) - x(i))
           ELSE
-            ls(i) = lambda * (minx(i) - x(i)) 
+            ls(i) = lambda * (minx(i) - x(i))
           END IF
         END IF
       END DO
@@ -664,7 +664,7 @@ CONTAINS
       END DO
 
       nomax = ListGetInteger(OptList,'Simplex Restart Interval',Found)
-      maxratio = ListGetConstReal(OptList,'Simplex Restart Convergence Ratio',Found)      
+      maxratio = ListGetConstReal(OptList,'Simplex Restart Convergence Ratio',Found)
       IF(.NOT. Found) maxratio = 1.0_dp
       AllocationsDone = .TRUE.
     END IF
@@ -700,10 +700,10 @@ CONTAINS
     IF( mode <= 1 ) THEN
       ! Find the minimum and maximum nodes in the simplex
       !--------------------------------------------------
-      
+
       fl = HUGE(fl)  ! best
-      fh = -HUGE(fh) ! worst   
-      fs = -HUGE(fs) ! second worst   
+      fh = -HUGE(fh) ! worst
+      fs = -HUGE(fs) ! second worst
 
       DO i=1,nx+1
         IF( f(i) < fl ) THEN
@@ -729,7 +729,7 @@ CONTAINS
       xc = 0.0_dp
       DO i=1,nx+1
         IF( i == ih ) CYCLE
-        xc = xc + xall(i,:) 
+        xc = xc + xall(i,:)
       END DO
       xc = xc / nx
 
@@ -778,7 +778,7 @@ CONTAINS
       ELSE
         mode = 4
         submode = 0
-      END IF      
+      END IF
     ELSE IF( mode == 4) THEN
       CALL Warn('FindOptimum','Srink mode not ok yet!')
       IF( submode == nx ) THEN
@@ -789,7 +789,7 @@ CONTAINS
 
 
     IF( Found ) THEN
-      xall(ih,:) = x 
+      xall(ih,:) = x
 
       ratio = cost / f(ih)
 
@@ -799,10 +799,10 @@ CONTAINS
 
       ! Find the minimum and maximum nodes in the simplex
       !--------------------------------------------------
-      
+
       fl = HUGE(fl)  ! best
-      fh = -HUGE(fh) ! worst   
-      fs = -HUGE(fs) ! second worst   
+      fh = -HUGE(fh) ! worst
+      fs = -HUGE(fs) ! second worst
       DO i=1,nx+1
         IF( f(i) < fl ) THEN
           il = i
@@ -826,7 +826,7 @@ CONTAINS
       xc = 0.0_dp
       DO i=1,nx+1
         IF( i == ih ) CYCLE
-        xc = xc + xall(i,:) 
+        xc = xc + xall(i,:)
       END DO
       xc = xc / nx
     END IF
@@ -838,13 +838,13 @@ CONTAINS
       x = xc + gamma*(xc - xall(ih,:))
     ELSE IF(mode == 3 ) THEN
       IF( submode == 1 ) THEN
-        x = xc + beta*(xr - xc)        
+        x = xc + beta*(xr - xc)
       ELSE
-        x = xc + beta*(xall(ih,:) - xc)        
+        x = xc + beta*(xall(ih,:) - xc)
       END IF
     ELSE IF(mode == 4) THEN
-      submode = submode + 1 
-      i = submode 
+      submode = submode + 1
+      i = submode
       IF( submode >= il ) i = i + 1
       x = xall(il,:) + delta*(xall(i,:)-xall(il,:))
       xall(i,:) = x
@@ -867,12 +867,12 @@ CONTAINS
     LOGICAL :: fileis, GotIt
     CHARACTER(LEN=MAX_NAME_LEN) :: GuessFile
     INTEGER :: IOUnit
-    
+
     GuessFile = ListGetString(OptList,'Guess File',GotIt )
     IF(.NOT. GotIt) GuessFile = 'best.dat'
 
     INQUIRE (FILE=GuessFile, EXIST=fileis)
-    
+
     IF(.NOT. fileis ) THEN
       CALL Warn('FindOptimum','Previous optimum was not found in: '//TRIM(GuessFile))
       RETURN

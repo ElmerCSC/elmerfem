@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,13 +28,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
 ! ****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !-----------------------------------------------------------------------------
@@ -62,7 +62,7 @@ CONTAINS
 
     REAL(KIND=dp) :: r,z,t
     REAL(KIND=dp), DIMENSION(3,3) :: Metric
- 
+
     Metric = 0.0d0
     Metric(1,1) = 1.0d0
     Metric(2,2) = 1.0d0
@@ -156,7 +156,7 @@ CONTAINS
 
     REAL(KIND=dp), DIMENSION(3,3,3) :: symbols
 
-    Symbols = 0.0d0        
+    Symbols = 0.0d0
     Symbols(2,2,1) = -r * COS(t)**2
     IF ( r /= 0.0d0 ) THEN
        Symbols(1,2,2) = 1.0d0 / r
@@ -199,7 +199,7 @@ CONTAINS
 
        dSymbols(2,3,2,3) = -1.0d0 / COS(t)**2
        dSymbols(3,2,2,3) = -1.0d0 / COS(t)**2
-       
+
        IF ( r /= 0.0d0 ) THEN
           dSymbols(1,3,3,1) = -1.0d0 / r**2
           dSymbols(3,1,3,1) = -1.0d0 / r**2
@@ -215,7 +215,7 @@ CONTAINS
     REAL(KIND=dp) :: X,Y,Z,SqrtMetric
 
     IF ( Coordinates == Cartesian ) THEN
-       SqrtMetric = 1.0d0 
+       SqrtMetric = 1.0d0
     ELSE IF ( Coordinates >= Cylindric .AND. &
        Coordinates <= AxisSymmetric ) THEN
        SqrtMetric = CylindricalSqrtMetric( X,Y,Z )
@@ -253,7 +253,7 @@ CONTAINS
           Metric(i,i) = 1.0d0
        END DO
 
-       SqrtMetric = 1.0d0 
+       SqrtMetric = 1.0d0
        Symbols    = 0.0d0
        dSymbols   = 0.0d0
 

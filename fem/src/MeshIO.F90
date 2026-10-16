@@ -53,7 +53,7 @@ MODULE MeshIO
 CONTAINS
 
 !------------------------------------------------------------------------------
-!> Allocated one single element. 
+!> Allocated one single element.
 !------------------------------------------------------------------------------
    FUNCTION AllocateElement() RESULT( Element )
 !------------------------------------------------------------------------------
@@ -83,7 +83,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    END FUNCTION AllocateElement
 !------------------------------------------------------------------------------
- 
+
 !------------------------------------------------------------------------------
    SUBROUTINE AllocatePDefinitions(Element)
 !------------------------------------------------------------------------------
@@ -102,7 +102,7 @@ CONTAINS
      END IF
 
      ! Initialize fields
-     Element % PDefs % P = 0 
+     Element % PDefs % P = 0
      Element % PDefs % TetraType = 0
      Element % PDefs % isEdge = .FALSE.
      Element % PDefs % localNumber = 0
@@ -137,8 +137,8 @@ CONTAINS
 
 
  !> Fortran reader for Elmer ascii and binary mesh file format.
- !> The ascii format is tried out first, if not success, binary is followed. 
- !> This is a Fortran replacement for the old C++ eio library. 
+ !> The ascii format is tried out first, if not success, binary is followed.
+ !> This is a Fortran replacement for the old C++ eio library.
  !------------------------------------------------------------------------
  SUBROUTINE ElmerMeshReader(Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
                  IsParallel, BoundariesOnly )
@@ -173,13 +173,13 @@ CONTAINS
          I2S(PrevStep)//' : '//I2S(Step) )
    END IF
    PrevStep = Step
-   IF( PrevStep == 6 ) PrevStep = 0 
+   IF( PrevStep == 6 ) PrevStep = 0
 
    IF( Step == 1 ) THEN
      IF(.NOT. PRESENT( MeshNamePar ) ) THEN
        CALL Fatal('ElmerMeshReader','When calling in mode one give MeshNamePar!')
      END IF
-     BaseName = TRIM( MeshNamePar ) 
+     BaseName = TRIM( MeshNamePar )
      IF(.NOT. PRESENT( PMesh ) ) THEN
        CALL Fatal('ElmerMeshReader','When calling in mode one give PMesh!')
      END IF
@@ -187,7 +187,7 @@ CONTAINS
      IF(.NOT. PRESENT( ThisPe ) ) THEN
        CALL Fatal('ElmerMeshReader','When calling in mode one give ThisPe!')
      END IF
-     mype = ThisPe 
+     mype = ThisPe
      IF(.NOT. PRESENT( NumPEs) ) THEN
        CALL Fatal('ElmerMeshReader','When calling in mode one give NumPEs!')
      END IF
@@ -200,11 +200,11 @@ CONTAINS
      PseudoParallel = .FALSE.
      IF(.NOT. Parallel ) THEN
        IF( ParEnv % PEs > 1 ) THEN
-         PseudoParallel = ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found ) 
+         PseudoParallel = ListGetLogical(CurrentModel % Simulation,'Enforce Parallel',Found )
          IF(.NOT. Found ) PseudoParallel = ListGetLogicalAnySolver(CurrentModel,'Enforce Parallel')
        END IF
      END IF
-     
+
      i = LEN_TRIM(MeshNamePar)
      DO WHILE(MeshNamePar(i:i) == CHAR(0))
        i=i-1
@@ -212,11 +212,11 @@ CONTAINS
      BaseNameLen = i
      CALL Info('ElmerMeshReader','Base mesh name: '//TRIM(MeshNamePar(1:BaseNameLen)))
    END IF
-   
 
-   SELECT CASE( Step ) 
 
-   CASE(1)       
+   SELECT CASE( Step )
+
+   CASE(1)
      CALL ReadHeaderFile()
 
    CASE(2)
@@ -236,9 +236,9 @@ CONTAINS
        CALL InitParallelInfo()
        CALL ReadSharedFile()
      END IF
-       
+
    CASE(6)
-     IF( ASSOCIATED( LocalPerm) ) DEALLOCATE( LocalPerm ) 
+     IF( ASSOCIATED( LocalPerm) ) DEALLOCATE( LocalPerm )
      IF( ASSOCIATED( ElementTags) ) DEALLOCATE( ElementTags )
 
    END SELECT
@@ -251,11 +251,11 @@ CONTAINS
      INTEGER :: j(:)
      CHARACTER(LEN=*) :: s
      LOGICAL :: halo
-     
+
      INTEGER :: i,k,l,m,n,ic
      INTEGER, PARAMETER :: ic0 = ICHAR('0'), ic9 = ICHAR('9'), icm = ICHAR('-'), &
          icd = ICHAR('/'), ics = ICHAR(' ')
-     
+
      k = LEN_TRIM(s)
      l = 1
      n = 0
@@ -274,20 +274,20 @@ CONTAINS
        END DO
        IF(l>k) EXIT
        IF(.NOT.(ic==icm .OR. ic>=ic0 .AND. ic<=ic9)) EXIT
-       
+
        m = l+1
        DO WHILE(m<=k)
          ic = ICHAR(s(m:m))
          IF(ic<ic0 .OR. ic>ic9) EXIT
          m=m+1
        END DO
-       
+
        n = n + 1
        j(n) = s2i(s(l:m-1),m-l)
        l = m
      END DO
    END FUNCTION read_ints
-   
+
 
    !---------------------------------------------------
    ! Read header file and allocate some mesh structures
@@ -374,27 +374,27 @@ CONTAINS
 
      Binary = .FALSE.
      SinglePrec = .FALSE.
-     
+
      OPEN( Unit=FileUnit, File=FileName, STATUS='old', ACTION='read', IOSTAT = iostat )
      IF( iostat /= 0 ) THEN
        ! ascii file was not successfull, try with binary.
        Binary = .TRUE.
        OPEN( Unit=FileUnit, File=TRIM(FileName)//".bin", FORM='unformatted', &
            ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
-       IF(iostat /= 0 ) THEN         
+       IF(iostat /= 0 ) THEN
          SinglePrec = .TRUE.
          OPEN( Unit=FileUnit, File=TRIM(FileName)//".sbin", FORM='unformatted', &
              ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
        END IF
      END IF
-     
+
      IF( iostat /= 0 ) THEN
        CALL Fatal('ReadNodesFile','Could not open file: '//TRIM(Filename))
      ELSE
        CALL Info('ReadNodesFile','Reading nodes from file: '//TRIM(FileName),Level=10)
      END IF
 
-     ALLOCATE( NodeTags(Mesh % NumberOfNodes ) ) 
+     ALLOCATE( NodeTags(Mesh % NumberOfNodes ) )
      NodeTags = 0
 
      NodePermutation = .FALSE.
@@ -411,9 +411,9 @@ CONTAINS
          CALL Fatal('ReadNodesFile','Problem load node '//I2S(j)//' in file: '//TRIM(Filename))
        END IF
 
-       IF( NodeTags(j) /= j ) NodePermutation = .TRUE. 
+       IF( NodeTags(j) /= j ) NodePermutation = .TRUE.
        NodeTags(j) = NodeTag
-       
+
        Mesh % Nodes % x(j) = Coords(1)
        Mesh % Nodes % y(j) = Coords(2)
        Mesh % Nodes % z(j) = Coords(3)
@@ -425,16 +425,16 @@ CONTAINS
 
 
    !------------------------------------------------------------------------------
-   ! Read elements file and create elemental permutation if needed 
+   ! Read elements file and create elemental permutation if needed
    !------------------------------------------------------------------------------
    SUBROUTINE ReadElementsFile()
      TYPE(Element_t), POINTER :: Element
      INTEGER :: ElemType, Tag, Body, ElemNo, Ivals(64),nread, ioffset, partn
      CHARACTER(256) :: str
-     LOGICAL :: halo, Binary 
+     LOGICAL :: halo, Binary
 
 
-     CALL AllocateVector( ElementTags, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements, 'ReadElementsFile')   
+     CALL AllocateVector( ElementTags, Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements, 'ReadElementsFile')
      ElementTags = 0
      ElementPermutation = .FALSE.
 
@@ -451,7 +451,7 @@ CONTAINS
        Binary = .FALSE.
      ELSE
        ! ascii file was not successfull, try with binary.
-       Binary = .TRUE.       
+       Binary = .TRUE.
        OPEN( Unit=FileUnit, File=TRIM(FileName)//".bin", FORM='unformatted', &
            ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
      END IF
@@ -478,22 +478,22 @@ CONTAINS
            CALL Fatal('ReadElementsFile','Could not read start of element entry: '//I2S(j))
          END IF
 
-         nread = read_ints(str,ivals,halo)         
+         nread = read_ints(str,ivals,halo)
          tag = ivals(1)
 
          IF( halo ) THEN
            ioffset = 1
-           partn = ivals(2) 
+           partn = ivals(2)
          ELSE
            ioffset = 0
-           partn = 0 
+           partn = 0
          END IF
          body = ivals(ioffset+2)
          ElemType = ivals(ioffset+3)
        END IF
-         
+
        ElementTags(j) = tag
-       IF( j /= tag ) ElementPermutation = .TRUE.             
+       IF( j /= tag ) ElementPermutation = .TRUE.
        Element % ElementIndex = j
        Element % BodyId = body
 
@@ -522,14 +522,14 @@ CONTAINS
          Element % NodeIndexes(1:n) = IVals(4+ioffset:nread)
        END IF
      END DO
-     CLOSE( FileUnit ) 
+     CLOSE( FileUnit )
 
    END SUBROUTINE ReadElementsFile
    !------------------------------------------------------------------------------
 
 
    !------------------------------------------------------------------------------
-   ! Read boundary elements file and remap the parents if needed.  
+   ! Read boundary elements file and remap the parents if needed.
    !------------------------------------------------------------------------------
    SUBROUTINE ReadBoundaryFile( BoundariesOnly )
      LOGICAL, OPTIONAL :: BoundariesOnly
@@ -551,9 +551,9 @@ CONTAINS
        FileName = BaseName(1:BaseNameLen)//'/mesh.boundary'
      END IF
 
-     ! Create permutation for the elements. This is needed when the element 
-     ! parents are mapped to the new order. This is needed for mapping of the 
-     ! parents. Otherwise the element numbering is arbitrary. 
+     ! Create permutation for the elements. This is needed when the element
+     ! parents are mapped to the new order. This is needed for mapping of the
+     ! parents. Otherwise the element numbering is arbitrary.
      !------------------------------------------------------------------------------
      IF( ElementPermutation ) THEN
        MinEIndex = MINVAL( ElementTags(1:Mesh % NumberOfBulkElements) )
@@ -566,7 +566,7 @@ CONTAINS
          LocalEPerm( ElementTags(i) - MinEIndex + 1 ) = i
        END DO
      ELSE
-       MinEIndex = 1 
+       MinEIndex = 1
        MaxEIndex = Mesh % NumberOfBulkElements
      END IF
 
@@ -577,7 +577,7 @@ CONTAINS
        Binary = .FALSE.
      ELSE
        ! ascii file was not successfull, try with binary.
-       Binary = .TRUE.       
+       Binary = .TRUE.
        OPEN( Unit=FileUnit, File=TRIM(FileName)//".bin", FORM='unformatted', &
            ACCESS = 'stream', STATUS='old', ACTION='read', IOSTAT = iostat )
      END IF
@@ -589,7 +589,7 @@ CONTAINS
      END IF
 
      nswap = 0
-     
+
      DO j=Mesh % NumberOfBulkElements+1, &
          Mesh % NumberOfBulkElements+Mesh % NumberOfBoundaryElements
 
@@ -606,10 +606,10 @@ CONTAINS
            CALL Fatal('ReadBoundaryFile','Could not read boundary element entry: '//I2S(j))
          END IF
          nread = read_ints(str,ivals,halo)
-         
+
          tag = ivals(1)
          ElementTags(j) = tag
-         
+
          IF( halo ) THEN
            partn = ivals(2)
            ioffset = 1
@@ -617,13 +617,13 @@ CONTAINS
            partn = 0
            ioffset = 0
          END IF
-         
+
          bndry = ivals(ioffset+2)
          left = ivals(ioffset+3)
          right = ivals(ioffset+4)
          ElemType = ivals(ioffset+5)
        END IF
-         
+
        Element % ElementIndex = j
        Element % TYPE => GetElementType(ElemType)
        IF ( .NOT. ASSOCIATED(Element % TYPE) ) THEN
@@ -639,7 +639,7 @@ CONTAINS
          Element % PartIndex = partn-1
        END IF
 
-       CALL AllocateBoundaryInfo( Element ) 
+       CALL AllocateBoundaryInfo( Element )
 
        Element % BoundaryInfo % Constraint = bndry
        Element % BoundaryInfo % Left => NULL()
@@ -671,7 +671,7 @@ CONTAINS
          Right = 0
          nswap = nswap + 1
        END IF
-       
+
        IF ( Left >= 1 ) THEN
          Element % BoundaryInfo % Left => Mesh % Elements(left)
        END IF
@@ -698,9 +698,9 @@ CONTAINS
        CALL Info('ReadBoundaryFile',&
            'Swapped '//I2S(nswap)//' "right" owners to "left" to always have left parent existing!')
      END IF
-            
+
      IF( ElementPermutation ) THEN
-       DEALLOCATE( LocalEPerm ) 
+       DEALLOCATE( LocalEPerm )
      END IF
 
    END SUBROUTINE ReadBoundaryFile
@@ -708,10 +708,10 @@ CONTAINS
 
 
 
-   ! Make a permutation for the bulk and boundary element topology if 
+   ! Make a permutation for the bulk and boundary element topology if
    ! the nodes are permuted. This is always the case in parallel.
-   ! The initial numbering is needed only when the nodes are loaded and 
-   ! hence this is a local subroutine. 
+   ! The initial numbering is needed only when the nodes are loaded and
+   ! hence this is a local subroutine.
    !----------------------------------------------------------------------
    SUBROUTINE PermuteNodeNumbering()
 
@@ -729,12 +729,12 @@ CONTAINS
          LocalPerm(NodeTags(i) - MinNodeTag + 1) = i
        END DO
 
-       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements       
+       DO i=1,Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
          Element => Mesh % Elements(i)
          n = Element % TYPE % NumberOfNodes
 
          DO j=1,n
-           k = Element % NodeIndexes(j) 
+           k = Element % NodeIndexes(j)
            Element % NodeIndexes(j) = LocalPerm(k - MinNodeTag + 1)
          END DO
        END DO
@@ -743,16 +743,16 @@ CONTAINS
      END IF
 
      ! Set the for now, if the case is truly parallel we'll have to revisit these
-     ! when reading the parallel information. 
+     ! when reading the parallel information.
      Mesh % ParallelInfo % NumberOfIfDOFs = 0
      Mesh % ParallelInfo % GlobalDOFs => NodeTags
 
    END SUBROUTINE PermuteNodeNumbering
 
 
-   ! Initialize some parallel structures once the non-nodal 
-   ! element types are known. 
-   ! Currently this is here mainly because the 
+   ! Initialize some parallel structures once the non-nodal
+   ! element types are known.
+   ! Currently this is here mainly because the
    ! Elemental and Nodal tags are local
    !-------------------------------------------------------
    SUBROUTINE InitParallelInfo()
@@ -781,7 +781,7 @@ CONTAINS
      TmpGlobalDOFs = 0
      TmpGlobalDOFs(1:Mesh % NumberOfNodes) = &
          Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes)
-     DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs ) 
+     DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
      Mesh % ParallelInfo % GlobalDofs => TmpGlobalDofs
 
      ALLOCATE(Mesh % ParallelInfo % NeighbourList(n), STAT=istat)
@@ -792,7 +792,7 @@ CONTAINS
      END DO
 
      CALL AllocateVector( Mesh % ParallelInfo % GInterface, n, 'InitParallelInfo')
-     Mesh % ParallelInfo % GInterface = .FALSE.       
+     Mesh % ParallelInfo % GInterface = .FALSE.
 
    END SUBROUTINE InitParallelInfo
 
@@ -823,7 +823,7 @@ CONTAINS
      ! by reading tags and nparts to a temporal vector
      ! The operation using the str takes much more time.
      !-----------------------------------------------------
-     DO i=1,SharedNodes          
+     DO i=1,SharedNodes
        READ(FileUnit, '(a)', IOSTAT=iostat) str
        IF( iostat /= 0 ) THEN
          CALL Fatal('ReadSharedFile','Could not read shared nodes entry: '//I2S(i))
@@ -831,7 +831,7 @@ CONTAINS
        nread = read_ints(str,ivals,halo)
 
        tag = ivals(1)
-       npart = ivals(2)       
+       npart = ivals(2)
 
        k = LocalPerm( tag-MinNodeTag+1 )
        Mesh % ParallelInfo % GInterface(k) = .TRUE.
@@ -840,7 +840,7 @@ CONTAINS
        IF( nread < 2 + npart ) THEN
          CALL Fatal('ReadSharedFile','Line '//I2S(j)//' does not contain enough entries')
        END IF
-       
+
        Mesh % ParallelInfo % NeighbourList(k) % Neighbours = ivals(3:nread) - 1
 
        ! this partition does not own the node
@@ -877,30 +877,30 @@ CONTAINS
      TmpGlobalDOFs = 0
      TmpGlobalDOFs(1:Mesh % NumberOfNodes) = &
          Mesh % ParallelInfo % GlobalDOFs(1:Mesh % NumberOfNodes) + n
-     DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs ) 
+     DEALLOCATE( Mesh % ParallelInfo % GlobalDOFs )
      Mesh % ParallelInfo % GlobalDofs => TmpGlobalDofs
-     
+
      ALLOCATE(Mesh % ParallelInfo % NeighbourList(n), STAT=istat)
      IF (istat /= 0) CALL Fatal('InitParallelInfo', 'Unable to allocate NeighbourList array.')
-     
+
      DO i=1,n
        ALLOCATE( Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) )
        Mesh % ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe
      END DO
 
      CALL AllocateVector( Mesh % ParallelInfo % GInterface, n, 'InitParallelInfo')
-     Mesh % ParallelInfo % GInterface = .FALSE.       
+     Mesh % ParallelInfo % GInterface = .FALSE.
 
    END SUBROUTINE InitPseudoParallel
 
-   
+
  END SUBROUTINE ElmerMeshReader
 
- !> An interface over potential mesh loading strategies. 
- !----------------------------------------------------------------- 
+ !> An interface over potential mesh loading strategies.
+ !-----------------------------------------------------------------
  SUBROUTINE LoadMeshStep( Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
-         IsParallel, BoundariesOnly ) 
-   
+         IsParallel, BoundariesOnly )
+
    IMPLICIT NONE
 
    INTEGER :: Step
@@ -910,52 +910,52 @@ CONTAINS
    LOGICAL, OPTIONAL :: IsParallel
    LOGICAL, OPTIONAL :: BoundariesOnly
 
-   ! Currently only one strategy to get the mesh is implemented 
+   ! Currently only one strategy to get the mesh is implemented
    ! but there could be others.
    !
    ! This has not yet been tested in parallel and for sure
-   ! it does not work for halo elements. 
+   ! it does not work for halo elements.
    !-----------------------------------------------------------------
    CALL ElmerMeshReader( Step, PMesh, MeshNamePar, ThisPe, NumPEs, &
-           IsParallel, BoundariesOnly ) 
+           IsParallel, BoundariesOnly )
 
  END SUBROUTINE LoadMeshStep
 
 
  ! Set the mesh dimension by studying the coordinate values.
  ! This could be less conservative also...
- !------------------------------------------------------------------------------    
+ !------------------------------------------------------------------------------
  SUBROUTINE SetMeshDimension( Mesh )
    TYPE(Mesh_t) :: Mesh
-   
+
    REAL(KIND=dp) :: x, y, z
    LOGICAL :: C(3)
    INTEGER :: i
-   
+
    IF( Mesh % NumberOfNodes == 0 ) RETURN
 
    ! Compare value to some node, why not the 1st one
    x = Mesh % Nodes % x(1)
    y = Mesh % Nodes % y(1)
    z = Mesh % Nodes % z(1)
-   
-   C(1) = ANY( Mesh % Nodes % x /= x ) 
-   C(2) = ANY( Mesh % Nodes % y /= y )  
-   C(3) = ANY( Mesh % Nodes % z /= z )  
 
-   ! This version is perhaps too liberal 
+   C(1) = ANY( Mesh % Nodes % x /= x )
+   C(2) = ANY( Mesh % Nodes % y /= y )
+   C(3) = ANY( Mesh % Nodes % z /= z )
+
+   ! This version is perhaps too liberal
    Mesh % MeshDim = COUNT( C )
    Mesh % MaxDim = 0
    DO i=1,3
      IF( C(i) ) Mesh % MaxDim = i
    END DO
-      
+
    CALL Info('SetMeshDimension','Dimension of mesh is: '//I2S(Mesh % MeshDim),Level=8)
    CALL Info('SetMeshDimension','Max dimension of mesh is: '//I2S(Mesh % MaxDim),Level=8)
 
  END SUBROUTINE SetMeshDimension
 
- 
+
  SUBROUTINE ReadTargetNames(Model,Filename)
    CHARACTER(LEN=*) :: FileName
    TYPE(Model_t) :: Model
@@ -970,23 +970,23 @@ CONTAINS
    INTEGER :: BodyMaps, BCMaps
    CHARACTER(*), PARAMETER :: Caller = 'ReadTargetNames'
 
-   
+
    DoIt = ListGetLogical( Model % Simulation,'Use Mesh Names',Found )
-   IF(DoIt) THEN   
+   IF(DoIt) THEN
      DoBCs = .TRUE.
      DoBodies = .TRUE.
-   ELSE     
+   ELSE
      DoBCs = .FALSE.
      DoBodies = .FALSE.
    END IF
 
    DoIt = ListGetLogical( Model % Simulation,'Use Mesh Body Names',Found )
-   IF(Found) DoBodies = DoIt   
-   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Boundary Names',Found ) 
+   IF(Found) DoBodies = DoIt
+   DoIt = ListGetLogical( Model % Simulation,'Use Mesh Boundary Names',Found )
    IF(Found) DoBCs = DoIt
 
    IF(.NOT. (DoBodies .OR. DoBCs )) RETURN
-   
+
    BodyMaps = 0
    BCMaps = 0
 
@@ -994,27 +994,27 @@ CONTAINS
    IF( iostat /= 0 ) THEN
      CALL Fatal(Caller,'Requested the use of entity names but this file does not exits: '//TRIM(FileName))
    END IF
-   
+
    CALL Info(Caller,'Reading names info from file: '//TRIM(FileName),Level=10)
 
-   DO WHILE( .TRUE. ) 
+   DO WHILE( .TRUE. )
      READ(FileUnit,'(A)',IOSTAT=iostat) str
      IF( iostat /= 0 ) EXIT
-     i = INDEX( str,'$')     
+     i = INDEX( str,'$')
      j = INDEX( str,'=')
      IF( i == 0 .OR. j == 0 ) CYCLE
 
      i = i + 1
      DO WHILE(i<=LEN_TRIM(str) .AND. str(i:i)==' ')
        i = i + 1
-     END DO     
-     
+     END DO
+
      i1 = i
      i2 = j-1
      i3 = j+1
 
      ! Move to lowercase since the "name" in sif file is also
-     ! always in lowercase. 
+     ! always in lowercase.
      DO i=i1,i2
        j = i+1-i1
        k = ICHAR(str(i:i))
@@ -1069,7 +1069,7 @@ CONTAINS
          END IF
        END IF
      END DO
-     
+
      IF(.NOT. AlreadySet ) THEN
        IF( ParEnv % MyPe == 0 ) THEN
          CALL Info(Caller,'Could not map name to Body nor BC: '//name0(1:i2-i1+1), Level=20)
@@ -1078,18 +1078,18 @@ CONTAINS
 
    END DO
    CLOSE(FileUnit)
-      
+
    CALL Info(Caller,'Mapped '//I2S(BodyMaps)//' body names and '//I2S(BCMaps)//' bc names to elements!')
-     
+
  END SUBROUTINE ReadTargetNames
 
 
 !------------------------------------------------------------------------------
-!> This subroutine reads elementwise input data from the file mesh.elements.data 
-!> and inserts the data into the structured data variable 
+!> This subroutine reads elementwise input data from the file mesh.elements.data
+!> and inserts the data into the structured data variable
 !> Mesh % Elements(element_id) % PropertyData. The contents of the file should
 !> be arranged as
-!> 
+!>
 !> element: element_id_1
 !> data_set_name_1: a_1 a_2 ... a_n
 !> data_set_name_2: b_1 b_2 ... b_m
@@ -1140,7 +1140,7 @@ CONTAINS
               PD1 => PD
               PD => PD % Next
             END DO
-            
+
             IF (.NOT. ASSOCIATED(PD) ) THEN
               ALLOCATE(PD1 % Next)
               PD => PD1 % Next
@@ -1191,8 +1191,8 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Writes the mesh to disk. Note that this does not include the information
-!> of shared nodes needed in parallel computation. This may be used for 
-!> debugging purposes and for adaptive solution, for example. 
+!> of shared nodes needed in parallel computation. This may be used for
+!> debugging purposes and for adaptive solution, for example.
 !------------------------------------------------------------------------------
   SUBROUTINE WriteMeshToDisk( NewMesh, Path )
 !------------------------------------------------------------------------------
@@ -1205,7 +1205,7 @@ CONTAINS
     OPEN( 1,FILE=TRIM(Path) // '/mesh.header',STATUS='UNKNOWN' )
     WRITE( 1,'(i0,x,i0,x,i0)' ) NewMesh % NumberOfNodes, &
          NewMesh % NumberOfBulkElements, NewMesh % NumberOfBoundaryElements
-    
+
     WRITE( 1,'(i0)' ) 2
     MaxNodes = 0
     ElmCode  = 0
@@ -1431,7 +1431,7 @@ CONTAINS
        IF(.NOT. ASSOCIATED(NewMesh % Elements(k) % BoundaryInfo ) ) THEN
          CALL Fatal('WriteMeshToDisk2','BoundaryInfo not associated for element: '//I2S(k))
        END IF
-       
+
        Constraint = NewMesh % Elements(k) % BoundaryInfo % Constraint
 
        Found = .FALSE.
@@ -1450,7 +1450,7 @@ CONTAINS
        END IF
 
        !This meshBC stuff will *only* work if each BC has only 1 target boundary
-       WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
+       WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, &
             meshBC, Parent1,Parent2,&
             NewMesh % Elements(k) % TYPE % ElementCode
        DO j=1,NewMesh % Elements(k) % TYPE % NumberOfNodes
@@ -1470,7 +1470,7 @@ CONTAINS
       CALL WARN("WriteMeshToDisk2",&
           "BC elements '//I2S(BcWarns)//' have more than one Target Boundary, SaveMesh output will not match input!")
     END IF
-      
+
     IF(WarnNoTarget) THEN
        CALL WARN("WriteMeshToDisk2","Couldn't find a Target Boundary, assuming mapping to self")
     END IF
@@ -1526,19 +1526,19 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: DirectoryName, PrefixName
 !------------------------------------------------------------------------------
 
-    NoPartitions = MAXVAL( ElementPart ) 
+    NoPartitions = MAXVAL( ElementPart )
     NumElmCodes = 0
     NumElements = Mesh % NumberOfBoundaryElements + Mesh % NumberOfBulkElements
-        
+
     DirectoryName = TRIM(PATH)//'/partitioning.'//I2S(NoPartitions)
     CALL MakeDirectory( DirectoryName // CHAR(0) )
     CALL Info('WriteMeshToDiskPartitioned','Writing parallel mesh to disk: '//DirectoryName)
-   
 
-    DO Partition = 1, NoPartitions 
-      
+
+    DO Partition = 1, NoPartitions
+
       CALL Info('WriteMeshToDiskPartitioned','Writing piece to file: '//I2S(Partition),Level=12)
-      
+
       PrefixName = DirectoryName//'/part.'//I2S(Partition)
 
       CALL Info('WriteMeshToDiskPartitioned','Write nodes file',Level=12)
@@ -1552,7 +1552,7 @@ CONTAINS
         END IF
       END DO
       CLOSE(1)
-      
+
 
       CALL Info('WriteMeshToDiskPartitioned','Write shared nodes file',Level=12)
       OPEN( 1,FILE=TRIM(PrefixName) // '.shared', STATUS='UNKNOWN' )
@@ -1560,12 +1560,12 @@ CONTAINS
       DO i=1,Mesh % NumberOfNodes
         nneigh = SIZE( NeighbourList(i) % Neighbours )
         IF( nneigh <= 1 ) CYCLE
-        
+
         IF( ANY( NeighbourList(i) % Neighbours == Partition ) ) THEN
           NoShared = NoShared + 1
           WRITE(1,'(i0, x, i0, x)',ADVANCE='NO') i,nneigh
           DO j=1,nneigh
-            WRITE(1,'(I0, x)',ADVANCE='NO') NeighbourList(i) % Neighbours(j) 
+            WRITE(1,'(I0, x)',ADVANCE='NO') NeighbourList(i) % Neighbours(j)
           END DO
           WRITE( 1,* ) ''
         END IF
@@ -1576,7 +1576,7 @@ CONTAINS
       CALL Info('WriteMeshToDiskPartitioned','Write elements file',Level=12)
       OPEN( 1,FILE=TRIM(PrefixName) // '.elements', STATUS='UNKNOWN' )
       NoBulkElements = 0
-      ElmCodeCounts = 0      
+      ElmCodeCounts = 0
       DO i=1,Mesh % NumberOfBulkElements
         IF( ElementPart(i) /= Partition ) CYCLE
 
@@ -1587,7 +1587,7 @@ CONTAINS
           WRITE(1,'(i0,x)', ADVANCE='NO') Element % NodeIndexes(j)
         END DO
         WRITE(1,*) ''
-        
+
         ElmCode = Element % TYPE % ElementCode
         ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
         NoBulkElements = NoBulkElements + 1
@@ -1601,16 +1601,16 @@ CONTAINS
       DO i=Mesh % NumberOfBulkElements +1 ,&
           Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
         Element => Mesh % Elements(i)
-       
+
         parent1 = 0
         parent2 = 0
         Constraint = 0
-        
+
         IF( ASSOCIATED( Element % BoundaryInfo ) ) THEN
           IF ( ASSOCIATED( Element % BoundaryInfo % Left ) ) &
               parent1 = Element % BoundaryInfo % Left % ElementIndex
           IF ( ASSOCIATED( Element % BoundaryInfo % Right ) ) &
-              parent2 = Element % BoundaryInfo % Right % ElementIndex        
+              parent2 = Element % BoundaryInfo % Right % ElementIndex
           Constraint = Element % BoundaryInfo % Constraint
         END IF
 
@@ -1624,13 +1624,13 @@ CONTAINS
 
         IF( .NOT. Hit ) CYCLE
 
-        WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, & 
+        WRITE(1,'(i0,x,i0,x,i0,x,i0,x,i0)',ADVANCE='NO') i, &
             Constraint, Parent1, Parent2,&
             Element % TYPE % ElementCode
         DO j=1,Element % TYPE % NumberOfNodes
           WRITE(1,'(x,i0)', ADVANCE='NO') Element % NodeIndexes(j)
         END DO
-        WRITE(1,*) 
+        WRITE(1,*)
 
         ElmCode = Element % TYPE % ElementCode
         ElmCodeCounts( ElmCode ) = ElmCodeCounts( ElmCode ) + 1
@@ -1641,9 +1641,9 @@ CONTAINS
 
       CALL Info('WriteMeshToDiskPartitioned','Write header file',Level=12)
       OPEN( 1,FILE=TRIM(PrefixName) // '.header',STATUS='UNKNOWN' )
-      NumElmCodes = COUNT( ElmCodeCounts > 0 ) 
+      NumElmCodes = COUNT( ElmCodeCounts > 0 )
       WRITE( 1,'(i0,x,i0,x,i0)' ) NoNodes, &
-          NoBulkElements, NoBoundaryElements      
+          NoBulkElements, NoBoundaryElements
       WRITE( 1,'(i0)' ) NumElmCodes
       DO i=SIZE(ElmCodeCounts),1,-1
         IF( ElmCodeCounts(i) == 0 ) CYCLE
@@ -1651,7 +1651,7 @@ CONTAINS
       END DO
       WRITE( 1,'(i0,x,i0)') NoShared, 0
       CLOSE(1)
-      
+
       CALL Info('WriteMeshToDiskPartitioned','Done writing partition',Level=12)
     END DO
 
@@ -1671,7 +1671,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: na, nb, nn, ne, nf, no, ns, i
     INTEGER :: napar(0:2), nbpar(0:2), nnpar(0:2), nepar(0:2), nfpar(0:2), nopar(0:2), nspar(0:2)
-    CHARACTER(*), PARAMETER :: Caller="PrintMeshSize"   
+    CHARACTER(*), PARAMETER :: Caller="PrintMeshSize"
 !------------------------------------------------------------------------------
 
     na = Mesh % NumberOfBulkElements
@@ -1735,8 +1735,8 @@ CONTAINS
 
   END SUBROUTINE PrintMeshSize
 
-      
-  
+
+
 !------------------------------------------------------------------------------
 !> Check mesh for various info. Mainly for debugging.
 !------------------------------------------------------------------------------
@@ -1751,7 +1751,7 @@ CONTAINS
     REAL(KIND=dp) :: mins, maxs, s, s2
     INTEGER(KIND=8) :: Dbg(10)
     LOGICAL :: Halt
-    CHARACTER(*), PARAMETER :: Caller="CheckMeshInfo"   
+    CHARACTER(*), PARAMETER :: Caller="CheckMeshInfo"
 !------------------------------------------------------------------------------
 
     CALL Info(Caller,'Checking mesh information')
@@ -1760,10 +1760,10 @@ CONTAINS
     nb = Mesh % NumberOfBoundaryElements
     nn = Mesh % NumberOfNodes
     Halt = .FALSE.
-    
+
     ALLOCATE(TypeHits(827))
     ALLOCATE(NodeHits(nn))
-    
+
     CALL CheckMeshBulkHits()
     CALL CheckMeshBoundaryHits()
     CALL CheckBCTags()
@@ -1778,7 +1778,7 @@ CONTAINS
     CALL CheckParallelFaceInfo()
 
     nn = ParallelReduction(nn)
-    
+
     CALL Info(Caller,'Finished checking mesh!')
 
     IF(Halt) CALL Fatal(Caller,'Some checksum was invalid, cannot continue!')
@@ -1786,7 +1786,7 @@ CONTAINS
 
   CONTAINS
 
-    
+
     SUBROUTINE CheckMeshBulkHits()
       TypeHits = 0
       NodeHits = 0
@@ -1797,14 +1797,14 @@ CONTAINS
         IF(.NOT. ASSOCIATED( Element % TYPE ) ) THEN
           CALL Fatal(Caller,'Element type not associated for bulk elem: '//I2S(t))
         END IF
-        i = Element % TYPE % ElementCode        
+        i = Element % TYPE % ElementCode
         TypeHits(i) = TypeHits(i)+1
         IF(ANY(Element % NodeIndexes < 1 ) ) THEN
-          PRINT *,'NodeIndexes:', Element % NodeIndexes 
+          PRINT *,'NodeIndexes:', Element % NodeIndexes
           CALL Fatal(Caller,'Bulk element '//I2S(t)//' has non-positive index!')
         END IF
         IF(ANY(Element % NodeIndexes > nn ) ) THEN
-          PRINT *,'NodeIndexes:', Element % NodeIndexes, ' vs. ', nn 
+          PRINT *,'NodeIndexes:', Element % NodeIndexes, ' vs. ', nn
           CALL Fatal(Caller,'Bulk element '//I2S(t)//' has too large index!')
         END IF
         IF(ANY(Element % NodeIndexes <= 0)) THEN
@@ -1821,16 +1821,16 @@ CONTAINS
       END DO
 
       Dbg(1) = na
-      Dbg(2) = SUM(NodeHits) 
+      Dbg(2) = SUM(NodeHits)
       DO i=1,SIZE(NodeHits)
         Dbg(3) = dbg(3) + i*NodeHits(i)
       END DO
 
       DO i=1,SIZE(TypeHits)
         j = TypeHits(i)
-        IF(j>0) CALL Info(Caller,'Bulk element type '//I2S(i)//' count: '//I2S(j))        
+        IF(j>0) CALL Info(Caller,'Bulk element type '//I2S(i)//' count: '//I2S(j))
       END DO
-      
+
       t=MAXVAL(NodeHits)
 
       IF( InfoActive(25)) THEN
@@ -1839,15 +1839,15 @@ CONTAINS
           IF(j>0) PRINT *,'Bulk node hits '//I2S(i)//' count: ',j
         END DO
       END IF
-      dbg(4) = t      
+      dbg(4) = t
       Dbg(5) = COUNT(TypeHits>0)
 
 
       WRITE(Message,*) 'Bulk Checksum: ',Dbg(1:5)
-      CALL Info(Caller,Message)      
-      
+      CALL Info(Caller,Message)
+
       IF(ANY(Dbg < 0) ) Halt = .TRUE.
-      
+
     END SUBROUTINE CheckMeshBulkHits
 
 
@@ -1864,11 +1864,11 @@ CONTAINS
         i = Element % TYPE % ElementCode
         TypeHits(i) = TypeHits(i)+1
         IF(ANY(Element % NodeIndexes < 1 ) ) THEN
-          PRINT *,'NodeIndexes:', Element % NodeIndexes 
+          PRINT *,'NodeIndexes:', Element % NodeIndexes
           CALL Fatal(Caller,'Boundary element '//I2S(t)//' has non-positive index!')
         END IF
         IF(ANY(Element % NodeIndexes > nn ) ) THEN
-          PRINT *,'NodeIndexes:', Element % NodeIndexes, ' vs. ', nn 
+          PRINT *,'NodeIndexes:', Element % NodeIndexes, ' vs. ', nn
           CALL Fatal(Caller,'Boundary element '//I2S(t)//' has too large index!')
         END IF
         NodeHits(Element % NodeIndexes) = NodeHits(Element % NodeIndexes) + 1
@@ -1882,7 +1882,7 @@ CONTAINS
       END DO
       DO i=1,SIZE(TypeHits)
         j = TypeHits(i)
-        IF(j>0) CALL Info(Caller,'Boundary element type '//I2S(i)//' count: '//I2S(j))        
+        IF(j>0) CALL Info(Caller,'Boundary element type '//I2S(i)//' count: '//I2S(j))
       END DO
 
       t=MAXVAL(NodeHits)
@@ -1892,19 +1892,19 @@ CONTAINS
           IF(j>0) PRINT *,'Boundary node hits '//I2S(i)//' count: ',j
         END DO
       END IF
-        
+
       Dbg(1) = nb
-      Dbg(2) = SUM(NodeHits) 
+      Dbg(2) = SUM(NodeHits)
       DO i=1,SIZE(NodeHits)
         Dbg(3) = dbg(3) + i*NodeHits(i)
       END DO
       Dbg(4) = COUNT(TypeHits>0)
       Dbg(5) = t
       WRITE(Message,*) 'Boundary Checksum: ',Dbg(1:5)
-      CALL Info(Caller,Message)      
-     
+      CALL Info(Caller,Message)
+
       IF(ANY(Dbg < 0) ) Halt = .TRUE.
-      
+
     END SUBROUTINE CheckMeshBoundaryHits
 
 
@@ -1914,7 +1914,7 @@ CONTAINS
 
       Misses = 0
       dbg = 0
-      
+
       DO t=na+1,na+nb
         Element => Mesh % Elements(t)
         i = Element % TYPE % NumberOfNodes
@@ -1943,23 +1943,23 @@ CONTAINS
               PRINT *,'Element codes:',Element % TYPE % ElementCode, &
                   Parent % TYPE % elementCode
               PRINT *,'bc elem inds:',Element % NodeIndexes
-              PRINT *,'bulk elem inds:',Parent % NodeIndexes 
+              PRINT *,'bulk elem inds:',Parent % NodeIndexes
             END IF
           END IF
         END DO
       END DO
 
-      IF(Misses>0) PRINT *,'Parent elements missing nodes:',ParEnv % Mype, Misses      
+      IF(Misses>0) PRINT *,'Parent elements missing nodes:',ParEnv % Mype, Misses
       dbg(1) = nb
       dbg(2) = Misses
-      
+
       WRITE(Message,*) 'Parent Checksum: ',Dbg(1:5)
       CALL Info(Caller,Message)
 
       IF(Misses > 0) CALL Fatal(Caller,'We need all parent indeces!')
 
       IF(ANY(Dbg < 0) ) Halt = .TRUE.
-      
+
     END SUBROUTINE CheckParentIndeces
 
 
@@ -2002,7 +2002,7 @@ CONTAINS
 
       ALLOCATE(BCNodeCount(MinTag:MaxTag))
       BCNodeCount = 0
-      
+
       DO k=1, MaxTag
         IF(TagCount(k)==0) CYCLE
         NodeHits = 0
@@ -2019,16 +2019,16 @@ CONTAINS
         IF(TagCount(k) > 0) THEN
           PRINT *,'BC'//I2S(k)//': elems '//I2S(TagCount(k))//' nodes '//I2S(BCNodeCount(k))
         END IF
-      END DO           
-      
+      END DO
+
     END SUBROUTINE CheckBCTags
 
-    
-    
+
+
     SUBROUTINE CheckMeshGeomSize()
 
       IF(.NOT. InfoActive(25)) RETURN
-      
+
       PRINT *,'Coordinate x: ',MINVAL(Mesh % Nodes % x), MAXVAL(Mesh % Nodes % x)
       PRINT *,'Coordinate y: ',MINVAL(Mesh % Nodes % y), MAXVAL(Mesh % Nodes % y)
       PRINT *,'Coordinate z: ',MINVAL(Mesh % Nodes % z), MAXVAL(Mesh % Nodes % z)
@@ -2045,7 +2045,7 @@ CONTAINS
                 (Mesh % Nodes % z(ii)-Mesh % Nodes % z(jj))**2
             IF( s2 < mins ) THEN
               mins = s2
-              mini = t 
+              mini = t
             END IF
             IF( s2 > maxs ) THEN
               maxs = s2
@@ -2056,9 +2056,9 @@ CONTAINS
 
         IF( t==na .OR. t==na+nb) THEN
           mins = SQRT(mins)
-          maxs = SQRT(maxs)            
+          maxs = SQRT(maxs)
           IF(t==na) THEN
-            PRINT *,'Bulk element h range:',mins,maxs          
+            PRINT *,'Bulk element h range:',mins,maxs
             mins = HUGE(mins); maxs = 0.0_dp
           ELSE
             PRINT *,'Boundary element h range:',mins,maxs
@@ -2072,25 +2072,25 @@ CONTAINS
 
         END IF
       END DO
-      
+
     END SUBROUTINE CheckMeshGeomSize
 
     SUBROUTINE CheckMeshSerendipity()
-      INTEGER :: ElemCode 
+      INTEGER :: ElemCode
       INTEGER :: Indexes0(27),EdgeInds(2),n,ne
       INTEGER, POINTER :: Indexes(:)
       REAL(KIND=dp) :: Coord(3),Coord0(3)
-      
+
       DO t=1,na
         Element => Mesh % Elements(t)
 
         n = Element % Type % NumberOfNodes
         ne = Element % Type % NumberOfEdges
-        
+
         ElemCode = Element % TYPE % ElementCode
         Indexes => Element % NodeIndexes
         Indexes0(1:n) = Indexes(1:n)
-        
+
         SELECT CASE( ElemCode )
         CASE( 306, 408 )
 
@@ -2102,7 +2102,7 @@ CONTAINS
               EdgeInds(2) = Indexes(i+1)
             END IF
 
-            ! Center of edge 
+            ! Center of edge
             Coord0(1) = SUM( Mesh % Nodes % x(EdgeInds)) / 2
             Coord0(2) = SUM( Mesh % Nodes % y(EdgeInds)) / 2
             Coord0(3) = SUM( Mesh % Nodes % z(EdgeInds)) / 2
@@ -2110,26 +2110,26 @@ CONTAINS
             ! Is there some node closer to center of edge?
             maxs = HUGE(maxs)
             DO j=ne+1,n
-              Coord(1) = Mesh % Nodes % x(Indexes(j)) 
-              Coord(2) = Mesh % Nodes % y(Indexes(j)) 
-              Coord(3) = Mesh % Nodes % z(Indexes(j)) 
+              Coord(1) = Mesh % Nodes % x(Indexes(j))
+              Coord(2) = Mesh % Nodes % y(Indexes(j))
+              Coord(3) = Mesh % Nodes % z(Indexes(j))
               s2 = SUM((Coord-Coord0)**2)
               IF(s2 < maxs ) THEN
                 Indexes0(ne+i) = Indexes(j)
                 maxs = s2
-              END IF              
+              END IF
             END DO
           END DO
 
         END SELECT
-          
+
         j = COUNT( Indexes(1:n) /= Indexes0(1:n) )
         IF( j > 0 ) THEN
           !PRINT *,'Discrepancy: ',Indexes(ne+1:n), Indexes0(ne+1:n)
           Element % NodeIndexes(1:n) = Indexes0(1:n)
           CALL Warn('CheckMeshInfo','Node order wrong for '//I2S(j)//' nodes in element '//I2S(t))
         END IF
-          
+
       END DO
     END SUBROUTINE CheckMeshSerendipity
 
@@ -2142,13 +2142,13 @@ CONTAINS
       INTEGER :: nob
 
       IF(.NOT. InfoActive(25)) RETURN
-      
+
       nob = CurrentModel % NumberOfBodies
       ALLOCATE(RadRange(0:nob,2),BodyHits(0:nob))
       RadRange(:,1) = HUGE(r)
       RadRange(:,2) = 0.0_dp
       BodyHits = 0
-      
+
       DO t=1,Mesh % NumberOfBulkElements
         Element => Mesh % Elements(t)
         Indexes => Element % NodeIndexes
@@ -2162,7 +2162,7 @@ CONTAINS
           r = r + Mesh % Nodes % z(j)**2
         END DO
         RadRange(k,1) = MIN(RadRange(k,1),r)
-        RadRange(k,2) = MAX(RadRange(k,2),r)                   
+        RadRange(k,2) = MAX(RadRange(k,2),r)
         BodyHits(k) = BodyHits(k)+1
       END DO
       RadRange = SQRT( RadRange )
@@ -2177,7 +2177,7 @@ CONTAINS
       INTEGER, POINTER :: Indexes(:)
       INTEGER :: m
 
-      IF(Mesh % NumberOfEdges == 0 ) RETURN      
+      IF(Mesh % NumberOfEdges == 0 ) RETURN
       dbg = 0
       dbg(1) = Mesh % NumberOfEdges
 
@@ -2186,7 +2186,7 @@ CONTAINS
         IF(.NOT. ASSOCIATED(Element)) THEN
           CALL Fatal(Caller,'Edge not associated on edge list: '//I2S(t))
         END IF
-        Indexes => Element % NodeIndexes          
+        Indexes => Element % NodeIndexes
         IF(.NOT. ASSOCIATED(Indexes)) THEN
           CALL Fatal(Caller,'NodeIndexes not associated on edge: '//I2S(t))
         END IF
@@ -2200,11 +2200,11 @@ CONTAINS
         END IF
         IF(SIZE(Indexes)>0) dbg(2) = dbg(2) + SUM(Indexes)
         dbg(3) = dbg(3) + Element % ElementIndex
-        dbg(4) = dbg(4) + Element % GElementIndex        
+        dbg(4) = dbg(4) + Element % GElementIndex
       END DO
 
       WRITE(Message,*) 'Edges Checksum: ',Dbg(1:5)
-      CALL Info(Caller,Message)                  
+      CALL Info(Caller,Message)
 
       !IF(ANY(Dbg < 0) ) Halt = .TRUE.
 
@@ -2214,7 +2214,7 @@ CONTAINS
       INTEGER, POINTER :: Indexes(:)
       INTEGER :: m
 
-      IF(Mesh % NumberOfFaces == 0 ) RETURN      
+      IF(Mesh % NumberOfFaces == 0 ) RETURN
       dbg = 0
       dbg(1) = Mesh % NumberOfFaces
 
@@ -2223,7 +2223,7 @@ CONTAINS
         IF(.NOT. ASSOCIATED(Element)) THEN
           CALL Fatal(Caller,'Face not associated on face list: '//I2S(t))
         END IF
-        Indexes => Element % NodeIndexes          
+        Indexes => Element % NodeIndexes
         IF(.NOT. ASSOCIATED(Indexes)) THEN
           CALL Fatal(Caller,'NodeIndexes not associated on face: '//I2S(t))
         END IF
@@ -2237,15 +2237,15 @@ CONTAINS
         END IF
         IF(SIZE(Indexes)>0) dbg(2) = dbg(2) + SUM(Indexes)
         dbg(3) = dbg(3) + Element % ElementIndex
-        dbg(4) = dbg(4) + Element % GElementIndex        
+        dbg(4) = dbg(4) + Element % GElementIndex
 
       END DO
 
       WRITE(Message,*) 'Faces Checksum: ',Dbg(1:5)
-      CALL Info(Caller,Message)                  
+      CALL Info(Caller,Message)
 
       !IF(ANY(Dbg < 0) ) Halt = .TRUE.
-      
+
     END SUBROUTINE CheckMeshFaces
 
 
@@ -2253,15 +2253,15 @@ CONTAINS
 
       IF( ParEnv % PEs == 1) RETURN
       IF(.NOT. ASSOCIATED( Mesh % ParallelInfo % NeighbourList) ) RETURN
-      
+
       dbg = 0
       dbg(1) = SIZE(Mesh % ParallelInfo % NeighbourList)
 
       dbg(2) = COUNT(Mesh % ParallelInfo % Ginterface)
-      DO i=1, SIZE(Mesh % ParallelInfo % Ginterface)        
-        IF( Mesh % ParallelInfo % Ginterface(i) ) dbg(3) = dbg(3) + i 
+      DO i=1, SIZE(Mesh % ParallelInfo % Ginterface)
+        IF( Mesh % ParallelInfo % Ginterface(i) ) dbg(3) = dbg(3) + i
       END DO
-      
+
       DO i=1, SIZE(Mesh % ParallelInfo % NeighbourList)
         IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % NeighbourList(i) % Neighbours)) THEN
           dbg(7) = dbg(7) + 1
@@ -2274,31 +2274,31 @@ CONTAINS
       END DO
 
       WRITE(Message,*) 'ParallelInfo Checksum: ',Dbg(1:7)
-      CALL Info(Caller,Message)                         
+      CALL Info(Caller,Message)
 
       IF(ANY(Dbg < 0) ) Halt = .TRUE.
-      
+
      END SUBROUTINE CheckParallelInfo
-       
+
     SUBROUTINE CheckParallelEdgeInfo()
 
       IF( ParEnv % PEs == 1) RETURN
       IF( Mesh % NumberOfEdges == 0) RETURN
       IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % EdgeNeighbourList)) RETURN
-      
-      dbg = 0      
+
+      dbg = 0
       dbg(1) = SIZE(Mesh % ParallelInfo % EdgeNeighbourList)
 
       IF(ASSOCIATED(Mesh % ParallelInfo % EdgeInterface ) ) THEN
-        j = SIZE(Mesh % ParallelInfo % EdgeInterface )        
+        j = SIZE(Mesh % ParallelInfo % EdgeInterface )
         IF(j>1) THEN
           dbg(2) = j
-          DO i=1, SIZE(Mesh % ParallelInfo % Edgeinterface)        
-            IF( Mesh % ParallelInfo % Edgeinterface(i) ) dbg(3) = dbg(3) + i 
+          DO i=1, SIZE(Mesh % ParallelInfo % Edgeinterface)
+            IF( Mesh % ParallelInfo % Edgeinterface(i) ) dbg(3) = dbg(3) + i
           END DO
         END IF
       END IF
-        
+
       DO i=1, SIZE(Mesh % ParallelInfo % EdgeNeighbourList)
         IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % EdgeNeighbourList(i) % Neighbours)) THEN
           dbg(7) = dbg(7) + 1
@@ -2311,10 +2311,10 @@ CONTAINS
       END DO
 
       WRITE(Message,*) 'ParallelEdges Checksum: ',Dbg(1:7)
-      CALL Info(Caller,Message)                         
-      
+      CALL Info(Caller,Message)
+
       IF(ANY(Dbg < 0) ) Halt = .TRUE.
-      
+
     END SUBROUTINE CheckParallelEdgeInfo
 
     SUBROUTINE CheckParallelFaceInfo()
@@ -2322,7 +2322,7 @@ CONTAINS
       IF( ParEnv % PEs == 1) RETURN
       IF( Mesh % NumberOfFaces == 0) RETURN
       IF(.NOT. ASSOCIATED(Mesh % ParallelInfo % FaceNeighbourList)) RETURN
-      
+
       dbg = 0
       dbg(1) = SIZE(Mesh % ParallelInfo % FaceNeighbourList)
 
@@ -2331,7 +2331,7 @@ CONTAINS
         IF(j>1) THEN
           dbg(2) = j
           DO i=1, j
-            IF( Mesh % ParallelInfo % Faceinterface(i) ) dbg(3) = dbg(3) + i 
+            IF( Mesh % ParallelInfo % Faceinterface(i) ) dbg(3) = dbg(3) + i
           END DO
         END IF
       END IF
@@ -2348,12 +2348,12 @@ CONTAINS
       END DO
 
       WRITE(Message,*) 'ParallelFaces Checksum: ',Dbg(1:7)
-      CALL Info(Caller,Message)                         
-      
+      CALL Info(Caller,Message)
+
       IF(ANY(Dbg < 0) ) Halt = .TRUE.
-      
+
     END SUBROUTINE CheckParallelFaceInfo
-           
+
 !------------------------------------------------------------------------------
   END SUBROUTINE CheckMeshInfo
 !------------------------------------------------------------------------------

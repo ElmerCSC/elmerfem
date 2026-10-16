@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -32,7 +32,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 28 Sep 1998
 ! *
@@ -40,7 +40,7 @@
 
 !> Basic utilities for creating and manipulating the global matrix.
 !> These routines should only have dependence on the CRS, List, and Band matrix
-!> routines. 
+!> routines.
 !------------------------------------------------------------------------------
 
 !> \ingroup ElmerLib
@@ -57,7 +57,7 @@ MODULE MatrixAssembly
    USE BandMatrix
    USE PElementMaps, ONLY : isActivePElement, getEdgeDOFs, getFaceDOFs, getBubbleDOFs
 
-   
+
    IMPLICIT NONE
 
    INTERFACE CondensateP
@@ -65,8 +65,8 @@ MODULE MatrixAssembly
    END INTERFACE CondensateP
 
 CONTAINS
-   
-!> Sets the matrix element to a desired value. 
+
+!> Sets the matrix element to a desired value.
 !------------------------------------------------------------------------------
    SUBROUTINE SetMatrixElement( A, i, j, val )
 !------------------------------------------------------------------------------
@@ -94,7 +94,7 @@ CONTAINS
    END SUBROUTINE SetMatrixElement
 !------------------------------------------------------------------------------
 
-!> Gets a matrix element. 
+!> Gets a matrix element.
 !------------------------------------------------------------------------------
    FUNCTION GetMatrixElement( A, i, j ) RESULT ( val )
 !------------------------------------------------------------------------------
@@ -196,7 +196,7 @@ CONTAINS
 
      val = ChangeMatrixElement(A, i1, j1, 0.0_dp)
      CALL AddToMatrixElement(A, i2, j2, val )
-     
+
 !------------------------------------------------------------------------------
    END SUBROUTINE MoveMatrixElement
 !------------------------------------------------------------------------------
@@ -206,7 +206,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE ZeroRow( A, n )
 !------------------------------------------------------------------------------
-     TYPE(Matrix_t) :: A  !< Structure holding the matrix 
+     TYPE(Matrix_t) :: A  !< Structure holding the matrix
      INTEGER :: n         !< Row to be zeroed.
 !------------------------------------------------------------------------------
 
@@ -224,7 +224,7 @@ CONTAINS
    END SUBROUTINE ZeroRow
 !------------------------------------------------------------------------------
 
-!> Moves a row and and sums it with the values of a second one, optionally 
+!> Moves a row and and sums it with the values of a second one, optionally
 !> multiplying with a constant.
 !------------------------------------------------------------------------------
    SUBROUTINE MoveRow( A, n1, n2, Coeff, StayCoeff, MoveCoeff )
@@ -242,13 +242,13 @@ CONTAINS
          IF( A % FORMAT == MATRIX_LIST ) THEN
            CALL CRS_MoveRow( A,n1,n2,Coeff,StayCoeff ) ! does this make sense?
          END IF
-         
+
        CASE( MATRIX_LIST )
          CALL List_MoveRow( A % ListMatrix,n1,n2,Coeff,StayCoeff )
 
        CASE DEFAULT
          CALL Warn('MoveRow','Not implemented for this type')
-         
+
      END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE MoveRow
@@ -270,10 +270,10 @@ CONTAINS
 
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
 
-     PerFlip => Solver % Mesh % PeriodicFlip           
+     PerFlip => Solver % Mesh % PeriodicFlip
 
      IF( .NOT. ANY( PerFlip( Indexes(1:n) ) ) ) RETURN
-     
+
      IF( dofs == 1 ) THEN
        DO i=1,n
          DO j=1,n
@@ -293,9 +293,9 @@ CONTAINS
              END DO
            END IF
          END DO
-       END DO       
+       END DO
      END IF
-              
+
    END SUBROUTINE FlipPeriodicLocalMatrix
 
 
@@ -308,16 +308,16 @@ CONTAINS
      INTEGER :: n, dofs
      INTEGER :: Indexes(:)
      REAL(KIND=dp) :: F(:)
-     
+
      LOGICAL, POINTER :: PerFlip(:)
      INTEGER :: i,j
 
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
 
-     PerFlip => Solver % Mesh % PeriodicFlip           
-     
+     PerFlip => Solver % Mesh % PeriodicFlip
+
      IF( .NOT. ANY( PerFlip( Indexes(1:n) ) ) ) RETURN
-     
+
      IF( dofs == 1 ) THEN
        DO i=1,n
          IF( PerFlip(Indexes(i))) F(i) = -F(i)
@@ -331,25 +331,25 @@ CONTAINS
          END IF
        END DO
      END IF
-          
+
    END SUBROUTINE FlipPeriodicLocalForce
 
 
 !---------------------------------------------------------------------------
 !> Check if there is something to flip.
 !---------------------------------------------------------------------------
-   FUNCTION AnyFlipPeriodic( Solver, n, Indexes ) RESULT ( DoFlip ) 
+   FUNCTION AnyFlipPeriodic( Solver, n, Indexes ) RESULT ( DoFlip )
      TYPE(Solver_t), POINTER :: Solver
      INTEGER :: n
      INTEGER :: Indexes(:)
-     LOGICAL :: DoFlip 
-     
+     LOGICAL :: DoFlip
+
      LOGICAL, POINTER :: PerFlip(:)
 
      DoFlip = .FALSE.
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
-    
-     PerFlip => Solver % Mesh % PeriodicFlip                
+
+     PerFlip => Solver % Mesh % PeriodicFlip
      DoFlip = ANY( PerFlip(Indexes(1:n)))
 
    END FUNCTION AnyFlipPeriodic
@@ -358,16 +358,16 @@ CONTAINS
 !---------------------------------------------------------------------------
 !> Skip matrix assembly because the elements are similar.
 !---------------------------------------------------------------------------
-   FUNCTION UseLocalMatrixCopy( Solver, elemind, activeind) RESULT ( Skip ) 
+   FUNCTION UseLocalMatrixCopy( Solver, elemind, activeind) RESULT ( Skip )
      TYPE(Solver_t) :: Solver
      INTEGER, OPTIONAL :: elemind, activeind
-     LOGICAL :: Skip 
-     
+     LOGICAL :: Skip
+
      INTEGER :: eind, vind
-     
+
      Skip = .FALSE.
      IF( Solver % LocalSystemMode <= 0 ) RETURN
-     
+
      IF( PRESENT(activeind) ) THEN
        eind = activeind
      ELSE
@@ -378,20 +378,20 @@ CONTAINS
 
      vind = Solver % LocalSystem(eind) % eind
      IF( vind > 0 .AND. vind /= eind) Skip = .TRUE.
-     
-   END FUNCTION UseLocalMatrixCopy
-     
 
-   
+   END FUNCTION UseLocalMatrixCopy
+
+
+
 !---------------------------------------------------------------------------
 !> Store local matrix, e.g. for topology optimization.
 !---------------------------------------------------------------------------
-   SUBROUTINE UseLocalMatrixStorage( Solver, n, K, F, elemind, activeind) 
+   SUBROUTINE UseLocalMatrixStorage( Solver, n, K, F, elemind, activeind)
      TYPE(Solver_t) :: Solver
      INTEGER :: n
      REAL(KIND=dp) :: K(:,:), F(:)
      INTEGER, OPTIONAL :: elemind, activeind
-     
+
      TYPE(LocalSystemStorage_t), POINTER :: pLocal
      TYPE(Variable_t), POINTER :: cVar => NULL(), rVar => NULL()
      CHARACTER(:), ALLOCATABLE :: multname
@@ -400,13 +400,13 @@ CONTAINS
      INTEGER :: eind, vind
      LOGICAL :: Found
      LOGICAL :: DoMultiply = .FALSE., DoMultiplyRhs = .FALSE., DoInvert = .FALSE.
-     
+
      SAVE cVar, DoMultiply, DoMultiplyRhs, DoInvert, prevSolverId
-     
+
      IF( PRESENT(activeind) ) THEN
        eind = activeind
      ELSE IF( PRESENT( elemind ) ) THEN
-       ! This is probably related to boundary elements for which we haven't saved stuff. 
+       ! This is probably related to boundary elements for which we haven't saved stuff.
        IF( elemind > SIZE(Solver % InvActiveElements ) ) RETURN
        !IF( elemind < 1 .OR. elemind > SIZE(Solver % InvActiveElements ) ) THEN
        !  CALL Fatal('GetLocalMatrixStorage','Parameter "elemind" is out of bounds!')
@@ -418,27 +418,27 @@ CONTAINS
        CALL Fatal('UseLocalMatrixStorage','Give element index as a parameter in some way!')
      END IF
 
-     ! Size of local system is same as size of ActiveElements table. 
-     pLocal => Solver % LocalSystem(eind) 
+     ! Size of local system is same as size of ActiveElements table.
+     pLocal => Solver % LocalSystem(eind)
      IF( pLocal % eind == eind .OR. pLocal % eind < 1 ) THEN
        ! Save local system for this element.
        IF(pLocal % n < n ) THEN
-         ! The size of local system allocated. 
+         ! The size of local system allocated.
          IF( plocal % n > 0 ) THEN
-           DEALLOCATE(pLocal % K, pLocal % F) 
+           DEALLOCATE(pLocal % K, pLocal % F)
          END IF
          pLocal % n = n
-         ALLOCATE(pLocal % K(n,n), pLocal % F(n)) 
+         ALLOCATE(pLocal % K(n,n), pLocal % F(n))
        END IF
-       ! This elements is saved in its location. 
+       ! This elements is saved in its location.
        pLocal % eind = eind
        pLocal % K(1:n,1:n) = K(1:n,1:n)
        pLocal % F(1:n) = F(1:n)
      ELSE
        ! Obtain local system for this element which is copy of some other element
        pLocal => Solver % LocalSystem(pLocal % eind)
-       K(1:n,1:n) = pLocal % K(1:n,1:n) 
-       F(1:n) = pLocal % F(1:n)        
+       K(1:n,1:n) = pLocal % K(1:n,1:n)
+       F(1:n) = pLocal % F(1:n)
      END IF
 
      ! Obtain the (solver-constant) matrix multiplier configuration once. The
@@ -498,7 +498,7 @@ CONTAINS
        !$OMP END CRITICAL
      END IF
 
-     ! Multiply locally stored matrix. Possible use is, for example, density in topology optimization. 
+     ! Multiply locally stored matrix. Possible use is, for example, density in topology optimization.
      IF( DoMultiply ) THEN
        vind = cvar % Perm(eind)
        IF(vind > 0 ) THEN
@@ -515,24 +515,24 @@ CONTAINS
            rmult = rvar % Values(vind)
            F(1:n) = rmult * F(1:n)
          END IF
-       END IF         
+       END IF
      END IF
-           
+
    END SUBROUTINE UseLocalMatrixStorage
 
-   
+
 !---------------------------------------------------------------------------
 !> Obtain local matrix, e.g. for topology optimization.
 !> If the elements are alike, the element index may point to a different
-!> element than itself. 
+!> element than itself.
 !---------------------------------------------------------------------------
-   SUBROUTINE GetLocalMatrixStorage( Solver, n, K, F, Found, elemind, activeind ) 
+   SUBROUTINE GetLocalMatrixStorage( Solver, n, K, F, Found, elemind, activeind )
      TYPE(Solver_t) :: Solver
      INTEGER :: n
      REAL(KIND=dp) :: K(:,:), F(:)
      LOGICAL :: Found
      INTEGER, OPTIONAL :: elemind, activeind
-  
+
      TYPE(LocalSystemStorage_t), POINTER :: pLocal
      INTEGER :: eind
 
@@ -546,24 +546,24 @@ CONTAINS
      ELSE
        CALL Fatal('GetLocalMatrixStorage','Give element index as a parameter in some way!')
      END IF
-     
-     pLocal => Solver % LocalSystem(eind) 
+
+     pLocal => Solver % LocalSystem(eind)
      IF(eind /= pLocal % eind ) THEN
        pLocal => Solver % LocalSystem(pLocal % eind)
      END IF
      IF(pLocal % eind < 1 ) RETURN
-     
+
      IF(pLocal % n == n ) THEN
        K(1:n,1:n) = pLocal % K(1:n,1:n)
        F(1:n) = pLocal % F(1:n)
        Found = .TRUE.
      END IF
-       
+
    END SUBROUTINE GetLocalMatrixStorage
 
-   
-   
-   
+
+
+
 !> Glues a local matrix to the global one.
 !------------------------------------------------------------------------------
    SUBROUTINE GlueLocalSubMatrix( A,row0,col0,Nrow,Ncol,RowInds,ColInds,&
@@ -576,14 +576,14 @@ CONTAINS
 
      SELECT CASE( A % FORMAT )
 
-       CASE( MATRIX_CRS )       
+       CASE( MATRIX_CRS )
          CALL CRS_GlueLocalSubMatrix( A,row0,col0,Nrow,Ncol,RowInds,ColInds,&
              RowDofs,ColDofs,LocalMatrix )
-      
+
        CASE( MATRIX_LIST )
          CALL List_GlueLocalSubMatrix( A % ListMatrix,row0,col0,Nrow,Ncol,RowInds,ColInds,&
              RowDofs,ColDofs,LocalMatrix )
-        
+
        CASE DEFAULT
          CALL Warn('GlueLocalSubMatrix','Not implemented for this type')
 
@@ -593,10 +593,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!> Create a copy of the matrix entries A % Values to A % BulkValues. 
+!> Create a copy of the matrix entries A % Values to A % BulkValues.
 !> Optionally the entries of the RHS vector, the mass matrix and the damping matrix
 !> may also be copied. The RHS vector is copied by default, while the mass and
-!> damping matrices are copied only if asked. 
+!> damping matrices are copied only if asked.
 !------------------------------------------------------------------------------
    SUBROUTINE CopyBulkMatrix( A, BulkMass, BulkDamp, BulkRHS )
 !------------------------------------------------------------------------------
@@ -611,12 +611,12 @@ CONTAINS
      ELSE
        CopyRHS = .TRUE.
      END IF
-     
+
      IF (CopyRHS) THEN
        n = SIZE( A % Rhs )
        IF( ASSOCIATED( A % BulkRhs ) ) THEN
          IF( SIZE( A % BulkRhs ) /= n ) THEN
-           DEALLOCATE( A % BulkRhs ) 
+           DEALLOCATE( A % BulkRhs )
            A % BulkRHS => NULL()
          END IF
        END IF
@@ -627,11 +627,11 @@ CONTAINS
          A % BulkRHS(i) = A % Rhs(i)
        END DO
      END IF
-     
+
      n = SIZE( A % Values )
      IF( ASSOCIATED( A % BulkValues ) ) THEN
        IF( SIZE( A % BulkValues ) /= n ) THEN
-          DEALLOCATE( A % BulkValues ) 
+          DEALLOCATE( A % BulkValues )
           A % BulkValues => NULL()
        END IF
      END IF
@@ -648,7 +648,7 @@ CONTAINS
          n = SIZE( A % MassValues )
          IF( ASSOCIATED( A % BulkMassValues ) ) THEN
            IF( SIZE( A % BulkMassValues ) /= n ) THEN
-             DEALLOCATE( A % BulkMassValues ) 
+             DEALLOCATE( A % BulkMassValues )
              A % BulkMassValues => NULL()
            END IF
          END IF
@@ -667,7 +667,7 @@ CONTAINS
          n = SIZE( A % DampValues )
          IF( ASSOCIATED( A % BulkDampValues ) ) THEN
            IF( SIZE( A % BulkDampValues ) /= n ) THEN
-             DEALLOCATE( A % BulkDampValues ) 
+             DEALLOCATE( A % BulkDampValues )
              A % BulkDampValues => NULL()
            END IF
          END IF
@@ -680,7 +680,7 @@ CONTAINS
          END DO
        END IF
      END IF
-     
+
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
 
@@ -692,7 +692,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: i,n
-     
+
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
        n = SIZE( A % Rhs )
        IF( SIZE( A % BulkRhs ) /= n ) THEN
@@ -700,7 +700,7 @@ CONTAINS
        END IF
        A % Rhs(1:n) = A % BulkRhs(1:n)
      END IF
-     
+
      IF( ASSOCIATED( A % BulkValues ) ) THEN
        n = SIZE( A % Values )
        IF( SIZE( A % BulkValues ) /= n ) THEN
@@ -730,12 +730,12 @@ CONTAINS
          A % DampValues(i) = A % BulkDampValues(i)
        END DO
      END IF
-     
+
    END SUBROUTINE RestoreBulkMatrix
 !------------------------------------------------------------------------------
 
 
-   
+
 
 !> Create a child matrix of same toopology but optioanally different size than the
 !> parent matrix.
@@ -768,10 +768,10 @@ CONTAINS
 
 
 
-   
+
 !------------------------------------------------------------------------------
 !> Eliminates bubble degrees of freedom from a local linear system.
-!> This version is suitable for flow models with velocity and pressure as 
+!> This version is suitable for flow models with velocity and pressure as
 !> unknowns.
 !------------------------------------------------------------------------------
 SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
@@ -920,7 +920,7 @@ SUBROUTINE Condensate( N, K, F, F1 )
     INTEGER :: N
     REAL(KIND=dp) :: K(:,:),F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
-!------------------------------------------------------------------------------    
+!------------------------------------------------------------------------------
     IF ( PRESENT(F1) ) THEN
       CALL CondensateP( N, N, K, F, F1 )
     ELSE
@@ -932,7 +932,7 @@ END SUBROUTINE Condensate
 
 !------------------------------------------------------------------------------
 !> Subroutine for condensation of p element bubbles from linear problem.
-!> Modifies given stiffness matrix and force vector(s) 
+!> Modifies given stiffness matrix and force vector(s)
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
@@ -970,8 +970,8 @@ END SUBROUTINE CondensatePR
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Subroutine for condensation of p element bubbles from complex-valued linear 
-!> problem. Modifies given stiffness matrix and force vector(s) 
+!> Subroutine for condensation of p element bubbles from complex-valued linear
+!> problem. Modifies given stiffness matrix and force vector(s)
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------

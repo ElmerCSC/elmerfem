@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,14 +27,14 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 26 Sep 2014
 ! *  Heavily inspired from the MagnetoDynamics module.
 ! *****************************************************************************/
-  
+
 !------------------------------------------------------------------------------
-!> Solve the time-harmonic Maxwell equations using the curl-curl equation at a 
+!> Solve the time-harmonic Maxwell equations using the curl-curl equation at a
 !> relatively high frequency using curl-conforming edge elements. Also a low-
 !> frequency model is available. With "Use Gauss Law = True" the A-V representation
 !> is used and to solve the additional scalar potential V the Gauss law is used.
@@ -59,18 +59,18 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs, EigenProblem
   INTEGER :: k
 !------------------------------------------------------------------------------
-  SolverParams => GetSolverParams()  
+  SolverParams => GetSolverParams()
 
   WithNDOFs = GetLogical(SolverParams, 'Use Gauss Law', Found)
   IF (.NOT. WithNDOFs) THEN
     WithNDOFs = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
     WithNDOFs = WithNDOFs .OR. GetLogical(SolverParams, 'Lorenz Condition', Found)
   END IF
-  
+
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     ! We use one place where all the edge element keywords are defined and checked.
     CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, BasisDegree = k, Check = .TRUE. )
-    
+
     IF (WithNDOFs) THEN
       IF ( k == 2 ) THEN
         CALL ListAddString( SolverParams, "Element", &
@@ -81,12 +81,12 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
         CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
       ELSE
         CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
-      END IF      
+      END IF
     ELSE
       SELECT CASE(k)
       CASE(3)
         IF (SecondFamily) THEN
-          CALL Fatal('VectorHelmholtzSolver_Init0', 'No ready support for the cubic element of the second kind' )        
+          CALL Fatal('VectorHelmholtzSolver_Init0', 'No ready support for the cubic element of the second kind' )
         ELSE
           CALL ListAddString( SolverParams, "Element", &
               "n:0 e:3 -tri b:6 -tetra b:3 -tri_face b:6" )
@@ -140,11 +140,11 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Lumped',.TRUE.)
     CALL ListAddNewLogical( SolverParams,'Constraint Modes Fluxes',.TRUE.)
     !CALL ListAddNewLogical( SolverParams,'Constraint Modes Matrix Results',.TRUE.)
-    CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)        
+    CALL ListAddNewLogical( SolverParams,'Constraint Modes EM Wave',.TRUE.)
     IF( ListCheckPresent( SolverParams,'S Matrix Filename') ) THEN
       CALL ListRename( SolverParams,'S Matrix Filename',&
-          'Constraint Modes Matrix Filename', Found ) 
-    ELSE     
+          'Constraint Modes Matrix Filename', Found )
+    ELSE
       CALL ListAddNewString( SolverParams,'Constraint Modes Matrix Filename',&
           'SMatrix.dat',.FALSE.)
     END IF
@@ -172,7 +172,7 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
       CALL ListAddString( SolverParams,'Preconditioning Update',"ams update")
     END IF
   END IF
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init0
 !------------------------------------------------------------------------------
@@ -196,7 +196,7 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
-  
+
   ! A parallel run needs an early allocation of precvalues. Create a flag to
   ! inform the function CreateMatrix.
   IF (ListCheckPrefix(SolverParams, 'Linear System Preconditioning Damp Coefficient')) THEN
@@ -226,7 +226,7 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
     END DO
 
     IF( soln == 0 ) THEN
-      CALL Fatal('VectorHelmholtzSolver_Init','Eigenfunction BC given without solving a port model')      
+      CALL Fatal('VectorHelmholtzSolver_Init','Eigenfunction BC given without solving a port model')
     ELSE
       CALL Info('VectorHelmholtzSolver_Init','The eigensolver index is: '//I2S(soln), Level=12)
       CALL ListAddInteger(SolverParams, 'Eigensolver Index', soln)
@@ -235,13 +235,13 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
 
   CALL DefinePortParameters(Model, Solver % Mesh)
 
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzSolver_Init
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Solve the electric field E from the curl-curl equation 
+!> Solve the electric field E from the curl-curl equation
 !> curl (1/mu) curl E - i \omega \sigma E - \omega^2 epsilon E = i omega J
 !> using edge elements (vector-valued basis of first or second degree).
 !> For the equations in the case of the A-V representation, see the manual.
@@ -276,7 +276,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   TYPE(Matrix_t), POINTER :: AmsMat, AmsScalMat
   TYPE(Solver_t), POINTER :: AmsSolver, AmsScalSolver
   LOGICAL :: AmsCurlCurlForm, AmsMonolithic
-  
+
   CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzSolver'
 !------------------------------------------------------------------------------
 
@@ -284,13 +284,13 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   CALL Info(Caller,'-------------------------------------------------',Level=6 )
   CALL Info(Caller,'Solving harmonic electromagnetic wave equation!',Level=5 )
 
-  SolverParams => GetSolverParams()  
-  CALL EdgeElementStyle(Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+  SolverParams => GetSolverParams()
+  CALL EdgeElementStyle(Solver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
 
   IF(CoordinateSystemDimension() == 2 .AND. .NOT. PiolaVersion ) THEN
     CALL Fatal(Caller, 'A 2D model needs "Use Piola Transform = True"')
   END IF
-    
+
   ! Allocate some permanent storage, this is done first time only:
   !---------------------------------------------------------------
   Mesh => GetMesh()
@@ -303,26 +303,26 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   ENDIF
 
   ! If we use our own AMS preconditioner where actually the scalar and vector preconditioning equations
-  ! are solved for, lets get information needed for the assembly i.e. pointers to the solvers and matrices. 
+  ! are solved for, lets get information needed for the assembly i.e. pointers to the solvers and matrices.
   CALL GetAuxSolverInfo()
-  
+
   PrecDampCoeff = GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient', HasPrecDampCoeff )
   PrecDampCoeff = CMPLX(REAL(PrecDampCoeff), &
       GetCReal(SolverParams, 'Linear System Preconditioning Damp Coefficient im', Found ), kind=dp)
-  HasPrecDampCoeff = HasPrecDampCoeff .OR. Found 
+  HasPrecDampCoeff = HasPrecDampCoeff .OR. Found
   IF (HasPrecDampCoeff) THEN
     MassProportional = GetLogical(SolverParams, 'Mass-proportional Damping', Found)
   ELSE
     MassProportional = .FALSE.
   END IF
-    
+
   CurlCurlPrec = GetLogical(SolverParams, 'Curl-Curl Preconditioning', Found)
   PrecMatrix = HasPrecDampCoeff .OR. CurlCurlPrec
-  
+
   IF(PrecMatrix) THEN
     IF(ASSOCIATED(AmsMat)) THEN
       CALL Info(Caller,'Incorporating damping coefficient to AMS matrix directly',Level=7)
-      PrecMatrix = .FALSE.      
+      PrecMatrix = .FALSE.
     ELSE IF(ListGetString(SolverParams,'Linear System Solver',Found ) == 'direct') THEN
       CALL Warn(Caller,'Generating preconditioning matrix does not make sense for direct methods, canceling!')
       PrecMatrix = .FALSE.
@@ -330,14 +330,14 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
       CALL Info(Caller,'Generating special preconditioning matrix',Level=12)
     END IF
   END IF
-    
+
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
     mu0inv = GetConstReal( Model % Constants, 'Permeability of Vacuum', Found )
     IF(mu0inv/=0) mu0inv=1/mu0inv
   END IF
   IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
-  
+
   Found = .FALSE.
   IF( ASSOCIATED( Model % Constants ) ) THEN
     eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
@@ -354,7 +354,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   ELSE
     rob0 = 0.0_dp
   END IF
-  
+
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
   LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
   UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
@@ -365,7 +365,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   NoIterationsMax = GetInteger( SolverParams, &
       'Nonlinear System Max Iterations',Found)
   IF(.NOT. Found) NoIterationsMax = 1
-  
+
   EdgeBasis = .NOT. ListCheckPresent( SolverParams,'Linear System Refactorize' ) .AND. &
       GetLogical( SolverParams, 'Edge Basis', Found )
 
@@ -376,39 +376,39 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
     IF( EdgeBasis ) CALL ListAddLogical( SolverParams,'Linear System Refactorize',.FALSE.)
   END DO
   IF ( EdgeBasis ) CALL ListRemove( SolverParams, 'Linear System Refactorize' )
-  
+
   CALL DefaultFinish()
 
   ! This is now just for testing.
-  i = ListGetInteger( SolverParams, 'Circulation BC', Found ) 
+  i = ListGetInteger( SolverParams, 'Circulation BC', Found )
   IF( Found ) THEN
     BLOCK
-      REAL(KIND=dp) :: Circ(2)      
-      CALL  BoundaryCirculation( Circ, i, pSolver, pSolver % Variable ) 
+      REAL(KIND=dp) :: Circ(2)
+      CALL  BoundaryCirculation( Circ, i, pSolver, pSolver % Variable )
       PRINT *,'Circulation around BC:',Circ
     END BLOCK
   END IF
-  
+
   CALL Info(Caller,'All done',Level=12)
-  
+
 CONTAINS
 
   SUBROUTINE GetAuxSolverInfo()
 
     INTEGER, POINTER :: SolverIndexes(:)
     INTEGER :: i,j
-    
+
     AmsAny = .FALSE.
     NULLIFY(AmsMat); NULLIFY(AmsScalMat)
     NULLIFY(AmsSolver); NULLIFY(AmsScalSolver)
 
-    SolverIndexes => ListGetIntegerArray( SolverParams,'prec solvers',Found )     
+    SolverIndexes => ListGetIntegerArray( SolverParams,'prec solvers',Found )
     IF(Found) THEN
       DO i=1,SIZE(SolverIndexes)
         j = SolverIndexes(i)
         IF(ListGetLogical(Model % Solvers(j) % Values,'AMS Vector Solver', Found ) ) THEN
           AmsSolver => Model % Solvers(j)
-          AmsMat => AmsSolver % Matrix           
+          AmsMat => AmsSolver % Matrix
 
           ! For monolithic AMS matrix we may use curl-curl form.
           AmsCurlCurlForm = .FALSE.
@@ -423,7 +423,7 @@ CONTAINS
         END IF
         IF(ListGetLogical(Model % Solvers(j) % Values,'AMS Scalar Solver', Found ) ) THEN
           AmsScalSolver => Model % Solvers(j)
-          AmsScalMat => AmsScalSolver % Matrix           
+          AmsScalMat => AmsScalSolver % Matrix
           AmsAny = .TRUE.
         END IF
       END DO
@@ -434,11 +434,11 @@ CONTAINS
     END IF
     IF(ASSOCIATED(AmsScalMat)) THEN
       CALL Info(Caller,'Assembling nodal AMS scalar matrix on the side!',Level=7)
-    END IF    
+    END IF
 
   END SUBROUTINE GetAuxSolverInfo
 
-  
+
 !---------------------------------------------------------------------------------------------
   FUNCTION DoSolve() RESULT(Converged)
 !---------------------------------------------------------------------------------------------
@@ -449,7 +449,7 @@ CONTAINS
     REAL(KIND=dp), POINTER CONTIG:: SavedValues(:) => NULL()
     REAL(KIND=dp) :: Norm
     INTEGER :: Active,k,n,nd,nb,t
-    LOGICAL :: InitHandles 
+    LOGICAL :: InitHandles
 !---------------------------------------------------------------------------------------------
     ! System assembly:
     !-----------------
@@ -461,20 +461,20 @@ CONTAINS
 
     Active = GetNOFActive()
     InitHandles = .TRUE.
-    
+
     DO t=1,active
       Element => GetActiveElement(t)
-      n  = GetElementNOFNodes() 
-      nd = GetElementNOFDOFs()  
+      n  = GetElementNOFNodes()
+      nd = GetElementNOFDOFs()
       nb = GetElementNOFBDOFs()
-      
+
       ! Glue local element matrix and rhs vector:
       !----------------------------------------
       CALL LocalMatrix( Element, n, nd+nb, nb, InitHandles )
     END DO
     CALL DefaultFinishBulkAssembly()
 
-    
+
     ! Robin type of BC in terms of E:
     !--------------------------------
     CALL Info(Caller,'Starting boundary assembly',Level=12)
@@ -492,7 +492,7 @@ CONTAINS
        Element => GetBoundaryElement(t)
        BC => GetBC()
        IF (.NOT. ASSOCIATED(BC) ) CYCLE
-     
+
        SELECT CASE(GetElementFamily())
        CASE(1)
          CYCLE
@@ -507,23 +507,23 @@ CONTAINS
          TYPE(Element_t), POINTER :: tmp_Element
          tmp_Element => SetCurrentElement(Element)
        END BLOCK
-       
+
        nd = GetElementNOFDOFs(Element)
        n  = GetElementNOFNodes(Element)
- 
+
        CALL LocalMatrixBC(BC,Element,n,nd,InitHandles )
      END DO
 
     CALL Info(Caller,'Local assembly done',Level=12)
-    
+
     CALL DefaultFinishBoundaryAssembly()
     CALL DefaultFinishAssembly()
-  
+
     ! Dirichlet BCs in terms of electric field E (or the potentials)
     ! --------------------------------------------------------------
     CALL DefaultDirichletBCs()
 
-    ! Call DefaultDirichletBCs another time to apply BCs to PrecValues: 
+    ! Call DefaultDirichletBCs another time to apply BCs to PrecValues:
     IF (ASSOCIATED(Solver % Matrix % PrecValues)) THEN
       SavedValues => Solver % Matrix % Values
       Solver % Matrix % Values => Solver % Matrix % PrecValues
@@ -531,8 +531,8 @@ CONTAINS
       Solver % Matrix % Values => SavedValues
     END IF
 
-    IF (.NOT. EigenProblem) CALL SingleDipoleLoad() 
-    
+    IF (.NOT. EigenProblem) CALL SingleDipoleLoad()
+
     ! Linear system solution:
     ! -----------------------
 
@@ -544,7 +544,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> This subroutine sets a single dipole load.
-!> It is mainly intended for testing purposes only. 
+!> It is mainly intended for testing purposes only.
 !------------------------------------------------------------------------------
 
   SUBROUTINE SingleDipoleLoad()
@@ -557,33 +557,33 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     TYPE(Element_t), POINTER :: Element
     LOGICAL :: Found
-    
+
     SAVE Nodes
-    
-    
+
+
     DList => Solver % Values
-    
+
     WrkArray => ListGetConstRealArray(DList,'Dipole Coordinates',Found)
     IF(.NOT. Found ) RETURN
-    
-    CALL Info('DipoleSource','>Dipole Coordinates< given, setting up single edge source!') 
+
+    CALL Info('DipoleSource','>Dipole Coordinates< given, setting up single edge source!')
     IF( SIZE( WrkArray, 1 ) /= 3 .OR. SIZE( WrkArray, 2 ) /= 1 ) THEN
-      CALL Fatal('DipoleSource','>Dipole Coordinates< of wrong size!') 
+      CALL Fatal('DipoleSource','>Dipole Coordinates< of wrong size!')
     END IF
     Coord0(1:3) = WrkArray(1:3,1)
-    
+
     WrkArray => ListGetConstRealArray(DList,'Dipole Current',Found)
-    IF(.NOT. Found) CALL Fatal('DipoleSource','>Dipole Current< not given!') 
+    IF(.NOT. Found) CALL Fatal('DipoleSource','>Dipole Current< not given!')
     IF( SIZE( WrkArray, 1 ) /= 3 .OR. SIZE( WrkArray, 2 ) /= 1 ) THEN
-      CALL Fatal('DipoleSource','>Dipole Current< of wrong size!') 
+      CALL Fatal('DipoleSource','>Dipole Current< of wrong size!')
     END IF
-    Source(1:3) = WrkArray(1:3,1)                
-    
-    MinDist = HUGE( MinDist ) 
+    Source(1:3) = WrkArray(1:3,1)
+
+    MinDist = HUGE( MinDist )
     DO t=1,Mesh % NumberOfNodes
       Coord(1) = Mesh % Nodes % x(t)
       Coord(2) = Mesh % Nodes % y(t)
-      Coord(3) = Mesh % Nodes % z(t)      
+      Coord(3) = Mesh % Nodes % z(t)
       Dist = SQRT( SUM( (Coord-Coord0)**2)  )
       IF( Dist < MinDist ) THEN
         MinDist = Dist
@@ -591,7 +591,7 @@ CONTAINS
         MinCoord = Coord
       END IF
     END DO
-    
+
     PRINT *,'Minimum distance at node:',MinInd,MinDist
     PRINT *,'Dipole moment point:',Coord0
     PRINT *,'Nearest mesh point:',MinCoord
@@ -601,26 +601,26 @@ CONTAINS
       IF( ParMinDist < MinDist ) RETURN
       PRINT *,'Minimum distance node found in partition:',ParEnv % MyPe
     END IF
-      
-    
+
+
     MaxDotProd = 0.0_dp
 
     DO t=1,Mesh % NumberOfEdges
       Element => Mesh % Edges(t)
-            
+
       IF( ALL( Element % NodeIndexes /= MinInd ) ) CYCLE
-      
+
       CALL GetElementNodes( Nodes, Element )
-      
+
       EdgeVec(1) = Nodes % x(1) - Nodes % x(2)
       EdgeVec(2) = Nodes % y(1) - Nodes % y(2)
       EdgeVec(3) = Nodes % z(1) - Nodes % z(2)
 
       EdgeLen = SQRT( SUM( EdgeVec**2 ) )
-      
-      
+
+
       DotProd = SUM(EdgeVec*Source) / EdgeLen
-      
+
       !PRINT *,'candidate:',t,EdgeLen,DotProd
 
       IF( ABS( DotProd ) > ABS( MaxDotProd ) ) THEN
@@ -632,10 +632,10 @@ CONTAINS
     END DO
 
     PRINT *,'Edge with best orientation:',MaxEdgeInd,maxDotProd,MaxEdgeLen
-    
+
     i = Mesh % NumberOfNodes + MaxEdgeInd
     j = Solver % Variable % Perm(i)
-    
+
     PRINT *,'set source at rhs:',i,j,MaxDotProd
     IF( j > 0 ) THEN
       ! Component in real valued system is: im*omega*Source
@@ -644,8 +644,8 @@ CONTAINS
     END IF
 
   END SUBROUTINE SingleDipoleLoad
-    
-  
+
+
 
 !-----------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
@@ -673,8 +673,8 @@ CONTAINS
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3), &
-          MASS(m,m), STIFF(m,m), Gauge(m,m), PREC(m,m), CurlMat(m,m), FORCE(m) )      
-     IF(AmsAny) THEN       
+          MASS(m,m), STIFF(m,m), Gauge(m,m), PREC(m,m), CurlMat(m,m), FORCE(m) )
+     IF(AmsAny) THEN
        ALLOCATE(AmsSTIFF(3*m,3*m), AmsFORCE(3*m), AmsStiff2(m,m))
        AmsFORCE = 0.0_dp
      END IF
@@ -683,16 +683,16 @@ CONTAINS
 
     ! This InitHandles flag might be false on threaded 1st call
     IF( InitHandles ) THEN
-      CALL Info(Caller,'Initializing handles in LocalMatrix',Level=25)      
+      CALL Info(Caller,'Initializing handles in LocalMatrix',Level=25)
       CALL ListInitElementKeyword( CondCoeff_h,'Material','Electric Conductivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CurrDens_h,'Body Force','Current Density', InitIm=.TRUE.,InitVec3D=.TRUE.)
       InitHandles = .FALSE.
     END IF
-    
+
     CALL GetElementNodes( Nodes, Element )
- 
+
     STIFF(1:nd,1:nd) = 0.0_dp
     MASS(1:nd,1:nd)  = 0.0_dp
     CurlMat = 0.0_dp
@@ -701,7 +701,7 @@ CONTAINS
       AmsSTIFF = 0.0_dp
       AmsSTIFF2 = 0.0_dp
     END IF
-      
+
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     np = n * ndofs
 
@@ -711,7 +711,7 @@ CONTAINS
     END IF
 
     IF (PrecMatrix) PREC = 0.0_dp
-    
+
     ! Numerical integration:
     !----------------------
     IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
@@ -721,12 +721,12 @@ CONTAINS
 
       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
           IP % W(t), detJ, Basis, dBasisdx, EdgeBasis = Wbasis, &
-          RotBasis = RotWBasis, USolver = pSolver ) 
+          RotBasis = RotWBasis, USolver = pSolver )
       weight = detJ * IP % s(t)
-      
+
       ! Compute element stiffness matrix and force vector:
-      ! --------------------------------------------------     
-      muinv = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = t )      
+      ! --------------------------------------------------
+      muinv = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = t )
       IF( Found ) THEN
         muinv = muinv * mu0inv
       ELSE
@@ -738,7 +738,7 @@ CONTAINS
         i = p+np
         DO q = 1,nd-np
           j = q+np
-          ! the mu^-1 curl E . curl v 
+          ! the mu^-1 curl E . curl v
           CurlMat(i,j) = CurlMat(i,j) + muinv * &
               SUM(RotWBasis(p,:) * RotWBasis(q,:)) * weight
         END DO
@@ -768,15 +768,15 @@ CONTAINS
         END DO
       END IF
 
-      ! If not low frequency model, assemble the term that makes this the wave equation 
+      ! If not low frequency model, assemble the term that makes this the wave equation
       IF(.NOT. LowFrequencyModel ) THEN
-        Eps = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )        
+        Eps = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = t )
         IF( Found ) THEN
           Eps = Eps0 * Eps
         ELSE
-          Eps = Eps0 
+          Eps = Eps0
         END IF
-          
+
         DO p = 1,nd-np
           i = p+np
           DO q = 1,nd-np
@@ -788,15 +788,15 @@ CONTAINS
         END DO
       END IF
 
-      ! Potential current source 
-      L = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = t )      
+      ! Potential current source
+      L = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = t )
       IF( Found .AND. .NOT. EigenProblem) THEN
         DO p = 1,nd-np
           i = p+np
           FORCE(i) = FORCE(i) + im * Omega * (SUM(L*WBasis(p,:))) * weight
         END DO
       END IF
-      
+
       ! Additional terms related to using the Gauss law or a gauge condition
       IF (WithNDOFs) THEN
         IF (ndofs == 2) THEN
@@ -838,7 +838,7 @@ CONTAINS
               END DO
             END DO
           END IF
-          
+
           DO p = 1,n
             ! The second DOF is related to the gauge condition div A =  0 (TO DO: Add
             ! Lorenz condition as an alternative)
@@ -846,7 +846,7 @@ CONTAINS
             DO q = 1,nd-np
               j = q+np
               Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
-              Gauge(j,i) = Gauge(j,i) - SUM(WBasis(q,:) * dBasisdx(p,:)) * weight                
+              Gauge(j,i) = Gauge(j,i) - SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
             END DO
           END DO
         ELSE
@@ -898,23 +898,23 @@ CONTAINS
         BLOCK
           COMPLEX(KIND=dp) :: am, aw, ac, atot(3,3)
           INTEGER :: idim, jdim
-          
+
           DO p = 1,n
             DO q = 1,n
               IF(.NOT. LowFrequencyModel ) THEN
-                aw = -Omega**2 * Eps * Basis(q) * Basis(p)                 
+                aw = -Omega**2 * Eps * Basis(q) * Basis(p)
 
                 IF (HasPrecDampCoeff .AND. MassProportional ) THEN
                   aw = aw * (1 - PrecDampCoeff)
                 END IF
               END IF
               IF(ConductorBody) THEN
-                ac = -im * Omega * Cond * Basis(p) * Basis(q) 
+                ac = -im * Omega * Cond * Basis(p) * Basis(q)
               END IF
 
-              IF( ASSOCIATED( AmsMat ) ) THEN              
-                IF(AmsCurlCurlForm) THEN              
-                  ! The grad-div operator is now zero. 
+              IF( ASSOCIATED( AmsMat ) ) THEN
+                IF(AmsCurlCurlForm) THEN
+                  ! The grad-div operator is now zero.
                   am = 0.0_dp
 
                   atot(1,1) = dBasisdx(q,3) * dBasisdx(p,3) + dBasisdx(q,2) * dBasisdx(p,2)
@@ -930,14 +930,14 @@ CONTAINS
                   atot(3,3) = dBasisdx(q,1) * dBasisdx(p,1) + dBasisdx(q,2) * dBasisdx(p,2)
 
                   ! Multiply after creating the curl-curl because of so many terms...
-                  atot = weight * muinv * atot                
+                  atot = weight * muinv * atot
 
                   IF (HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
                     atot = atot * (1.0 + PrecDampCoeff)
                   END IF
                 ELSE
                   ! grad-div operator
-                  am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
+                  am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:))
                   atot = 0.0_dp
 
                   IF(HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
@@ -947,7 +947,7 @@ CONTAINS
 
                 IF( AmsMonolithic ) THEN
                   DO idim=1,3
-                    atot(idim,idim) = atot(idim,idim) + weight * ( am + aw + ac )                
+                    atot(idim,idim) = atot(idim,idim) + weight * ( am + aw + ac )
                   END DO
                   DO idim=1,3
                     DO jdim=1,3
@@ -959,9 +959,9 @@ CONTAINS
                   AmsSTIFF(p,q) = AmsSTIFF(p,q) + atot(1,1)
                 END IF
               END IF
-                
+
               IF( ASSOCIATED( AmsScalMat ) ) THEN
-                am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:)) 
+                am = muinv * SUM(dBasisdx(p,:)*dBasisdx(q,:))
                 IF(HasPrecDampCoeff .AND. .NOT. MassProportional) THEN
                   am = am * (1.0 + PrecDampCoeff)
                 END IF
@@ -977,11 +977,11 @@ CONTAINS
     IF (.NOT. EigenProblem) THEN
       MASS(1:nd,1:nd) = -Omega**2 * MASS(1:nd,1:nd)
     END IF
-    
+
     IF( PrecMatrix ) THEN
       IF (CurlCurlPrec) THEN
         PREC = STIFF(1:nd,1:nd) + CurlMat(1:nd,1:nd)
-        IF (WithNDOFs) THEN 
+        IF (WithNDOFs) THEN
           PREC(1:nd,1:nd) = PREC(1:nd,1:nd) + Gauge(1:nd,1:nd)
         END IF
       ELSE IF (MassProportional) THEN
@@ -992,13 +992,13 @@ CONTAINS
     END IF
 
 
-    
+
     IF (EigenProblem) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + CurlMat(1:nd,1:nd)
     ELSE
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + CurlMat(1:nd,1:nd) + MASS(1:nd, 1:nd)
     END IF
-    IF (WithNDOFs) THEN 
+    IF (WithNDOFs) THEN
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Gauge(1:nd,1:nd)
     END IF
 
@@ -1009,9 +1009,9 @@ CONTAINS
       IF (nb > 0) CALL CondensateP(nd-nb, nb, PREC)
       CALL DefaultUpdatePrec(PREC(1:nd,1:nd))
     END IF
-    
+
     ! Update global matrix and rhs vector from local matrix & vector:
-    !---------------------------------------------------------------    
+    !---------------------------------------------------------------
     IF (nb > 0) CALL CondensateP(nd-nb, nb, STIFF, FORCE)
     CALL DefaultUpdateEquations( STIFF, FORCE, Element )
     IF (EigenProblem) CALL DefaultUpdateMass(MASS)
@@ -1020,16 +1020,16 @@ CONTAINS
     IF( AmsAny ) THEN
       IF(ASSOCIATED(AmsMat)) THEN
         CurrentModel % Solver => AmsSolver
-        CALL DefaultUpdateEquations(AmsSTIFF,AmsFORCE,UElement=Element,USolver=AmsSolver)       
+        CALL DefaultUpdateEquations(AmsSTIFF,AmsFORCE,UElement=Element,USolver=AmsSolver)
         CurrentModel % Solver => pSolver
       END IF
       IF(ASSOCIATED(AmsScalMat)) THEN
         CurrentModel % Solver => AmsScalSolver
-        CALL DefaultUpdateEquations(AmsSTIFF2,AmsFORCE,UElement=Element,USolver=AmsScalSolver)       
+        CALL DefaultUpdateEquations(AmsSTIFF2,AmsFORCE,UElement=Element,USolver=AmsScalSolver)
         CurrentModel % Solver => pSolver
       END IF
     END IF
-      
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
 !------------------------------------------------------------------------------
@@ -1060,14 +1060,14 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: GoodConductor_h, ChargeConservation_h
     LOGICAL :: GotPort
 
-    
+
     SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, FORCE, STIFF, MASS, &
         AmsSTIFF, AmsSTIFF2, AmsForce
 
     IF(.NOT. AllocationsDone ) THEN
       m = Mesh % MaxElementDOFs
       ALLOCATE( WBasis(m,3), RotWBasis(m,3), Basis(m), dBasisdx(m,3),&
-          FORCE(m),STIFF(m,m),MASS(m,m))      
+          FORCE(m),STIFF(m,m),MASS(m,m))
       IF(AmsAny) THEN
         ALLOCATE(AmsSTIFF(3*m,3*m),AmsSTIFF2(m,m), AmsForce(3*m))
         AmsForce = 0.0_dp
@@ -1076,21 +1076,21 @@ CONTAINS
     END IF
 
     IF( InitHandles ) THEN
-      CALL Info(Caller,'Initializing handles in LocalMatrixBC',Level=25)      
+      CALL Info(Caller,'Initializing handles in LocalMatrixBC',Level=25)
 
       CALL DefinePortParameters(Model, Mesh)
-      
+
       CALL ListInitElementKeyword( ElRobin_h,'Boundary Condition','Electric Robin Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( MagLoad_h,'Boundary Condition','Magnetic Boundary Load', InitIm=.TRUE.,InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( ElSurfCurr_h, 'Boundary Condition', 'Electric Surface Current', &
         InitIm = .TRUE., InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( Absorb_h,'Boundary Condition','Absorbing BC')
       CALL ListInitElementKeyword( GoodConductor_h,'Boundary Condition','Good Conductor BC')
-      CALL ListInitElementKeyword( ChargeConservation_h,'Boundary Condition','Apply Conservation of Charge')      
+      CALL ListInitElementKeyword( ChargeConservation_h,'Boundary Condition','Apply Conservation of Charge')
       CALL ListInitElementKeyword( TemRe_h,'Boundary Condition','TEM Potential')
       CALL ListInitElementKeyword( TemIm_h,'Boundary Condition','TEM Potential Im')
-      CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
-      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)      
+      CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
+      CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
 
       CALL ListInitElementKeyword( TransferCoeff_h,'Boundary Condition','Electric Transfer Coefficient',InitIm=.TRUE.)
       CALL ListInitElementKeyword( ElCurrent_h,'Boundary Condition','Electric Current Density',InitIm=.TRUE.)
@@ -1099,16 +1099,16 @@ CONTAINS
       CALL ListInitElementKeyword( Thickness_h,'Boundary Condition','Layer Thickness')
       CALL ListInitElementKeyword( RelNu_h,'Boundary Condition','Layer Relative Reluctivity',InitIm=.TRUE.)
       CALL ListInitElementKeyword( CondCoeff_h,'Boundary Condition','Layer Electric Conductivity',InitIm=.TRUE.)
-      
+
       ! Lumped ports
       CALL ElectricPortModel(1,Solver)
       InitHandles = .FALSE.
     END IF
 
     CALL GetElementNodes( Nodes, Element )
-    
+
     Parent => GetBulkElementAtBoundary(Element)
-    
+
     STIFF = 0.0_dp
     MASS = 0.0_dp
     FORCE = 0.0_dp
@@ -1118,12 +1118,12 @@ CONTAINS
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     WithNdofs = ndofs > 0
     np = n * ndofs
-    
+
     GoodConductor = ListGetElementLogical(GoodConductor_h, Element, Found)
     Absorb = ListGetElementLogical(Absorb_h, Element, Found)
-    
+
     CALL ElectricPortModel(2,Solver,Element,GotPort)
-    
+
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints(Element, PReferenceElement=PiolaVersion, &
@@ -1132,14 +1132,14 @@ CONTAINS
     IF (WithNdofs) THEN
       Regularize = UseGaussLaw .AND. ListGetElementLogical( ChargeConservation_h, Element, Found )
     END IF
-    
+
     LineElement = GetElementFamily(Element) == 2
-    DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement    
+    DegenerateElement = (CoordinateSystemDimension() == 3) .AND. LineElement
     UpdateStiff = .FALSE.
-    
-    DO t=1,IP % n  
+
+    DO t=1,IP % n
       !
-      ! We need to branch as the only way to get the traces of 2D vector finite elements 
+      ! We need to branch as the only way to get the traces of 2D vector finite elements
       ! is to call EdgeElementInfo:
       !
       IF (LineElement) THEN
@@ -1147,14 +1147,14 @@ CONTAINS
         stat = EdgeElementInfo(Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detF = detJ, &
             Basis = Basis, EdgeBasis = Wbasis, RotBasis = RotWBasis, dBasisdx = dBasisdx, &
             BasisDegree = EdgeBasisDegree, ApplyPiolaTransform = .TRUE.)
-      ELSE    
+      ELSE
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &
             IP % W(t), detJ, Basis, dBasisdx, &
             EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
       END IF
-      
+
       weight = detJ * IP % s(t)
-      
+
       th = ListGetElementReal(Thickness_h, Basis, Element, ThinSheet, GaussPoint = t)
 
       IF (DegenerateElement .AND. ThinSheet .AND. UseGaussLaw) THEN
@@ -1183,24 +1183,24 @@ CONTAINS
         CYCLE
       END IF
 
-      IF( ASSOCIATED( Parent ) ) THEN        
-        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )      
+      IF( ASSOCIATED( Parent ) ) THEN
+        mur = ListGetElementComplex( MuCoeff_h, Basis, Parent, Found, GaussPoint = t )
         IF( .NOT. Found ) mur = 1.0_dp
         epsr = ListGetElementComplex( EpsCoeff_h, Basis, Parent, Found, GaussPoint = t )
         IF( .NOT. Found ) epsr = 1.0_dp
       ELSE
         epsr = 1.0_dp
         mur = 1.0_dp
-      END IF      
+      END IF
       muinv = mur * mu0inv
-      
+
       IF( COUNT([GoodConductor,ThinSheet,Absorb,GotPort]) > 1) THEN
         CALL Fatal(Caller,'Boundary condition not uniquely defined!')
       END IF
-      
+
       L = CMPLX(0.0_dp, 0.0_dp, kind=dp)
       IF( Absorb ) THEN
-        B = im * rob0 * SQRT( epsr / mur ) 
+        B = im * rob0 * SQRT( epsr / mur )
       ELSE IF (ThinSheet) THEN
         Cond = ListGetElementComplex(CondCoeff_h, Basis, Element, Found, GaussPoint = t)
         B = im * (omega/muinv) * th * Cond
@@ -1222,7 +1222,7 @@ CONTAINS
       ELSE
         B = ListGetElementComplex( ElRobin_h, Basis, Element, Found, GaussPoint = t )
 
-        MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )           
+        MagLoad = ListGetElementComplex3D( MagLoad_h, Basis, Element, Found, GaussPoint = t )
         TemGrad = CMPLX( ListGetElementRealGrad( TemRe_h,dBasisdx,Element,Found), &
             ListGetElementRealGrad( TemIm_h,dBasisdx,Element,Found), KIND=dp )
 
@@ -1238,7 +1238,7 @@ CONTAINS
         IF (ABS(B) < AEPS .AND. ABS(DOT_PRODUCT(L,L)) < AEPS) CYCLE
       END IF
       UpdateStiff = .TRUE.
-      
+
       DO i = 1,nd-np
         p = i+np
         FORCE(p) = FORCE(p) - muinv * SUM(L*WBasis(i,:)) * weight
@@ -1256,48 +1256,48 @@ CONTAINS
           IF( AmsCurlCurlForm ) THEN
             Normal = Normalvector(Element, Nodes, IP % U(t), IP % V(t), .TRUE.)
           END IF
-          
-          DO p = 1,n              
+
+          DO p = 1,n
             DO q = 1,n
               ar = -muinv * B * Basis(q) * Basis(p)
-              atot = ar * weight 
-              
+              atot = ar * weight
+
               IF( ASSOCIATED( AmsMat ) ) THEN
-                IF( AmsMonolithic ) THEN                  
+                IF( AmsMonolithic ) THEN
                   IF( AmsCurlCurlForm ) THEN
                     dim = 3
                     DO j=1,dim
                       TestVec = 0.0d0
                       TestVec(j) = Basis(p)
                       TestVec = CrossProduct(TestVec, Normal)
-                      DO i=1,dim                        
+                      DO i=1,dim
                         TrialVec = 0.0d0
                         TrialVec(i) = Basis(q)
-                        TrialVec = CrossProduct(TrialVec, Normal)                        
+                        TrialVec = CrossProduct(TrialVec, Normal)
                         AmsSTIFF(dim*(p-1)+j, dim*(q-1)+i) = AmsSTIFF(dim*(p-1)+j, dim*(q-1)+i)  &
-                            - muinv * B * SUM(TestVec(:) * TrialVec(:)) * Weight 
+                            - muinv * B * SUM(TestVec(:) * TrialVec(:)) * Weight
                       END DO
                     END DO
                   ELSE
                     AmsSTIFF(3*p-2,3*q-2) = AmsSTIFF(3*p-2,3*q-2) + atot
                     AmsSTIFF(3*p-1,3*q-1) = AmsSTIFF(3*p-1,3*q-1) + atot
                     AmsSTIFF(3*p-0,3*q-0) = AmsSTIFF(3*p-0,3*q-0) + atot
-                  END  IF                                      
+                  END  IF
                 ELSE
                   AmsSTIFF(p,q) = AmsSTIFF(p,q) + atot
                 END IF
               END IF
-              
+
               IF(ASSOCIATED(AmsScalMat)) THEN
                 AmsSTIFF2(p,q) = AmsSTIFF2(p,q) + atot
               END IF
-              
+
             END DO
           END DO
         END BLOCK
       END IF
 
-      
+
       IF (WithNdofs) THEN
         ! The following term arises if the decomposition E = A - grad V is applied:
         IF (ABS(B) > AEPS) THEN
@@ -1330,7 +1330,7 @@ CONTAINS
             !        add an additional term in order to be consistent
           END IF
         END IF
-          
+
         IF (UseGaussLaw) THEN
           IF (Regularize .AND. ABS(DOT_PRODUCT(L,L)) > AEPS) THEN
             ! Apply the conservation of surface charge (not sure whether this is beneficial):
@@ -1339,14 +1339,14 @@ CONTAINS
               FORCE(i) = FORCE(i) - muinv * SUM(L*dBasisdx(p,:)) * weight
             END DO
           END IF
-          
+
           jn = ListGetElementComplex(ElCurrent_h, Basis, Element, Found, GaussPoint = t)
           BetaPar = ListGetElementComplex(TransferCoeff_h, Basis, Element, Found, GaussPoint = t)
           IF( Found ) THEN
             ep = ListGetElementComplex(ExtPot_h, Basis, Element, Found, GaussPoint = t)
             IF(Found) jn = jn + 2 * BetaPar * ep
           END IF
-            
+
           DO p = 1,n
             i = (p-1)*ndofs + 1
             FORCE(i) = FORCE(i) - im * omega * jn * Basis(p) * weight
@@ -1372,15 +1372,15 @@ CONTAINS
 
     IF(ASSOCIATED(AmsMat)) THEN
       CurrentModel % Solver => AmsSolver
-      CALL DefaultUpdateEquations(AmsSTIFF,AmsFORCE,UElement=Element,USolver=AmsSolver)       
+      CALL DefaultUpdateEquations(AmsSTIFF,AmsFORCE,UElement=Element,USolver=AmsSolver)
       CurrentModel % Solver => pSolver
     END IF
     IF(ASSOCIATED(AmsScalMat)) THEN
       CurrentModel % Solver => AmsScalSolver
-      CALL DefaultUpdateEquations(AmsSTIFF2,AmsFORCE,UElement=Element,USolver=AmsScalSolver)       
+      CALL DefaultUpdateEquations(AmsSTIFF2,AmsFORCE,UElement=Element,USolver=AmsScalSolver)
       CurrentModel % Solver => pSolver
     END IF
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBC
 !------------------------------------------------------------------------------
@@ -1404,8 +1404,8 @@ SUBROUTINE VectorHelmholtz_Dummy(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtz_Dummy
 !------------------------------------------------------------------------------
- 
- 
+
+
 !> \ingroup Solvers
 !> Solver for computing derived fields from the electric field.
 !> As the initial field is computed in H(curl) space, even the electric field
@@ -1429,19 +1429,19 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   INTEGER :: mysolver,i,j,n,m,soln
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: Solvers(:), PSolver
-  
+
   SolverParams => GetSolverParams()
 
   ! Find the solver index of the primary solver by the known procedure name.
   ! (the solver is defined here in the same module so not that dirty...)
-  soln = ListGetInteger( SolverParams,'Primary Solver index', Found ) 
+  soln = ListGetInteger( SolverParams,'Primary Solver index', Found )
 
   IF( soln == 0 ) THEN
     DO i=1,Model % NumberOfSolvers
       sname = GetString(Model % Solvers(i) % Values, 'Procedure', Found)
       j = INDEX( sname,'VectorHelmholtzSolver')
       IF( j > 0 ) THEN
-        soln = i 
+        soln = i
         EXIT
       END IF
     END DO
@@ -1462,12 +1462,12 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
       END DO
     END IF
   END IF
-    
+
   IF( soln == 0 ) THEN
-    CALL Fatal('VectorHelmholtzCalcFields_Init0','Cannot locate the primary solver: '//I2S(soln))      
+    CALL Fatal('VectorHelmholtzCalcFields_Init0','Cannot locate the primary solver: '//I2S(soln))
   ELSE
     CALL Info('VectorHelmholtzCalcFields_Init0','The primary solver index is: '//I2S(soln),Level=12)
-    CALL ListAddInteger( SolverParams,'Primary Solver Index',soln ) 
+    CALL ListAddInteger( SolverParams,'Primary Solver Index',soln )
   END IF
 
   ! If the primary solver computed DG fields, then we don't need to create DG solver on-the-fly.
@@ -1512,7 +1512,7 @@ SUBROUTINE VectorHelmholtzCalcFields_Init0(Model,Solver,dt,Transient)
   IF(Found) THEN
     CALL ListAddString( SolverParams, 'Mesh', pname )
   END IF
-  
+
   IF (GetLogical(Solver % Values,'Calculate Magnetic Flux Density',Found)) THEN
     CALL ListAddString( SolverParams,&
         NextFreeKeyword('Exported Variable', SolverParams), &
@@ -1560,7 +1560,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init0
 !------------------------------------------------------------------------------
 SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
-  USE DefUtils 
+  USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
@@ -1593,10 +1593,10 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
         NextFreeKeyword('Exported Variable', SolverParams), &
         "Electric Potential[Electric Potential re:1 Electric Potential im:1]")
   END IF
-    
+
   NodalFields = GetLogical( SolverParams, 'Calculate Nodal Fields', Found)
   IF(.NOT. Found) NodalFields = .TRUE.
-  
+
   IF(.NOT. NodalFields) RETURN
 
   IF (GetLogical(SolverParams,'Calculate Magnetic Flux Density',Found)) THEN
@@ -1631,21 +1631,21 @@ SUBROUTINE VectorHelmholtzCalcFields_Init(Model,Solver,dt,Transient)
       NextFreeKeyword('Exported Variable', SolverParams), &
       "Joule Heating[Joule Heating re:1 Joule Heating im:1]")
   END IF
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE VectorHelmholtzCalcFields_Init
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-!> Calculate fields resulting from the edge element formulation 
+!> Calculate fields resulting from the edge element formulation
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
  SUBROUTINE VectorHelmholtzCalcFields(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE DefUtils
    USE VectorHelmholtzUtils
-   
+
    IMPLICIT NONE
 !------------------------------------------------------------------------------
    TYPE(Solver_t) :: Solver
@@ -1663,7 +1663,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    TYPE(Variable_t), POINTER :: TargetVar, MFD, MFS, EF, PV, DIVPV, EW, ELPOT
    TYPE(Variable_t), POINTER :: EL_MFD, EL_MFS, EL_EF, EL_PV, EL_DIVPV, EL_EW
-                              
+
    INTEGER :: i,j,k,l,n,nd,np,p,q,fields,efields,nfields,vDOFs,ndofs
    INTEGER :: soln, EdgeBasisDegree
 
@@ -1683,11 +1683,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    REAL(KIND=dp), POINTER CONTIG :: Fsave(:)
    TYPE(Mesh_t), POINTER :: Mesh
-   REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:) 
+   REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
    LOGICAL :: UseGaussLaw, LorenzCondition
-   TYPE(ValueList_t), POINTER :: SolverParams 
+   TYPE(ValueList_t), POINTER :: SolverParams
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
    ! TYPE(ValueHandle_t), SAVE :: CondCoeff_h
    CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzCalcFields'
@@ -1697,10 +1697,10 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    CALL Info(Caller,'',Level=6 )
    CALL Info(Caller,'----------------------------------------------------------',Level=6 )
    CALL Info(Caller,'Computing derived fields for electromagnetic wave equation!',Level=4 )
-   
+
    SolverParams => GetSolverParams()
 
-   soln = ListGetInteger( SolverParams,'Primary Solver Index', Found) 
+   soln = ListGetInteger( SolverParams,'Primary Solver Index', Found)
    IF( soln == 0 ) THEN
      CALL Fatal(Caller,'We should know > Primary Solver Index <')
    END IF
@@ -1710,43 +1710,43 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    Pname = ListGetString( SolverParams,'Potential Variable', Found )
    IF(Found ) THEN
-     TargetVar => VariableGet( pSolver % Mesh % Variables, Pname ) 
+     TargetVar => VariableGet( pSolver % Mesh % Variables, Pname )
    ELSE
      TargetVar => pSolver % Variable
      Pname = getVarName(pSolver % Variable)
    END IF
 
    CALL Info(Caller,'Name of potential variable: '//TRIM(pName),Level=10)
-     
+
    ! Inherit the solution basis from the primary solver
    vDOFs = TargetVar % DOFs
    IF( vDofs /= 2 ) THEN
      CALL Fatal(Caller,'Primary variable should have 2 dofs: '//I2S(vDofs))
    END IF
 
-   CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree ) 
+   CALL EdgeElementStyle(pSolver % Values, PiolaVersion, BasisDegree = EdgeBasisDegree )
    IF (PiolaVersion) CALL Info(Caller,'Using Piola transformed finite elements',Level=5)
 
    UseGaussLaw = GetLogical(pSolver % Values, 'Use Gauss Law', Found)
    LorenzCondition = GetLogical(pSolver % Values, 'Lorenz Condition', Found)
-   
+
    Omega = GetAngularFrequency(pSolver % Values)
-   
+
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN
      mu0inv = GetConstReal( Model % Constants,  'Permeability of Vacuum', Found )
      IF(mu0inv /= 0) mu0inv = 1/mu0inv;
    END IF
    IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
-   
+
    Found = .FALSE.
    IF( ASSOCIATED( Model % Constants ) ) THEN
      eps0 = GetConstReal ( Model % Constants, 'Permittivity of Vacuum', Found )
    END IF
-   IF(.NOT. Found ) eps0 = 8.854187817d-12   
-   
+   IF(.NOT. Found ) eps0 = 8.854187817d-12
+
    Mesh => GetMesh()
-   
+
    MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density' )
    EL_MFD => VariableGet( Mesh % Variables, 'Magnetic Flux Density E' )
 
@@ -1764,8 +1764,8 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    EW => VariableGet( Mesh % Variables, 'Joule Heating')
    EL_EW => VariableGet( Mesh % Variables, 'Joule Heating E')
- 
-   nfields = 0 
+
+   nfields = 0
    IF ( ASSOCIATED(MFD) ) nfields=nfields+3
    IF ( ASSOCIATED(MFS) ) nfields=nfields+3
    IF ( ASSOCIATED(EF)  ) nfields=nfields+3
@@ -1779,7 +1779,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      ALLOCATE(GForce(SIZE(Solver % Matrix % RHS),nfields)); Gforce=0._dp
    END IF
 
-   efields = 0 
+   efields = 0
    IF ( ASSOCIATED(EL_MFD) ) efields=efields+3
    IF ( ASSOCIATED(EL_MFS) ) efields=efields+3
    IF ( ASSOCIATED(EL_EF)  ) efields=efields+3
@@ -1787,19 +1787,19 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    IF ( ASSOCIATED(EL_DIVPV) ) efields=efields+1
    IF ( ASSOCIATED(EL_EW) ) efields=efields+1
    efields = efields*2 ! complex problem
-   ElementalFields = ( efields > 0 ) 
+   ElementalFields = ( efields > 0 )
 
-   fields = MAX( efields, nfields ) 
+   fields = MAX( efields, nfields )
    n = Mesh % MaxElementDOFs
-   
+
    ALLOCATE( MASS(n,n), FORCE(n,fields), Pivot(n) )
    ALLOCATE( WBasis(n,3), SOL(2,n), RotWBasis(n,3), Basis(n), dBasisdx(n,3) )
-   
+
    SOL = 0._dp
    Energy = 0._dp; Energy_im = 0._dp
 
    xx => TargetVar % Values
-   
+
    hdotE_r = 0._dp
    hdotE_i = 0._dp
 
@@ -1807,21 +1807,21 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    ! it treats the system complex valued.
    IF (GetLogical( SolverParams, 'Calculate Energy Functional', Found)) THEN
      IF( pSolver % Variable % dofs /= 2 ) THEN
-       CALL Fatal(Caller,'Cannot compute energy norm if dofs not 2!') 
+       CALL Fatal(Caller,'Cannot compute energy norm if dofs not 2!')
      END IF
 
      bb => pSolver % Matrix % RHS
      ALLOCATE(TempVector(pSolver % Matrix % NumberOfRows))
      IF ( ParEnv % PEs > 1 ) THEN
        ALLOCATE(TempRHS(SIZE(bb)))
-       TempRHS = bb 
+       TempRHS = bb
        CALL ParallelInitSolve( pSolver % Matrix, xx, TempRHS, Tempvector )
        CALL ParallelMatrixVector( pSolver % Matrix, xx, TempVector, .TRUE. )
      ELSE
        CALL MatrixVectorMultiply( pSolver % Matrix, xx, TempVector )
      END IF
 
-     DO i = 1, size(xx,1)/2   
+     DO i = 1, size(xx,1)/2
        IF ( ParEnv % Pes>1 ) THEN
          IF ( pSolver % Matrix % ParMatrix % ParallelInfo % &
            NeighbourList(2*(i-1)+1) % Neighbours(1) /= ParEnv % MyPE ) CYCLE
@@ -1853,7 +1853,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      IF (UseGaussLaw .OR. LorenzCondition) THEN
        IF (ndofs < 1) CALL Fatal(Caller, 'Nodal DOFs needed')
      END IF
-     
+
      CALL CalcFieldsLocalAssembly()
 
      IF(NodalFields) THEN
@@ -1875,17 +1875,17 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        CALL LocalSol(EL_PV,   6, n, MASS, FORCE, pivot, nfields)
        CALL LocalSol(EL_DIVPV,2, n, MASS, FORCE, pivot, nfields)
        CALL LocalSol(EL_EW,   2, n, MASS, FORCE, pivot, nfields)
-     END IF     
+     END IF
    END DO
-   
+
    Energy = ParallelReduction(Energy)
    Energy_im = ParallelReduction(Energy_im)
 
    ! Assembly of the face terms:
    !----------------------------
-   
-   DoAve = GetLogical( SolverParams,'Average Within Materials',Found) 
-   
+
+   DoAve = GetLogical( SolverParams,'Average Within Materials',Found)
+
    IF (GetLogical( SolverParams,'Discontinuous Galerkin',Found)) THEN
      IF (DoAve ) THEN
        FORCE = 0.0_dp
@@ -1919,11 +1919,11 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
 
    ELPOT => VariableGet( Mesh % Variables,'Electric Potential' )
    IF( ASSOCIATED( ElPot ) ) THEN
-     CALL Info(Caller,'Calculating complex valued electric potential') 
+     CALL Info(Caller,'Calculating complex valued electric potential')
      IF(.NOT. ASSOCIATED(Solver % Matrix)) THEN
        CALL Fatal(Caller,'Solver % Matrix not associated!')
      END IF
-     
+
      CALL DefaultInitialize()
      Fsave => Solver % Matrix % RHS
 
@@ -1935,9 +1935,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      DO i = 1, GetNOFActive()
        Element => GetActiveElement(i)
        n = GetElementNOFNodes()
-       ndofs = pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1) 
+       ndofs = pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
        np = n*ndofs
-       
+
        CALL ElPotLocalAssembly()
 
        Solver % Matrix % rhs => GForce(:,1)
@@ -1946,18 +1946,18 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        Solver % Matrix % RHS => GForce(:,2)
        CALL DefaultUpdateForce(FORCE(:,2))
      END DO
-     
+
      nfields = 0
      CALL GlobalSol(ElPot, 2, Gforce, nfields )
-     Solver % Matrix % RHS => Fsave     
+     Solver % Matrix % RHS => Fsave
    END IF
-   
+
    IF(ALLOCATED(Gforce)) DEALLOCATE(Gforce)
    DEALLOCATE( MASS,FORCE,Pivot)
-   
+
    CALL Info(Caller,'All done for now!',Level=20)
-   
-  
+
+
 CONTAINS
 
 
@@ -1983,7 +1983,7 @@ CONTAINS
       w = IP % W(j)
 
       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
 
       B = CMPLX(MATMUL( SOL(2,np+1:nd), RotWBasis(1:nd-np,:) ) / (Omega), &
           MATMUL( SOL(1,np+1:nd), RotWBasis(1:nd-np,:)) / (-Omega), KIND=dp)
@@ -1991,9 +1991,9 @@ CONTAINS
       ! The conductivity as a tensor not implemented yet
       !C_ip = ListGetElementReal( CondCoeff_h, Basis, Element, Found, GaussPoint = j )
 
-      J_ip = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = j )      
+      J_ip = ListGetElementComplex3D( CurrDens_h, Basis, Element, Found, GaussPoint = j )
 
-      R_ip = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = j )      
+      R_ip = ListGetElementComplex( MuCoeff_h, Basis, Element, Found, GaussPoint = j )
       IF( .NOT. Found ) THEN
         R_ip = mu0inv
       ELSE
@@ -2001,11 +2001,11 @@ CONTAINS
       END IF
       H = R_ip*B
 
-      PR_ip = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = j ) 
+      PR_ip = ListGetElementComplex( EpsCoeff_h, Basis, Element, Found, GaussPoint = j )
       IF( Found ) THEN
         PR_ip = Eps0 * PR_ip
       ELSE
-        PR_ip = Eps0 
+        PR_ip = Eps0
       END IF
 
       EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)),KIND=dp)
@@ -2065,10 +2065,10 @@ CONTAINS
         END IF
 
       END DO
-    END DO      
+    END DO
 
   END SUBROUTINE CalcFieldsLocalAssembly
-  
+
 
   SUBROUTINE ElPotLocalAssembly()
 
@@ -2092,7 +2092,7 @@ CONTAINS
       w = IP % W(j)
 
       stat = ElementInfo(Element,Nodes,u,v,w,detJ,Basis,dBasisdx, &
-          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver ) 
+          EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
 
       EF_ip = CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)),KIND=dp)
       IF (LorenzCondition .OR. UseGaussLaw) THEN
@@ -2110,16 +2110,16 @@ CONTAINS
         FORCE(p,1) = FORCE(p,1) + s * SUM(REAL(EF_ip(:)*dBasisdx(p,:)))
         FORCE(p,2) = FORCE(p,2) + s * SUM(AIMAG(EF_ip(:)*dBasisdx(p,:)))
       END DO
-    END DO      
+    END DO
 
   END SUBROUTINE ElPotLocalAssembly
 
 
-  
+
 !------------------------------------------------------------------------------
  SUBROUTINE GlobalSol(Var, m, b, dofs,EL_Var )
 !------------------------------------------------------------------------------
-   USE MeshBasics, ONLY : CalculateBodyAverage   
+   USE MeshBasics, ONLY : CalculateBodyAverage
    IMPLICIT NONE
    REAL(KIND=dp), TARGET CONTIG :: b(:,:)
    INTEGER :: m, dofs
@@ -2134,7 +2134,7 @@ CONTAINS
        El_Var % DgAveraged = .FALSE.
        IF( DoAve ) THEN
          CALL Info(Caller,'Averaging for field: '//TRIM(El_Var % Name),Level=10)
-         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)              
+         CALL CalculateBodyAverage(Mesh, El_Var, .FALSE.)
        END IF
        IF(.NOT. (ASSOCIATED(var) .AND. NodalFields) ) THEN
          dofs = dofs+m
@@ -2144,8 +2144,8 @@ CONTAINS
    END IF
 
    IF(.NOT. ASSOCIATED(Var) ) RETURN
-   
-   CALL Info('VectorHelmholtz','Solving for field: '//TRIM(Var % Name),Level=6)   
+
+   CALL Info('VectorHelmholtz','Solving for field: '//TRIM(Var % Name),Level=6)
    DO i=1,m
      dofs = dofs+1
      Solver % Matrix % RHS => b(:,dofs)

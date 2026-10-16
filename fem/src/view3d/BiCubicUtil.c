@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -72,7 +72,7 @@ void BiCubicMonomialToBezier(double *MonomialFactors,double *BezierFactors)
      for( j=0; j<4; j++ )
      {
          s = 0.0;
-         for( k=0; k<4; k++ ) s += CMatrix[i][k]*MonomialFactors[4*k+j]; 
+         for( k=0; k<4; k++ ) s += CMatrix[i][k]*MonomialFactors[4*k+j];
          A[i][j] = s;
      }
 
@@ -110,7 +110,7 @@ void BiCubicBezierToMonomial(double *MonomialFactors,double *BezierFactors)
      for( j=0; j<4; j++ )
      {
          s = 0.0;
-         for( k=0; k<4; k++ ) s += BezierFactors[4*i+k]*CMatrix[k][j]; 
+         for( k=0; k<4; k++ ) s += BezierFactors[4*i+k]*CMatrix[k][j];
          A[i][j] = s;
      }
 
@@ -140,7 +140,7 @@ void BiCubicBezierSubdivideHalfU(double *I,double *L,double *R)
     {
         t = 0.5*(I[1]+I[2]);
 
-        L[0] = I[0];       
+        L[0] = I[0];
         L[1] = 0.5*(I[0]+I[1]);
         L[2] = 0.5*(L[1]+t);
 
@@ -168,7 +168,7 @@ void BiCubicBezierSubdivideHalfV(double *I,double *L,double *R)
     {
         t = 0.5*(I[4]+I[8]);
 
-        L[0] = I[0];       
+        L[0] = I[0];
         L[4] = 0.5*(I[0]+I[4]);
         L[8] = 0.5*(L[4]+t);
 
@@ -349,7 +349,7 @@ void BiCubicSubdivide( Geometry_t *Geometry, int SubLev,int Where )
                            Geometry->Right->BiCubic->BezierFactors[2] ) )
          Geometry->Right->Flags |= GEOMETRY_FLAG_PLANE;
 }
- 
+
 /*******************************************************************************
 
 Compute element of (iso)line for a (bi)cubic polynomial.
@@ -502,7 +502,7 @@ double BiCubicIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     {
         U = U_Integ[i];
         V = V_Integ[i];
-        
+
         DX  = BiCubicValue(U,V,BX) - FX;
         DY  = BiCubicValue(U,V,BY) - FY;
         DZ  = BiCubicValue(U,V,BZ) - FZ;
@@ -666,7 +666,7 @@ void BiCubicComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Leve
         if ( !GB->Left ) BiCubicSubdivide( GB, Level,1 );
 
         if ( GB->Flags & GEOMETRY_FLAG_LEAF )
-        {    
+        {
             GB->Flags &= ~GEOMETRY_FLAG_LEAF;
             GB->Left->Flags  |= GEOMETRY_FLAG_LEAF;
             GB->Right->Flags |= GEOMETRY_FLAG_LEAF;

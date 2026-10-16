@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,19 +13,19 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-! * Add node-wise specified springs and mass values to structural models. This 
-! * solver can be called as an additional assembly solver by using the keyword 
-! * "Assembly Solvers" in the solver section associated with the model which is 
-! * modified to have the springs or masses. Element-wise spring constraints over 
-! * higher-dimensional entities are handled in the primary solver code. This 
-! * solver assumes that the places of the springs and masses are listed using 
+! * Add node-wise specified springs and mass values to structural models. This
+! * solver can be called as an additional assembly solver by using the keyword
+! * "Assembly Solvers" in the solver section associated with the model which is
+! * modified to have the springs or masses. Element-wise spring constraints over
+! * higher-dimensional entities are handled in the primary solver code. This
+! * solver assumes that the places of the springs and masses are listed using
 ! * the keyword "Target Nodes".
 ! *
 ! *
@@ -34,7 +34,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: March 25, 2019
 ! *
@@ -102,7 +102,7 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
   Element % NDOFs = 1
 
   !
-  ! Loop over all BCs and seek for spring constraints and mass values DEFINED 
+  ! Loop over all BCs and seek for spring constraints and mass values DEFINED
   ! NODEWISE (elementwise conditions are still handled in the solver code):
   !
   f = 0.0_dp
@@ -110,13 +110,13 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
   DO BC=1,Model % NumberOfBCs
     ValueList => Model % BCs(BC) % Values
     NodesFound = ListCheckPresent(ValueList, 'Target Nodes')
-    
+
     IF (.NOT. NodesFound) CYCLE
- 
+
     NodeIndexes => ListGetIntegerArray(ValueList, 'Target Nodes')
     n = SIZE(NodeIndexes)
 
-    IF (.NOT. ALLOCATED(Work)) THEN 
+    IF (.NOT. ALLOCATED(Work)) THEN
       ALLOCATE(Work(DOFs,n), MassVals(DOFs,n), STAT=istat)
     ELSE
       IF (SIZE(Work,2) < n) THEN
@@ -130,7 +130,7 @@ SUBROUTINE SpringAssembler(Model, Solver, dt, TransientSimulation)
       CALL Warn('SpringAssembler', 'Define a spring by components (Spring i = ...)')
       CALL Warn('SpringAssembler', 'Skipping a definition (Spring = ...)')
     END IF
-    
+
     Work = 0.0_dp
     MassVals = 0.0_dp
     DO i=1,DOFs

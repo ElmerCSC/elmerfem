@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 26.2.2018
 ! *
@@ -38,7 +38,7 @@
 !> continuous Elmer field.
 !------------------------------------------------------------------------------
 SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
-  
+
   USE DefUtils
   USE Interpolation
   USE MeshBasics
@@ -51,25 +51,25 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   TYPE(Model_t) :: Model
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
-  
+
 ! local variables
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Variable_t), POINTER :: Var
   TYPE(Mesh_t), POINTER :: Mesh, OFMesh
   CHARACTER(LEN=MAX_NAME_LEN) :: FileName, DirName, BaseDir, OFfile
   INTEGER :: i, NoDir, IOStatus, PassiveCoord
-  LOGICAL :: Found, Visited = .FALSE., GotData, CylSymm 
+  LOGICAL :: Found, Visited = .FALSE., GotData, CylSymm
   REAL(KIND=dp) :: MinF, MaxF, MeanF, Coeff, Norm
   REAL(KIND=dp), POINTER :: RhsVector(:), WeightVector(:), OfField(:)
   TYPE(Matrix_t), POINTER :: Amat
-  
+
   SAVE OFMesh, NoDir, Visited
-  
+
 
   CALL Info('OpenFoam2ElmerFit','-----------------------------------------', Level=4 )
-  CALL Info('OpenFoam2ElmerFit','Projecting OpenFOAM data to Elmer mesh',Level=4) 
-    
+  CALL Info('OpenFoam2ElmerFit','Projecting OpenFOAM data to Elmer mesh',Level=4)
+
   ! The variable containing the field contributions
   !------------------------------------------------------------------------
   Params => GetSolverParams()
@@ -82,24 +82,24 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
 
   Amat => Solver % Matrix
   RhsVector => Amat % Rhs
-  ALLOCATE( WeightVector( SIZE( RhsVector ) ) )  
-  
+  ALLOCATE( WeightVector( SIZE( RhsVector ) ) )
+
   ! If we visit this the second time, then destroy the structures that were saved last time.
   IF( Visited ) THEN
     CALL ReleaseMesh( OFMesh )
-    DEALLOCATE( OFMesh ) 
+    DEALLOCATE( OFMesh )
   END IF
   OFMesh => AllocateMesh()
-  
-  
+
+
   ! If the Elmer mesh has different dimension we may make a simple
   ! dimensional reduction for the OpenFOAM mesh.
   !-------------------------------------------------------------------------
   PassiveCoord = ListGetInteger( Solver % Values,'Passive OpenFOAM Coordinate',Found )
-  
+
   CylSymm = ( CurrentCoordinateSystem() == CylindricSymmetric &
       .OR. CurrentCoordinateSystem() == AxisSymmetric )
-  
+
   IF( Mesh % MeshDim < 3 ) THEN
     IF( PassiveCoord == 0 .AND. .NOT. CylSymm ) THEN
       CALL Warn('OpenFOAM2Elmer','Dimension of Elmer mesh is reduced, and OpenFOAM not?!')
@@ -112,53 +112,53 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   ELSE
     CALL Fatal('OpenFoam2ElmerFit','> OpenFOAM Directory < must exist for the solver!')
   END IF
-   
-  ! If the blocks do not exist find them 
+
+  ! If the blocks do not exist find them
   ! When they are stored as keywords the user may give them also manually
   IF( .NOT. ListCheckPresent(Params,'OpenFOAM Mesh 1') ) THEN
     CALL OpenFOAMBlocks()
   END IF
-  NoDir = ParallelReduction(NoDir ) 
+  NoDir = ParallelReduction(NoDir )
   CALL Info('OpenFOAM2ElmerFit','Number of active OpenFOAM blocks: '//I2S(NoDir),Level=5)
 
-  
-  CALL DefaultInitialize()  
+
+  CALL DefaultInitialize()
   WeightVector = 0.0_dp
-   
-  DO i = 1, NoDir    
+
+  DO i = 1, NoDir
     IF( NoDir > 1 ) THEN
       CALL Info('OpenFOAM2ElmerFit','****************************',Level=8)
       CALL Info('OpenFOAM2ElmerFit','Treating OpenFOAM block: '//I2S(i),Level=5)
     END IF
     DirName = ListGetString(Params,'OpenFOAM Mesh '//I2S(i),Found)
     IF(.NOT. Found ) CALL Fatal('OpenFoam2ElmerFit','Could not find keyword: '//TRIM(DirName))
-    
-    FileName = TRIM(DirName)//'C'    
+
+    FileName = TRIM(DirName)//'C'
     CALL Info('OpenFoam2ElmerFit','Reading OpenFOAM cell center from file: '//TRIM(FileName),Level=5)
 
     CALL CreateFOAMMesh(FileName,OFMesh)
-    ALLOCATE( OFField(OFMesh % NumberOfNodes)  ) 
-    
+    ALLOCATE( OFField(OFMesh % NumberOfNodes)  )
+
     CALL ReadFOAMField(Filename, GotData)
-    
+
     IF( GotData ) THEN
       MinF = MINVAL( OFField )
       MaxF = MAXVAL( OFField )
-      MeanF = SUM( OFField ) / SIZE( OFField )    
-      
+      MeanF = SUM( OFField ) / SIZE( OFField )
+
       WRITE( Message,'(A,ES12.5)') 'Minimum field value: ',MinF
       CALL Info('OpenFoam2ElmerFit',Message,Level=6)
       WRITE( Message,'(A,ES12.5)') 'Maximum field value: ',MaxF
       CALL Info('OpenFoam2ElmerFit',Message,Level=6)
       WRITE( Message,'(A,ES12.5)') 'Average field value: ',MeanF
-      CALL Info('OpenFoam2ElmerFit',Message,Level=6)      
+      CALL Info('OpenFoam2ElmerFit',Message,Level=6)
 
       CALL DataAssembly()
     END IF
-      
+
     ! We can only have one OpenFOAM mesh at a time, hence release the structures if we have a second mesh.
     IF( i < NoDir ) CALL ReleaseMesh( OFMesh )
-    DEALLOCATE( OFField ) 
+    DEALLOCATE( OFField )
   END DO
 
   Coeff = ListGetCReal( Params,'Fit Coefficient',Found )
@@ -168,32 +168,32 @@ SUBROUTINE OpenFoam2ElmerFit( Model,Solver,dt,TransientSimulation )
   !PRINT *,'weight sum:',SUM( WeightVector )
   !PRINT *,'diag sum:',SUM( Amat % Values( Amat % Diag ) )
 
-  RhsVector = Coeff * RhsVector 
-  Amat % Values( Amat % Diag ) = Coeff * WeightVector 
-    
+  RhsVector = Coeff * RhsVector
+  Amat % Values( Amat % Diag ) = Coeff * WeightVector
+
   CALL DiffusionAssembly()
 
   CALL DefaultFinishBulkAssembly()
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
-  
+
   Norm = DefaultSolve( )
-  
+
   Visited = .TRUE.
-    
+
   CALL Info('OpenFoam2ElmerFit','All done', Level=4 )
-  CALL Info('OpenFoam2ElmerFit','-----------------------------------------', Level=4 )  
-  
-  
-CONTAINS 
-  
+  CALL Info('OpenFoam2ElmerFit','-----------------------------------------', Level=4 )
+
+
+CONTAINS
+
   SUBROUTINE OpenFOAMBlocks( )
-    
+
     CHARACTER(LEN=MAX_NAME_LEN) :: DirCommand
     LOGICAL :: FileExists
     INTEGER, PARAMETER :: InFileUnit = 28
-    
-    
+
+
     NoDir = 0
 
 #ifdef __INTEL_COMPILER
@@ -215,11 +215,11 @@ CONTAINS
     IF(.NOT. FileExists ) THEN
       CALL Fatal('OpenFoam2ElmerFit','OpenFOAM mesh does not exist: '//TRIM(DirName))
     END IF
-    
+
     FileName = TRIM(DirName)//'C'
     CALL Info('OpenFoam2ElmerFit','Inquire file: '//TRIM(FileName),Level=12)
     INQUIRE( File = FileName, Exist = FileExists )
-   
+
     IF( FileExists ) THEN
       CALL Info('OpenFoam2ElmerFit','Using OpenFOAM centers in: '//TRIM(FileName),Level=10)
       CALL ListAddString( Params, 'OpenFOAM Mesh 1', DirName, .FALSE.)
@@ -227,7 +227,7 @@ CONTAINS
       RETURN
     END IF
 
-    DirCommand = 'ls -d '//TRIM(DirName)//'*/ > OpenFOAMBlocks.txt' 
+    DirCommand = 'ls -d '//TRIM(DirName)//'*/ > OpenFOAMBlocks.txt'
     CALL Info('OpenFoam2ElmerFit','Performing command: '//TRIM(DirCommand),Level=12)
     CALL SystemCommand( DirCommand )
 
@@ -235,7 +235,7 @@ CONTAINS
     IF(IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not open file: OpenFOAMBlocks.txt')
     END IF
-     
+
     DO
       READ(InFileUnit,'(A)',IOStat = IOStatus) DirName
       IF( IOStatus /= 0 ) EXIT
@@ -251,18 +251,18 @@ CONTAINS
       END IF
     END DO
     CLOSE(InFileUnit)
-    
+
     IF( NoDir == 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','No OpenFOAM mesh blocks found!')
     ELSE
       CALL Info('OpenFoam2ElmerFit','Number of OpenFOAM blocks: '//I2S(NoDir),Level=10)
     END IF
-    
+
   END SUBROUTINE OpenFOAMBlocks
-    
 
 
-  
+
+
   !------------------------------------------------------------------------
   !> Open file in OpenFOAM format and read the cell centers from there.
   !-------------------------------------------------------------------------
@@ -270,27 +270,27 @@ CONTAINS
 
     CHARACTER(LEN=MAX_NAME_LEN) :: FileName
     TYPE(Mesh_t), TARGET :: Mesh
-   
+
     INTEGER :: line,i,j,k,n
     REAL(KIND=dp) :: x,y,z
     INTEGER :: NumberOfNodes, IOStatus
     INTEGER, PARAMETER :: InFileUnit = 28
     CHARACTER(LEN=:), ALLOCATABLE :: ReadStr
-    
+
     ALLOCATE( Mesh % Nodes )
     Mesh % NumberOfBulkElements = 0
     Mesh % NumberOfBoundaryElements = 0
-    
-    
-    ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)                   
-    
+
+
+    ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)
+
     OPEN(InFileUnit,FILE = Filename, STATUS='old', IOSTAT=IOstatus)
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not open file for reading: '//TRIM(FileName))
     END IF
-    
+
     CALL Info('OpenFoam2ElmerFit','Reading data points from file: '//TRIM(FileName),Level=6)
-    
+
     j = 0
     DO Line = 1, 100
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
@@ -299,14 +299,14 @@ CONTAINS
         EXIT
       END IF
 
-      j =  INDEX( ReadStr,'internalField',.TRUE.) 
+      j =  INDEX( ReadStr,'internalField',.TRUE.)
       IF( j > 0 ) EXIT
     END DO
 
     IF( j == 0 ) THEN
       CALL Warn('OpenFoam2ElmerFit','Could not find > internalField < in header!')
     ELSE
-      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//I2S(Line),Level=7)    
+      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//I2S(Line),Level=7)
     END IF
 
     j = INDEX( ReadStr,'nonuniform',.TRUE.)
@@ -315,8 +315,8 @@ CONTAINS
       RETURN
     END IF
 
-    
-    READ(InFileUnit,*,IOSTAT=IOStatus) NumberOfNodes    
+
+    READ(InFileUnit,*,IOSTAT=IOStatus) NumberOfNodes
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not read number of nodes!')
     END IF
@@ -330,38 +330,38 @@ CONTAINS
           //I2S(NumberOfNodes))
     END IF
 
-    
-    n = NumberOfNodes    
-    ALLOCATE( Mesh % Nodes % x(n), &          
+
+    n = NumberOfNodes
+    ALLOCATE( Mesh % Nodes % x(n), &
         Mesh % Nodes % y(n), &
         Mesh % Nodes % z(n) )
 
     Mesh % Nodes % x(1:n) = 0.0_dp
     Mesh % Nodes % y(1:n) = 0.0_dp
     Mesh % Nodes % z(1:n) = 0.0_dp
-    
+
     Mesh % NumberOfNodes = NumberOfNodes
-         
+
     ! This is just empty left parenthesis
     READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
-   
+
     DO i=1,n
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate line: '//I2S(i))
       END IF
-      
-      j =  INDEX( ReadStr,'(',.TRUE.) 
+
+      j =  INDEX( ReadStr,'(',.TRUE.)
       IF( j == 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit',&
             'Expecting a parenthesis at the start of OpenFOAM line: '//I2S(i))
       END IF
-      k =  INDEX( ReadStr,')',.TRUE.) 
+      k =  INDEX( ReadStr,')',.TRUE.)
       IF( k == 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit',&
             'Expecting a parenthesis at the end of OpenFOAM line: '//I2S(i))
       END IF
-      
+
       READ( ReadStr(j+1:k-1),*,IOSTAT=IOStatus ) x,y,z
       IF( IOStatus /= 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit','Could not read coordinate values: '//I2S(i))
@@ -370,14 +370,14 @@ CONTAINS
       Mesh % Nodes % y(i) = y
       Mesh % Nodes % z(i) = z
     END DO
-    CLOSE( InFileUnit ) 
+    CLOSE( InFileUnit )
 
     CALL Info('OpenFoam2ElmerFit','Created temporal OpenFOAM mesh just for nodes',Level=8)
 
-    !PRINT *,'range x:',MINVAL( Mesh % Nodes % x ), MAXVAL( Mesh % Nodes % x ) 
-    !PRINT *,'range y:',MINVAL( Mesh % Nodes % y ), MAXVAL( Mesh % Nodes % y ) 
-    !PRINT *,'range z:',MINVAL( Mesh % Nodes % z ), MAXVAL( Mesh % Nodes % z ) 
-   
+    !PRINT *,'range x:',MINVAL( Mesh % Nodes % x ), MAXVAL( Mesh % Nodes % x )
+    !PRINT *,'range y:',MINVAL( Mesh % Nodes % y ), MAXVAL( Mesh % Nodes % y )
+    !PRINT *,'range z:',MINVAL( Mesh % Nodes % z ), MAXVAL( Mesh % Nodes % z )
+
     IF( PassiveCoord == 1 ) THEN
       Mesh % Nodes % x = 0.0_dp
     ELSE IF( PassiveCoord == 2 ) THEN
@@ -385,7 +385,7 @@ CONTAINS
     ELSE IF( PassiveCoord == 3 ) THEN
       Mesh % Nodes % z = 0.0_dp
     END IF
-    
+
   END SUBROUTINE CreateFOAMMesh
 
 
@@ -394,11 +394,11 @@ CONTAINS
   !> Open file in OpenFOAM format result file and read the data from there.
   !-------------------------------------------------------------------------
   SUBROUTINE ReadFOAMField( Filename, GotData )
-    
+
     CHARACTER(LEN=MAX_NAME_LEN) :: FileName
     LOGICAL :: GotData
 
-    CHARACTER(LEN=MAX_NAME_LEN) :: TFileName, TSuffix   
+    CHARACTER(LEN=MAX_NAME_LEN) :: TFileName, TSuffix
     INTEGER :: line,i,j,k,n,nstep
     REAL(KIND=dp) :: val
     INTEGER :: NumberOfNodes, IOStatus
@@ -408,26 +408,26 @@ CONTAINS
 
     GotData = .FALSE.
     ALLOCATE(CHARACTER(MAX_STRING_LEN)::ReadStr)
-    
-    TSuffix = ListGetString( Params,'OpenFOAM field',Found ) 
+
+    TSuffix = ListGetString( Params,'OpenFOAM field',Found )
     IF( .NOT. Found ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Give OpenFOAM field name!')
     END IF
-    
-    nstep = ListGetInteger( Params,'OpenFOAM Timestep',Found ) 
+
+    nstep = ListGetInteger( Params,'OpenFOAM Timestep',Found )
     IF(Found ) CALL Info('OpenFoam2ElmerFit','Replacing 0 with timestep '//I2S(nstep))
 
     j = INDEX( FileName,'/0/')
-    k = len_trim( FileName ) 
-    
+    k = len_trim( FileName )
+
     WRITE(TFileName,'(A)') FileName(1:j)//I2S(nstep)//FileName(j+2:k-1)//TRIM(TSuffix)
-    
+
     OPEN(InFileUnit,FILE = TFilename, STATUS='old', IOSTAT=IOstatus)
     IF( IOStatus /= 0 ) THEN
       CALL Warn('OpenFoam2ElmerFit','Could not open file for reading: '//TRIM(TFileName))
       RETURN
     END IF
-    
+
     CALL Info('OpenFoam2ElmerFit','Reading data field from file: '//TRIM(TFileName),Level=6)
 
     j = 0
@@ -438,21 +438,21 @@ CONTAINS
         GOTO 10
       END IF
 
-      j =  INDEX( ReadStr,'internalField',.TRUE.) 
+      j =  INDEX( ReadStr,'internalField',.TRUE.)
       IF( j > 0 ) THEN
         k = INDEX( ReadStr,'<vector>',.TRUE.)
         IF( k > 0 ) THEN
-          CALL Fatal('OpenFoam2ElmerFit','Currently implemented only for scalar fields!')         
+          CALL Fatal('OpenFoam2ElmerFit','Currently implemented only for scalar fields!')
         END IF
         EXIT
       END IF
     END DO
-    
+
     IF( j == 0 ) THEN
       CALL Warn('OpenFoam2ElmerFit','Could not find > internalField < in header!')
       GOTO 10
     ELSE
-      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//I2S(Line),Level=7)    
+      CALL Info('OpenFoam2ElmerFit','internalField found at line: '//I2S(Line),Level=7)
     END IF
 
     j = INDEX( ReadStr,'nonuniform',.TRUE.)
@@ -460,18 +460,18 @@ CONTAINS
       CALL Warn('OpenFoam2ElmerFit','This routine only knows how to read nonuniform lists!')
       GOTO 10
     END IF
-    
-      
+
+
     READ(InFileUnit,*,IOSTAT=IOStatus) n
     IF( IOStatus /= 0 ) THEN
       CALL Fatal('OpenFoam2ElmerFit','Could not read number of nodes!')
     END IF
     CALL Info('OpenFoam2ElmerFit','Number of OpenFOAM nodes: '&
         //I2S(n),Level=10)
-    
+
     ! This is just empty left parenthesis
     READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
-   
+
     DO i=1,OFMesh % NumberOfNodes
       READ( InFileUnit,'(A)',IOSTAT=IOStatus ) ReadStr
       IF( IOStatus /= 0 ) THEN
@@ -480,26 +480,26 @@ CONTAINS
 
       READ( ReadStr,*,IOSTAT=IOStatus ) val
       OFField(i) = val
-             
+
       IF( IOStatus /= 0 ) THEN
         CALL Fatal('OpenFoam2ElmerFit','Could not read field values: '//I2S(i))
       END IF
     END DO
 
-    
+
     CALL Info('OpenFoam2ElmerFit','Read data from OpenFOAM mesh region',Level=7)
     GotData = .TRUE.
-    
+
     ! PRINT *,'range f:',MINVAL( OFField ), MAXVAL( OFField )
 
 10  CLOSE( InFileUnit )
-    
+
   END SUBROUTINE ReadFOAMField
 
- 
+
 
   SUBROUTINE DataAssembly()
-    
+
     REAL(KIND=dp) :: GlobalCoords(3), LocalCoords(3), val, weight, u, v, w, DetJ
     INTEGER :: i,j,t, n, ElementIndex
     INTEGER, POINTER :: NodeIndexes(:)
@@ -507,66 +507,66 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: ElementNodes
     REAL(KIND=dp), POINTER :: Basis(:)
     LOGICAL :: Stat
-    
-    
-    N = Mesh % MaxElementNodes 
+
+
+    N = Mesh % MaxElementNodes
     ALLOCATE( Basis(n) )
 
-    ElementIndex = 0 
+    ElementIndex = 0
     DO t = 1, OFMesh % NumberOfNodes
       IF( CylSymm ) THEN
         ! Project all data to to cylindrically symmetric 2D plane
         GlobalCoords(1) = SQRT( OFMesh % Nodes % x(t)**2 + OFMesh % Nodes % y(t)**2 )
         GlobalCoords(2) = OFMesh % Nodes % z(t)
         GlobalCoords(3) = 0.0_dp
-      ELSE             
+      ELSE
         GlobalCoords(1) = OFMesh % Nodes % x(t)
         GlobalCoords(2) = OFMesh % Nodes % y(t)
         GlobalCoords(3) = OFMesh % Nodes % z(t)
       END IF
-        
+
       val = OFField(t)
 
       ! Find the element and local coordinates of the global data point
       CALL LocateParticleInMeshOctree( ElementIndex, GlobalCoords, LocalCoords )
-      
+
       IF( ElementIndex == 0 ) CYCLE
 
       Element => Mesh % Elements( ElementIndex )
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
       CALL GetElementNodes(ElementNodes,Element)
-      
+
       u = LocalCoords(1)
       v = LocalCoords(2)
       w = LocalCoords(3)
-      
+
       stat = ElementInfo( Element, ElementNodes, U, V, W, DetJ, Basis )
 
       ! Share the data to nodes using the basis functions for weighting
       DO i = 1,n
         j = Var % Perm( NodeIndexes(i) )
-        
+
         IF( j == 0 ) CYCLE
-        
+
         weight = Basis(i)
-        
+
         RhsVector( j ) = RhsVector( j ) + weight * val
-        WeightVector( j ) = WeightVector( j ) + weight  
-        
+        WeightVector( j ) = WeightVector( j ) + weight
+
       END DO
     END DO
 
     DEALLOCATE( Basis )
-    
+
   END SUBROUTINE DataAssembly
 
 
   !------------------------------------------------------------------------
-  ! Assemble the matrix equation 
+  ! Assemble the matrix equation
   !-------------------------------------------------------------------------
   SUBROUTINE DiffusionAssembly()
-    
+
     INTEGER, POINTER :: BoundaryPerm(:), Indexes(:)
     INTEGER :: i,j,p,q,k,t,n,istat,active,dim
     TYPE(Element_t), POINTER :: Element
@@ -578,11 +578,11 @@ CONTAINS
     REAL(KIND=dp) :: Coeff, detJ, val, DiffMatrix(3,3)
     REAL(KIND=dp), POINTER :: Hwrk(:,:,:) => Null()
     REAL(KIND=dp), POINTER :: DataDiffusivity(:,:,:)
-    TYPE(Matrix_t), POINTER :: StiffMatrix 
+    TYPE(Matrix_t), POINTER :: StiffMatrix
     LOGICAL :: stat, GlobalDiffuse, LocalDiffuse, Visited = .FALSE.
     TYPE(ValueList_t), POINTER :: Material
-    
-    
+
+
     SAVE Visited, Nodes, STIFF, FORCE, Basis, dBasisdx, DataDiffusivity
 
     ! Assembly the diffusion part used for regularization
@@ -599,23 +599,23 @@ CONTAINS
 
     IF(.NOT. Visited) THEN
       Visited = .TRUE.
-      N = Solver % Mesh % MaxElementNodes 
+      N = Solver % Mesh % MaxElementNodes
       ALLOCATE( Basis(n), dBasisdx(n, 3), FORCE(N), STIFF(N,N), &
           DataDiffusivity( 3,3,N ), STAT=istat )
       IF( istat /= 0) CALL Fatal('OpenFoam2ElmerFit','Allocation error in DiffusionAssembly!')
     END IF
-    
+
 
     DO t=1,active
 
       Element => GetActiveElement(t)
       n = GetElementNOFNodes(Element)
       Indexes => Element % NodeIndexes
-      
+
       CALL GetElementNodes( Nodes, Element )
       STIFF = 0.0d0
       FORCE = 0.0d0
-      
+
       IF( .NOT. GlobalDiffuse ) THEN
         Material => GetMaterial()
         CALL ListGetRealArray( Material,DiffusivityName,Hwrk,n,Indexes,LocalDiffuse)
@@ -639,7 +639,7 @@ CONTAINS
         END IF
       END IF
 
-      
+
       ! Numerical integration:
       !----------------------
       IP = GaussPoints( Element )
@@ -648,7 +648,7 @@ CONTAINS
         !--------------------------------------------------------------
         stat = ElementInfo( Element, Nodes, IP % U(k), IP % V(k), &
             IP % W(k),  detJ, Basis, dBasisdx )
-        
+
         ! Compute the local conductivity tensor
         ! -------------------------------
         IF( LocalDiffuse ) THEN
@@ -665,26 +665,26 @@ CONTAINS
           DO i=1,n
             DO j=1,n
               STIFF(i,j) = STIFF(i,j) + IP % s(k) * DetJ * &
-                  Coeff * SUM( dBasisdx(i,1:dim) * dBasisdx(j,1:dim) ) 
+                  Coeff * SUM( dBasisdx(i,1:dim) * dBasisdx(j,1:dim) )
             END DO
           END DO
-        ELSE IF( LocalDiffuse ) THEN                        
+        ELSE IF( LocalDiffuse ) THEN
           DO i=1,n
             DO j=1,n
               STIFF(i,j) = STIFF(i,j) + IP % s(k) * DetJ * &
-                  SUM(MATMUL(DiffMatrix(1:dim,1:dim), dBasisdx(j,1:dim)) * dBasisdx(i,1:dim)) 
+                  SUM(MATMUL(DiffMatrix(1:dim,1:dim), dBasisdx(j,1:dim)) * dBasisdx(i,1:dim))
             END DO
           END DO
         END IF
 
       END DO
-      
+
       CALL DefaultUpdateEquations( STIFF, FORCE )
     END DO
 
   END SUBROUTINE DiffusionAssembly
 
 !------------------------------------------------------------------------------
-  
+
 
 END SUBROUTINE OpenFoam2ElmerFit

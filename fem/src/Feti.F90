@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 30 Mar 2011
 ! *
@@ -80,7 +80,7 @@ MODULE FetiSolve
   INTEGER, PRIVATE, PARAMETER :: maxnz=20
   REAL(KIND=dp), ALLOCATABLE, SAVE, PRIVATE ::z(:,:)
 
-  ! Neighbour identification, local and global numbering of 
+  ! Neighbour identification, local and global numbering of
   ! neighbour PEs:
   ! -------------------------------------------------------
   INTEGER, PRIVATE, SAVE :: nneigh
@@ -104,8 +104,8 @@ integer::status(MPI_STATUS_SIZE)
 #include "huti_fdefs.h"
 
 CONTAINS
- 
-  !> Send given buffer to given neighbour, either 'tags' in 'ifg' 
+
+  !> Send given buffer to given neighbour, either 'tags' in 'ifg'
   !> (when initializing) or the interface values in 'buf':
   ! ------------------------------------------------------------
 !------------------------------------------------------------------------------
@@ -253,8 +253,8 @@ CONTAINS
            procs, toSend, toReceive, tag)
 !------------------------------------------------------------------------------
       INTEGER :: sndLC, tag, gdofs(:), ldofs(:), procs(:)
-      TYPE(toSend_t) :: toSend(:)  
-      TYPE(toReceive_t) :: toReceive(:)  
+      TYPE(toSend_t) :: toSend(:)
+      TYPE(toReceive_t) :: toReceive(:)
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,l,n,m,proc,lproc
       LOGICAL :: Found
@@ -263,7 +263,7 @@ CONTAINS
       DO i=1,nneigh
         proc = gpnum(i)
         CALL FetiSend(proc, toSend(i) % n, ifg=toSend(i) % ifg, tag=tag)
-      END DO 
+      END DO
 
       ! Receive interface parts and store indices
       ! -----------------------------------------
@@ -330,8 +330,8 @@ CONTAINS
 !------------------------------------------------------------------------------
       REAL(KIND=dp), OPTIONAL :: Fsum(:)
       INTEGER :: tag
-      TYPE(toSend_t) :: toSend(:)  
-      TYPE(toReceive_t) :: toReceive(:)  
+      TYPE(toSend_t) :: toSend(:)
+      TYPE(toReceive_t) :: toReceive(:)
 !------------------------------------------------------------------------------
       INTEGER :: i,j,k,l,n,m,proc, lproc
       LOGICAL :: Found
@@ -340,7 +340,7 @@ CONTAINS
       DO i=1,nneigh
         proc = gpnum(i)
         CALL FetiSend(proc, toSend(i) % n, toSend(i) % buf, tag=tag)
-      END DO 
+      END DO
 
       ! Receive interface parts and sum values
       ! --------------------------------------
@@ -419,7 +419,7 @@ CONTAINS
         END DO
         DEALLOCATE(toSend,toReceive,lint)
       END IF
- 
+
       ! Count sizes of send & receive buffers:
       ! --------------------------------------
       ALLOCATE(toSend(nneigh),toReceive(nneigh))
@@ -595,7 +595,7 @@ CONTAINS
           CALL SetMatrixElement(B, nLC, ParEnv % myPE, 1._dp)
         END IF
       END DO
-    ELSE 
+    ELSE
       d =  Solver % Variable % DOFs
       p => Solver % Variable % Perm
 
@@ -606,7 +606,7 @@ CONTAINS
       DO i=1,Active
         Element => GetBoundaryElement(i)
         BC => GetBC()
-        
+
         IF (.NOT.ASSOCIATED(BC)) CYCLE
         IF (.NOT. ActiveBoundaryElement()) CYCLE
 
@@ -640,7 +640,7 @@ CONTAINS
 
           DO k=1,n
             l = p(Element % NodeIndexes(k))
-            IF (l<=0) CYCLE 
+            IF (l<=0) CYCLE
 
             l=d*(l-1)+j
             IF(Done(l)) CYCLE
@@ -841,7 +841,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-    ! Extract send & receive dof values: 
+    ! Extract send & receive dof values:
     ! ----------------------------------
     toSend(:) % n=0
     DO i=1,ninterface
@@ -935,7 +935,7 @@ CONTAINS
   SUBROUTINE FetiProject(A,n,T,OP,TOL)
 !------------------------------------------------------------------------------
     INTEGER :: n, &
-              OP  !=0: T =  (I-G*Ginv*G')T, 
+              OP  !=0: T =  (I-G*Ginv*G')T,
                   !=1: T = -(G*Ginv*G') T,  note: input size:  nz
                   !=2: T =  (Ginv*G')T,     note: output size: nz
                   ! Ginv = (G'*G)^-1
@@ -2392,7 +2392,7 @@ END SUBROUTINE FetiProject
       IF(cnt(proc)>0) THEN
         CALL MPI_BSEND( gbuf(:,proc), cnt(proc), MPI_INTEGER, proc, &
                   801, ELMER_COMM_WORLD, ierr )
-  
+
         CALL MPI_BSEND( ibuf(:,proc), cnt(proc), MPI_INTEGER, proc, &
                   802, ELMER_COMM_WORLD, ierr )
       END IF
@@ -2604,7 +2604,7 @@ END SUBROUTINE FetiProject
     ! ------------------------------------------------------
     ! y=b
     ! CALL ParallelInitSolve(A,x,y,rtmp)
- 
+
     dumptofiles = GetLogical( Params, 'Feti dump system', Found)
     IF(dumptofiles) THEN
       CALL Info( 'Feti:', 'Dumping Feti Description to files')
@@ -2758,7 +2758,7 @@ END SUBROUTINE FetiProject
       CALL Info( 'Feti:', 'File dumping completed, exiting.')
       CALL ParallelFinalize(); STOP EXIT_OK
     END IF
-    
+
 
     ! add Dirichlet BC contribution to the r.h.s., if using Total FETI:
     ! ------------------------------------------------------------------

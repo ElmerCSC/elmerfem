@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -81,7 +81,7 @@ MODULE StressGeneral
      INTEGER :: i,j,k,l,m,p,q,t,dim
 
      REAL(KIND=dp) :: s,u,v,w
-  
+
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
      INTEGER :: N_Integ
@@ -113,9 +113,9 @@ MODULE StressGeneral
 
      ForceVector = 0.0D0
      StiffMatrix = 0.0D0
-!    
+!
 !    Integration stuff
-!    
+!
      IntegStuff = GaussPoints( element )
      U_Integ => IntegStuff % u
      V_Integ => IntegStuff % v
@@ -146,12 +146,12 @@ MODULE StressGeneral
       END IF
 
       CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,X,Y,Z )
-!  
+!
       s = SqrtMetric * SqrtElementMetric * S_Integ(t)
 !------------------------------------------------------------------------------
-!  
+!
 !     Force at integration point
-!   
+!
       Force = 0.0D0
       DO i=1,dim
         Force(i) = SUM( LoadVector(i,1:n)*Basis )
@@ -276,7 +276,7 @@ MODULE StressGeneral
 !
      DO p=1,N
        Load = 0.0D0
-  
+
        DO i=1,dim
           Load(i) = Load(i) + Force(i) * Basis(p)
        END DO
@@ -303,7 +303,7 @@ MODULE StressGeneral
        END IF
      END DO
 
-   END DO 
+   END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE StressGeneralCompose
 !------------------------------------------------------------------------------

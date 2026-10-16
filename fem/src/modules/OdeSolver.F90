@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -29,7 +29,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 4.5.2015
 ! *
@@ -37,7 +37,7 @@
 
 !> \ingroup Solvers
 !> \{
- 
+
 
 !------------------------------------------------------------------------------
 !> Initialization for the primary solver
@@ -67,8 +67,8 @@ END SUBROUTINE OdeSolver_init
 
 
 !------------------------------------------------------------------------------
-!> This is a simple solver for ordinary differential equations (ODE) 
-!> utilizing many of the same subroutines as the default PDE solution. 
+!> This is a simple solver for ordinary differential equations (ODE)
+!> utilizing many of the same subroutines as the default PDE solution.
 !> The idea is to easily allow the use of same time integration schemes
 !> etc. There is plenty of room for improvement and polishing.
 !------------------------------------------------------------------------------
@@ -85,7 +85,7 @@ SUBROUTINE OdeSolver( Model,Solver,dt,TransientSimulation )
 ! Local variables
 !------------------------------------------------------------------------------
   LOGICAL :: Found
-  REAL(KIND=dp) :: Norm  
+  REAL(KIND=dp) :: Norm
   INTEGER :: iter, MaxIter,TimeOrder
   CHARACTER(LEN=MAX_NAME_LEN) :: str
   TYPE(ValueList_t), POINTER :: Params
@@ -95,48 +95,48 @@ SUBROUTINE OdeSolver( Model,Solver,dt,TransientSimulation )
 
 
   Params => GetSolverParams()
- 
+
   MaxIter = GetInteger( Params,'Nonlinear System Max Iterations',Found )
   IF(.NOT. Found) MaxIter = 1
 
   TimeOrder = GetInteger( Params,'Time Derivative Order' )
 
-  DO iter = 1, MaxIter 
+  DO iter = 1, MaxIter
     IF( MaxIter > 1 ) THEN
       CALL Info('OdeSolver','Nonlinear iteration: '//I2S(iter),Level=5)
     END IF
 
     CALL DefaultInitialize()
-    
+
     CALL OdeMatrix()
 
     CALL DefaultFinishBulkAssembly()
     CALL DefaultFinishBoundaryAssembly()
-    
+
     ! This sets the time-integration and is therefore imperative
     CALL DefaultFinishAssembly()
-    
+
     ! This is probably not needed...
     !CALL DefaultDirichletBCs()
-    
+
     Norm = DefaultSolve()
 
     IF( Solver % Variable % NonlinConverged == 1 ) EXIT
   END DO
 
   CALL Info('OdeSolver','All done',Level=5)
- 
+
 
 CONTAINS
 
 
-  ! Creates the local matrix equation for the ODY before time integration. 
+  ! Creates the local matrix equation for the ODY before time integration.
   ! This optionally uses > Active Components < where the component entry
   ! could be a natural place for parameters of the ODE system.
   !-----------------------------------------------------------------------
 
   SUBROUTINE OdeMatrix()
-    
+
     TYPE(Matrix_t), POINTER :: A
     INTEGER :: i,j,Dofs
     REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
@@ -145,17 +145,17 @@ CONTAINS
     INTEGER, POINTER :: ActiveComponents(:)
 
 
-    ActiveComponents => ListGetIntegerArray( Params, &        
+    ActiveComponents => ListGetIntegerArray( Params, &
         'Active Components', Found )
     IF( Found ) THEN
       IF( SIZE( ActiveComponents ) > 1 ) THEN
         CALL Fatal('OdeSolver','Currently implemented only for one component!')
       END IF
-      i = ActiveComponents(1) 
+      i = ActiveComponents(1)
       IF( i > CurrentModel % NumberOfComponents ) THEN
         CALL Fatal('OdeSolver','Active Component index out of range')
       END IF
-      OdeList => CurrentModel % Components(i) % Values 
+      OdeList => CurrentModel % Components(i) % Values
       CALL Info('OdeSolver','Using active component: '//I2S(i),Level=10)
     ELSE
       OdeList => Params
@@ -164,13 +164,13 @@ CONTAINS
 
     A => Solver % Matrix
     Dofs = Solver % Variable % Dofs
-    
+
     IF ( .NOT. ASSOCIATED( A % MassValues ) ) THEN
       CALL Info('OdeSolver','Allocating mass matrix',Level=10)
       ALLOCATE( A % MassValues(SIZE(A % Values)) )
       A % MassValues = 0.0_dp
     END IF
-    
+
     IF( TimeOrder >= 2 ) THEN
       IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
         CALL Info('OdeSolver','Allocating damping matrix',Level=10)
@@ -183,7 +183,7 @@ CONTAINS
     DO i=1,Dofs
       DO j=1,Dofs
         str = 'Stiffness Matrix '//I2S(i)//I2S(j)
-        val = ListGetCReal( OdeList, str, Found ) 
+        val = ListGetCReal( OdeList, str, Found )
         CALL CRS_SetMatrixElement( A,i,j,val )
       END DO
     END DO
@@ -202,7 +202,7 @@ CONTAINS
         ELSE
           str = 'Damping Matrix '//I2S(i)//I2S(j)
         END IF
-        val = ListGetCReal( OdeList, str, Found ) 
+        val = ListGetCReal( OdeList, str, Found )
         CALL CRS_SetMatrixElement( A,i,j,val )
       END DO
     END DO
@@ -215,7 +215,7 @@ CONTAINS
       DO i=1,Dofs
         DO j=1,Dofs
           str = 'Damping Matrix '//I2S(i)//I2S(j)
-          val = ListGetCReal( OdeList, str, Found ) 
+          val = ListGetCReal( OdeList, str, Found )
           CALL CRS_SetMatrixElement( A,i,j,val )
         END DO
       END DO
@@ -224,7 +224,7 @@ CONTAINS
 
     DO i=1,Dofs
       str = 'Force '//I2S(i)
-      val = ListGetCReal( OdeList, str, Found ) 
+      val = ListGetCReal( OdeList, str, Found )
       A % Rhs(i) = val
     END DO
 

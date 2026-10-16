@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16.11.2005
 ! *
@@ -35,7 +35,7 @@
  !------------------------------------------------------------------------------
 !>  Solve the advection equation for the Levelset-function using stabilization
 !>  or bubbles. For the accuracy it is advisable to use 2nd order time-stepping
-!>  and Courant number smaller than one. 
+!>  and Courant number smaller than one.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
    SUBROUTINE LevelSetSolver( Model,Solver,Timestep,TransientSimulation )
@@ -47,7 +47,7 @@
      USE Integration
 
      IMPLICIT NONE
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
      TYPE(Model_t), TARGET :: Model
      TYPE(Solver_t) :: Solver
      REAL(KIND=dp) :: Timestep
@@ -56,16 +56,16 @@
 !    Local variables
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,t,iter,istat,bf_id
- 
+
      TYPE(Matrix_t),POINTER  :: StiffMatrix
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: CurrentElement
      TYPE(ValueList_t), POINTER :: Material
- 
+
      REAL(KIND=dp) :: Norm,RelativeChange
      LOGICAL :: Stabilize = .FALSE., GotIt, AllocationsDone = .FALSE.
      INTEGER, POINTER :: SurfPerm(:), NodeIndexes(:)
-     REAL(KIND=dp), POINTER :: Surface(:), ForceVector(:), Surf(:), PrevSurface(:) 
+     REAL(KIND=dp), POINTER :: Surface(:), ForceVector(:), Surf(:), PrevSurface(:)
      REAL(KIND=dp), ALLOCATABLE :: LocalMassMatrix(:,:),&
        LocalStiffMatrix(:,:),LocalForce(:),TimeForce(:)
      INTEGER :: NonlinearIter,body_id,mat_id,dim
@@ -117,7 +117,7 @@
            Surf( N ), &
            SurfaceFlux( N ), &
            STAT=istat )
- 
+
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'LevelSetSolver', 'Memory allocation error.' )
        END IF
@@ -146,7 +146,7 @@
      CALL Info( 'LevelSetSolver','-------------------------------------', Level=4 )
 
      DO iter = 1, NonlinearIter
-       
+
        at = CPUTime()
 
 !------------------------------------------------------------------------------
@@ -160,7 +160,7 @@
        DO t=1,Solver % NumberOfActiveElements
 
          CurrentElement => Solver % Mesh % Elements(Solver % ActiveElements(t))
-         body_id = CurrentElement % Bodyid    
+         body_id = CurrentElement % Bodyid
          mat_id = ListGetInteger( Model % Bodies( body_id ) % Values, 'Material' )
          Material => Model % Materials(mat_id) % Values
 
@@ -171,7 +171,7 @@
          Model % CurrentElement => CurrentElement
          n = CurrentElement % TYPE % NumberOfNodes
          NodeIndexes => CurrentElement % NodeIndexes
- 
+
 !------------------------------------------------------------------------------
 !        Get element nodal coordinates
 !------------------------------------------------------------------------------
@@ -197,14 +197,14 @@
          IF ( GotIt ) THEN
            SurfaceFlux(1:n) = ListGetReal( Model % BodyForces(bf_id) % Values,  &
                'Levelset Flux',n,NodeIndexes,gotIt )
-         ELSE           
+         ELSE
            SurfaceFlux(1:n) = 0.0d0
          END IF
 
 !------------------------------------------------------------------------------
          CALL LocalMatrix( LocalMassMatrix, LocalStiffMatrix, LocalForce, Surf, &
              SurfaceFlux, ElemVelo, Stabilize, CurrentElement, n, ElementNodes )
-       
+
 !------------------------------------------------------------------------------
 !        If time dependent simulation add mass matrix to stiff matrix
 !------------------------------------------------------------------------------
@@ -223,9 +223,9 @@
          IF ( .NOT.Stabilize ) THEN
            CALL Condensate( N, LocalStiffMatrix,  LocalForce, TimeForce )
          END IF
-         
+
          CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
-         
+
        END DO     !  Of ActiveElements
        CALL DefaultFinishBulkAssembly()
 
@@ -244,7 +244,7 @@
      CALL Info( 'LevelSetSolver', 'Assembly done', Level=4 )
      at = CPUTime() - at
      totat = totat + at
-    
+
 !------------------------------------------------------------------------------
 !     Solve the system and check for convergence
 !------------------------------------------------------------------------------
@@ -255,16 +255,16 @@
 
      st = CPUTIme()-st
      totst = totst + st
-      
+
      IF(NonlinearIter > 1) THEN
        WRITE( Message, * ) 'Iteration   : ',iter
-       CALL Info( 'LevelSetSolver', Message, Level=4 )      
+       CALL Info( 'LevelSetSolver', Message, Level=4 )
      END IF
      WRITE( Message, * ) 'Result Norm   : ',Norm
      CALL Info( 'LevelSetSolver', Message, Level=4 )
      WRITE( Message, * ) 'Relative Change : ',RelativeChange
      CALL Info( 'LevelSetSolver', Message, Level=4 )
-     
+
      IF( Solver % Variable % NonlinConverged == 1 ) EXIT
 
 !------------------------------------------------------------------------------
@@ -273,13 +273,13 @@
 
    WRITE(Message,'(a,F8.2)') 'Assembly done in time (s):',totat
    CALL Info( 'LevelsetSolver',Message, Level=4 )
-   
+
    WRITE(Message,'(a,F8.2)') 'Solution done in time (s):',totst
    CALL Info( 'LevelsetSolver',Message, Level=4 )
 
    DsMax = MAXVAL( ABS(Surface - PrevSurface) )
    WRITE(Message,'(a,ES12.3)') 'Maximum Levelset Change',dsmax
-   CALL Info( 'LevelSetSolver',Message, Level=4 )     
+   CALL Info( 'LevelSetSolver',Message, Level=4 )
    CALL ListAddConstReal(Model % Simulation,'res: LevelSet Max Change',dsmax)
 
 
@@ -383,9 +383,9 @@ CONTAINS
        END IF
 
 !------------------------------------------------------------------------------
-         
+
        FL = SUM( Flux(1:n) * Basis(1:n) )
-       
+
        DO i=1,dim
          Grad(i) = SUM( dBasisdx(1:n,i) * Surf(1:n) )
        END DO
@@ -415,7 +415,7 @@ CONTAINS
            Tau = hK * Pe / (2 * VNorm)
            Tau = 1.0d0 / SQRT( (2.0d0 / dt)**2 + 1.0d0/Tau**2 )
          ELSE
-           Tau = dt / 2.0d0 
+           Tau = dt / 2.0d0
          END IF
 
 !------------------------------------------------------------------------------
