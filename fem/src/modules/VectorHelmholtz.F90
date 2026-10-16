@@ -409,7 +409,6 @@ CONTAINS
         IF(ListGetLogical(Model % Solvers(j) % Values,'AMS Vector Solver', Found ) ) THEN
           AmsSolver => Model % Solvers(j)
           AmsMat => AmsSolver % Matrix
-
           ! For monolithic AMS matrix we may use curl-curl form.
           AmsCurlCurlForm = .FALSE.
           AmsMonolithic = ListGetLogical( AmsSolver % Values,'Monolithic Solver',Found)
@@ -899,6 +898,11 @@ CONTAINS
           COMPLEX(KIND=dp) :: am, aw, ac, atot(3,3)
           INTEGER :: idim, jdim
 
+          aw = 0.0_dp
+          ac = 0.0_dp
+          am = 0.0_dp
+          atot = 0.0_dp
+          
           DO p = 1,n
             DO q = 1,n
               IF(.NOT. LowFrequencyModel ) THEN
@@ -911,12 +915,10 @@ CONTAINS
               IF(ConductorBody) THEN
                 ac = -im * Omega * Cond * Basis(p) * Basis(q)
               END IF
-
+              
               IF( ASSOCIATED( AmsMat ) ) THEN
                 IF(AmsCurlCurlForm) THEN
                   ! The grad-div operator is now zero.
-                  am = 0.0_dp
-
                   atot(1,1) = dBasisdx(q,3) * dBasisdx(p,3) + dBasisdx(q,2) * dBasisdx(p,2)
                   atot(1,2) = -dBasisdx(q,1) * dBasisdx(p,2)
                   atot(1,3) = -dBasisdx(q,1) * dBasisdx(p,3)

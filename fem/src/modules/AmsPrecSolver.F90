@@ -298,6 +298,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
 
   IF(InfoActive(20)) THEN
     CALL VectorValuesRange(Allrhs,SIZE(Allrhs),'allrhs')
+    CALL VectorValuesRange(A % Values,SIZE(A % Values),'A0')
   END IF
 
   ! Potentially create a mask that avoids residual values being applied on the mortar BC.
@@ -308,7 +309,7 @@ SUBROUTINE AmsVectorSolver( Model,Solver,dt,Transient ) ! {{{
     CALL CreateNodeSkipMask(NodeSkip,SVar)
     n = COUNT(NodeSkip)
     IF(n==0) THEN
-      CALL Info(Caller,'Node skip mask set is empty!')
+      CALL Info(Caller,'Node skip mask set is empty!',Level=20)
       DEALLOCATE(NodeSkip)
     ELSE
       CALL Info(Caller,'Node skip mask set entries: '//I2S(n))
