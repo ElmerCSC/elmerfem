@@ -1821,7 +1821,7 @@ CONTAINS
            RETURN
            END IF
 
-         !_ELMER_OMP_SIMD
+         ELMER_OMP_SIMD
          DO i=1,ncl
            DetJ(i+ll-1)=DetJWrk(i)
          END DO
@@ -2500,7 +2500,7 @@ CONTAINS
          RETURN
        END IF
 
-       !_ELMER_OMP_SIMD
+       ELMER_OMP_SIMD
        DO i=1,ncl
          DetJ(i+ll-1)=DetJWrk(i)
        END DO
@@ -2622,7 +2622,7 @@ CONTAINS
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,npts
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)
            END DO
@@ -2632,7 +2632,7 @@ CONTAINS
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
@@ -2644,7 +2644,7 @@ CONTAINS
        !DIR$ LOOP COUNT MAX=3
        DO j=1,cdim
          DO i=1,nbasis
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,npts
              ! Map local basis function to global
              dBasisdx(l+offset-1,i,j) = dLBasisdx(l,i,1)*LtoGMap(l,j,1)+ &
@@ -10296,17 +10296,17 @@ BLOCK
          utind = GetSymmetricIndex(i,j)
          SELECT CASE (cdim)
          CASE(1)
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)
            END DO
          CASE(2)
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)
            END DO
          CASE(3)
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,nc
              G(l,utind)=dx(l,1,i)*dx(l,1,j)+dx(l,2,i)*dx(l,2,j)+dx(l,3,i)*dx(l,3,j)
            END DO
@@ -10334,12 +10334,12 @@ BLOCK
        END DO
 
        IF (AllSuccess) THEN
-         !_ELMER_OMP_SIMD
+         ELMER_OMP_SIMD
          DO i=1,nc
            ! Metric(i,1,1) = REAL(1,dp)/DetJ(i)
            Metric(i,1) = REAL(1,dp)/DetJ(i)
          END DO
-         !_ELMER_OMP_SIMD
+         ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT( DetJ(i))
          END DO
@@ -10351,7 +10351,7 @@ BLOCK
        !------------------------------------------------------------------------------
      CASE (2)
        ! Determinants
-       !_ELMER_OMP_SIMD
+       ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = ( G(i,1,1)*G(i,2,2) - G(i,1,2)*G(i,2,1) )
          ! G is symmetric
@@ -10367,7 +10367,7 @@ BLOCK
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !_ELMER_OMP_SIMD
+         ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp)/DetJ(i)
            ! G is symmetric
@@ -10376,7 +10376,7 @@ BLOCK
            Metric(i,2) = -s*G(i,2)
            Metric(i,3) =  s*G(i,1)
          END DO
-         !_ELMER_OMP_SIMD
+         ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
@@ -10387,7 +10387,7 @@ BLOCK
        !------------------------------------------------------------------------------
      CASE (3)
        ! Determinants
-       !_ELMER_OMP_SIMD
+       ELMER_OMP_SIMD
        DO i=1,nc
          ! DetJ(i) = G(i,1,1) * ( G(i,2,2)*G(i,3,3) - G(i,2,3)*G(i,3,2) ) + &
          !           G(i,1,2) * ( G(i,2,3)*G(i,3,1) - G(i,2,1)*G(i,3,3) ) + &
@@ -10407,7 +10407,7 @@ BLOCK
 
        IF (AllSuccess) THEN
          ! Since G=G^T, it holds G^{-1}=(G^T)^{-1}
-         !_ELMER_OMP_SIMD
+         ELMER_OMP_SIMD
          DO i=1,nc
            s = REAL(1,dp) / DetJ(i)
            ! Metric(i,1,1) =  s * (G(i,2,2)*G(i,3,3) - G(i,3,2)*G(i,2,3))
@@ -10424,7 +10424,7 @@ BLOCK
            Metric(i,6)= s*(G(i,1)*G(i,3)-G(i,2)*G(i,2))
          END DO
 
-         !_ELMER_OMP_SIMD
+         ELMER_OMP_SIMD
          DO i=1,nc
            DetJ(i) = SQRT(DetJ(i))
          END DO
@@ -10437,7 +10437,7 @@ BLOCK
        CASE(1)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1)
            END DO
@@ -10445,7 +10445,7 @@ BLOCK
        CASE(2)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3)
@@ -10454,7 +10454,7 @@ BLOCK
        CASE(3)
 !DIR$ LOOP COUNT MAX=3
          DO i=1,cdim
-           !_ELMER_OMP_SIMD
+           ELMER_OMP_SIMD
            DO l=1,nc
              LtoGMap(l,i,1) = dx(l,i,1)*Metric(l,1) + dx(l,i,2)*Metric(l,2) + dx(l,i,3)*Metric(l,4)
              LtoGMap(l,i,2) = dx(l,i,1)*Metric(l,2) + dx(l,i,2)*Metric(l,3) + dx(l,i,3)*Metric(l,5)

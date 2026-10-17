@@ -1098,8 +1098,7 @@ CONTAINS
     ! assembly needs a deterministic colouring; it does not need a change to
     ! the two loops below.
     IF (MCAssembly) THEN
-      !_ELMER_OMP_SIMD
-!DIR$ IVDEP
+      ELMER_OMP_SIMD
       DO i=1,nzind
         gval(Lind(i)) = gval(Lind(i)) + Lvals(i)
       END DO
