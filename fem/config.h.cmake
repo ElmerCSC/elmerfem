@@ -103,22 +103,28 @@
 /* Define if you have a OpenMP 4.5 SIMD compiler */
 #cmakedefine HAVE_OPENMP45
 
+#define ELMER_STRIP(x) ELMER_UNWRAP x
+#define ELMER_UNWRAP(content) content
+
 /* Macro expansions based on compiler OpenMP feature support */
 #if defined(HAVE_OPENMP45)
-#define _ELMER_OMP $OMP
-#define _ELMER_OMP_SIMD $OMP SIMD
-#define _ELMER_OMP_DECLARE_SIMD $OMP DECLARE SIMD
-#define _ELMER_LINEAR_REF(var) LINEAR(REF(var))
+#define ELMER_OMP !$OMP
+#define ELMER_OMP_SIMD !$OMP SIMD
+#define ELMER_OMP_SIMD_CLAUSE(clauses) !$OMP SIMD ELMER_STRIP(clauses)
+#define ELMER_OMP_DECLARE_SIMD !$OMP DECLARE SIMD
+#define ELMER_LINEAR_REF(var) LINEAR(REF(var))
 #elif defined(HAVE_OPENMP40)
-#define _ELMER_OMP $OMP
-#define _ELMER_OMP_SIMD $OMP SIMD
-#define _ELMER_OMP_DECLARE_SIMD $OMP DECLARE SIMD
-#define _ELMER_LINEAR_REF(var) 
+#define ELMER_OMP !$OMP
+#define ELMER_OMP_SIMD !$OMP SIMD ELMER_STRIP(clauses)
+#define ELMER_OMP_SIMD_CLAUSE(clauses) !$OMP SIMD ELMER_STRIP(clauses)
+#define ELMER_OMP_DECLARE_SIMD !$OMP DECLARE SIMD
+#define ELMER_LINEAR_REF(var)
 #else
-#define _ELMER_OMP
-#define _ELMER_OMP_SIMD DIR$ IVDEP !
-#define _ELMER_OMP_DECLARE_SIMD
-#define _ELMER_LINEAR_REF(var) 
+#define ELMER_OMP !
+#define ELMER_OMP_SIMD !DIR$ IVDEP
+#define ELMER_OMP_SIMD_CLAUSE(clauses) !DIR$ IVDEP
+#define ELMER_OMP_DECLARE_SIMD !
+#define ELMER_LINEAR_REF(var)
 #endif
 
 #cmakedefine HAVE_AMGX
