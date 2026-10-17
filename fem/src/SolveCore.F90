@@ -1655,6 +1655,7 @@ CONTAINS
 
     IF ( NotParallel ) THEN
       IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
+      IF(ListGetLogical(Params, 'Linear System Use Permon', Found)) Method = 'permon'
 
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
 
@@ -1676,6 +1677,8 @@ CONTAINS
         CALL SolveHypre( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
+      CASE('permon')
+        CALL SolvePermon( A, x, b, Solver, A % ParallelInfo ) 
       CASE DEFAULT
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
@@ -1699,6 +1702,9 @@ CONTAINS
         CALL ROCSolver( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
+      ! probably not needed, should be handled by the parallel iterative solver
+      !CASE('permon')
+      !  CALL SolvePermon(A, x, b, Solver, A % ParallelInfo, A % ParMatrix % SplittedMatrix)
       CASE DEFAULT
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
@@ -8239,6 +8245,9 @@ CONTAINS
              IF(SIZE(Var % LowerLimitActive) /= totsize) THEN
                DEALLOCATE(Var % LowerLimitActive)
                DEALLOCATE(Var % LowerLimit)
+#ifdef HAVE_PERMON
+               Var % LowerLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED(Var % LowerLimitActive ) ) THEN
@@ -8246,6 +8255,9 @@ CONTAINS
              Var % LowerLimitActive = .FALSE.
              ALLOCATE( Var % LowerLimit( totsize ) )
              Var % LowerLimit = -HUGE(val)
+#ifdef HAVE_PERMON
+             Var % LowerLimit_cptr = C_LOC( Var % LowerLimit(1) )
+#endif
            END IF
            LimitActive => Var % LowerLimitActive
          ELSE
@@ -8253,6 +8265,9 @@ CONTAINS
              IF(SIZE(Var % UpperLimitActive) /= totsize) THEN
                DEALLOCATE(Var % UpperLimitActive)
                DEALLOCATE(Var % UpperLimit)
+#ifdef HAVE_PERMON
+               Var % UpperLimit_cptr = C_NULL_PTR
+#endif
              END IF
            END IF
            IF( .NOT. ASSOCIATED( Var % UpperLimitActive ) ) THEN
@@ -8260,6 +8275,9 @@ CONTAINS
              Var % UpperLimitActive = .FALSE.
              ALLOCATE( Var % UpperLimit( totsize ) )
              Var % UpperLimit = HUGE(val)
+#ifdef HAVE_PERMON
+             Var % UpperLimit_cptr = C_LOC( Var % UpperLimit(1) )
+#endif
            END IF
            LimitActive => Var % UpperLimitActive
          END IF
