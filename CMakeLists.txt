@@ -217,16 +217,6 @@ IF(WITH_OpenMP)
   IF(OpenMP_Fortran_INCLUDE_DIR)
     INCLUDE_DIRECTORIES("${OpenMP_Fortran_INCLUDE_DIR}")
   ENDIF()
-
-  # Set variables for supported OpenMP version
-  IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.0)
-    SET(HAVE_OPENMP40 TRUE)
-    MARK_AS_ADVANCED(HAVE_OPENMP40)
-    IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.5)
-      SET(HAVE_OPENMP45 TRUE)
-      MARK_AS_ADVANCED(HAVE_OPENMP45)
-    ENDIF()
-  ENDIF()
 ENDIF()
 
 # Get rid of the annoying rank mismatch warning
