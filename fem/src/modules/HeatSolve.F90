@@ -1088,6 +1088,7 @@ CONTAINS
     ! own (1,1) component (mirroring LocalMatrix's CondScalar) when not.
     REAL(KIND=dp), POINTER :: CondTensor(:,:), CondTauVec(:)
     REAL(KIND=dp), ALLOCATABLE, TARGET :: CondScalarVec(:)
+    REAL(KIND=dp), ALLOCATABLE :: CondGvec(:,:)
     REAL(KIND=dp) :: CondScalarDummy, A
     INTEGER :: CondRank
 
@@ -1226,7 +1227,7 @@ CONTAINS
         MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
         TmpVec(ngp), TmpVec2(ngp), StreamVec(ngp,nd), TauVec(ngp), &
         CompRhoAtIpVec(ngp), PcoeffVec(ngp), GradPVec(ngp,3), &
-        CondScalarVec(ngp), &
+        CondScalarVec(ngp), CondGvec(nd,3), &
         STAT=allocstat)
     IF (allocstat /= 0) THEN
       CALL Fatal(Caller,'Local storage allocation failed')
@@ -1293,6 +1294,17 @@ CONTAINS
           CondScalarDummy = ListGetElementReal( CondScalar_h, Basis(t,:), Element, Found, &
               GaussPoint=t, Rdim=CondRank, Rtensor=CondTensor )
           CondScalarVec(t) = CondTensor(1,1)
+          ! C^T dB(p) does not depend on q. Inline since dBasisdx(t,:,:) is strided.
+          IF( CondRank /= 1 ) THEN
+            DO j=1,dim
+              DO p=1,nd
+                CondGvec(p,j) = 0._dp
+                DO i=1,dim
+                  CondGvec(p,j) = CondGvec(p,j) + CondTensor(i,j) * dBasisdx(t,p,i)
+                END DO
+              END DO
+            END DO
+          END IF
           DO q=1,nd
             DO p=1,nd
               A = 0._dp
@@ -1301,10 +1313,8 @@ CONTAINS
                   A = A + CondTensor(i,1) * dBasisdx(t,p,i) * dBasisdx(t,q,i)
                 END DO
               ELSE
-                DO i=1,dim
-                  DO j=1,dim
-                    A = A + CondTensor(i,j) * dBasisdx(t,p,i) * dBasisdx(t,q,j)
-                  END DO
+                DO j=1,dim
+                  A = A + CondGvec(p,j) * dBasisdx(t,q,j)
                 END DO
               END IF
               STIFF(p,q) = STIFF(p,q) + DetJVec(t) * A
@@ -1943,6 +1953,7 @@ CONTAINS
     REAL(KIND=dp) :: PerfRateAtIp, PerfDensAtIp, PerfCpAtIp, PerfRefTempAtIp, PerfCoeff
     REAL(KIND=dp) :: PlateTangent(3), PlateSpeed
     REAL(KIND=dp), POINTER :: CondTensor(:,:)
+    REAL(KIND=dp) :: CondG(nd,3)
     LOGICAL :: Stat,Found,ConvComp,ConvConst
     INTEGER :: i,j,t,p,q,k,CondRank,tid
     ! Compressibility Model work: see the matching comment in LocalMatrixVec.
@@ -2149,6 +2160,7 @@ CONTAINS
         STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + Weight * &
             CondAtIp * MATMUL( dBasisdx(1:nd,:), TRANSPOSE( dBasisdx(1:nd,:) ) )
       ELSE
+        IF( CondRank /= 1 ) CALL GradDotTensor( nd, dim, dBasisdx, CondTensor, CondG )
         DO p=1,nd
           DO q=1,nd
             A = 0.0_dp
@@ -2157,10 +2169,8 @@ CONTAINS
                 A = A + CondTensor(i,1) * dBasisdx(p,i) * dBasisdx(q,i)
               END DO
             ELSE
-              DO i=1,dim
-                DO j=1,dim
-                  A = A + CondTensor(i,j) * dBasisdx(p,i) * dBasisdx(q,j)
-                END DO
+              DO j=1,dim
+                A = A + CondG(p,j) * dBasisdx(q,j)
               END DO
             END IF
             STIFF(p,q) = STIFF(p,q) + Weight * A
