@@ -84,6 +84,8 @@ Solver 1
 
 !  curl-curl Form = Logical True
 !  Linear System Preconditioning Damp Coefficient = 0.5
+
+  Nonlinear System Consistent Norm = True
 End
 
 
@@ -110,7 +112,7 @@ Solver 2
   BiCGstabl polynomial degree = 4  
   Linear System Preconditioning = "ILU2"
   Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Convergence Tolerance = 1.0e-8
   Linear system abort not converged = false
   Linear System Residual Output = 10
 
@@ -144,7 +146,7 @@ Solver 3
   BiCGstabl polynomial degree = 4  
   Linear System Preconditioning = "ILU2"
   Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Convergence Tolerance = 1.0e-8
   Linear system abort not converged = false
   Linear System Residual Output = 10
 
@@ -181,6 +183,8 @@ Solver 4
   Linear System Max Iterations = 5000
   Linear System Iterative Method = CG
   Linear System Convergence Tolerance = 1.0e-9
+
+  Nonlinear System Consistent Norm = True
 End
 
 Solver 5
