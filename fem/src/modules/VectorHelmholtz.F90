@@ -56,16 +56,26 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs, EigenProblem
+  LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs
+  LOGICAL :: UseGaussLaw, UseMultiplier, LorenzCondition
   INTEGER :: k
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
 
-  WithNDOFs = GetLogical(SolverParams, 'Use Gauss Law', Found)
-  IF (.NOT. WithNDOFs) THEN
-    WithNDOFs = GetLogical(SolverParams, 'Use Lagrange Gauge', Found)
-    WithNDOFs = WithNDOFs .OR. GetLogical(SolverParams, 'Lorenz Condition', Found)
+  IF (ListCheckPresent(SolverParams, 'Use Lagrange Gauge')) THEN
+    CALL Warn('VectorHelmholtzSolver_Init0', &
+        'Keyword "Use Lagrange Gauge" is deprecated, use "Use Lagrange Multiplier" instead')
+    CALL ListRename(SolverParams, 'Use Lagrange Gauge', 'Use Lagrange Multiplier', Found)
   END IF
+
+  UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
+  UseMultiplier = GetLogical(SolverParams, 'Use Lagrange Multiplier', Found)
+  LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
+  WithNDOFs = UseGaussLaw .OR. UseMultiplier .OR. LorenzCondition
+
+  ! With "Use Lagrange Multiplier" alone Kikuchi's mixed formulation is used: the unknown
+  ! is E and the nodal DOF is a Lagrange multiplier which imposes Gauss's law:
+  UseMultiplier = UseMultiplier .AND. .NOT. (UseGaussLaw .OR. LorenzCondition)
 
   IF ( .NOT.ListCheckPresent(SolverParams, "Element") ) THEN
     ! We use one place where all the edge element keywords are defined and checked.
@@ -115,10 +125,8 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .TRUE.)
 
   !CALL ListAddNewLogical( SolverParams,'Hcurl Basis',.TRUE.)
-  IF (WithNDOFs) THEN
-    EigenProblem = GetLogical(SolverParams, 'Eigen Analysis', Found)
-    IF (EigenProblem) CALL Fatal('VectorHelmholtzSolver_Init0', &
-        'Eigenvalue problem does not support the scalar unknown')
+  ! The applicability of eigen analysis is checked in the assembly where the nodal DOFs are known.
+  IF (WithNDOFs .AND. .NOT. UseMultiplier) THEN
     CALL ListAddNewLogical(SolverParams,'Variable Output',.TRUE.)
     CALL ListAddNewString(SolverParams,'Variable','AV[AV re:1 AV im:1]')
   ELSE
@@ -268,7 +276,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
   LOGICAL :: UseGaussLaw, ChargeConservation
-  LOGICAL :: EigenProblem
+  LOGICAL :: EigenProblem, ZeroShift
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
 
@@ -351,8 +359,12 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
       CALL Fatal(Caller,'Harmonic wave equation requires angular frequency!')
     END IF
     rob0 = Omega * SQRT( eps0 / mu0inv )
+    ZeroShift = .FALSE.
   ELSE
     rob0 = 0.0_dp
+    ! The formulation with two nodal DOFs requires a nonzero shift, cf. LocalMatrix
+    ZeroShift = ABS(ListGetConstReal(SolverParams, 'Eigen System Shift', Found)) < TINY(1.0_dp) .AND. &
+        ABS(ListGetConstReal(SolverParams, 'Eigen System Shift Im', Found)) < TINY(1.0_dp)
   END IF
 
   LowFrequencyModel = GetLogical(SolverParams, 'Low Frequency Model', Found)
@@ -654,7 +666,7 @@ CONTAINS
     INTEGER :: n, nd, nb
     LOGICAL :: InitHandles
 !------------------------------------------------------------------------------
-    COMPLEX(KIND=dp) :: eps, muinv, Cond, L(3)
+    COMPLEX(KIND=dp) :: eps, muinv, Cond, L(3), EpsC, cw
     REAL(KIND=dp) :: DetJ, weight
     COMPLEX(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), MASS(:,:), Gauge(:,:), PREC(:,:)
     COMPLEX(KIND=dp), ALLOCATABLE :: AmsSTIFF(:,:), AmsSTIFF2(:,:), AmsFORCE(:)
@@ -707,6 +719,14 @@ CONTAINS
 
     WithNDOFs = ( ndofs > 0 )
     IF (WithNDOFs) THEN
+      ! Eigen analysis is possible with the Coulomb gauge (n:2) and Kikuchi's mixed
+      ! formulation (n:1, without Gauss's law and the Lorenz condition):
+      IF (EigenProblem) THEN
+        IF (ndofs == 1 .AND. (UseGaussLaw .OR. LorenzCondition)) CALL Fatal(Caller, &
+            'Eigenvalue problem with one nodal DOF needs "Use Lagrange Multiplier" alone')
+        IF (ndofs == 2 .AND. ZeroShift) CALL Fatal(Caller, &
+            'Eigenvalue problem with two nodal DOFs needs a nonzero "Eigen System Shift"')
+      END IF
       Gauge(1:nd,1:nd)  = 0.0_dp
     END IF
 
@@ -811,30 +831,42 @@ CONTAINS
               i = (p-1)*ndofs + 1
               DO q = 1,nd-np
                 j = q+np
-                Gauge(i,j) = Gauge(i,j) - im * Omega * Cond * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
-                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(i,j) = Gauge(i,j) - im * Omega * Cond * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
               END DO
 
               DO q = 1,n
                 j = (q-1)*ndofs + 1
-                Gauge(i,j) = Gauge(i,j) + im * Omega * Cond * SUM(dBasisdx(i,:) * dBasisdx(j,:)) * weight
+                Gauge(i,j) = Gauge(i,j) + im * Omega * Cond * SUM(dBasisdx(p,:) * dBasisdx(q,:)) * weight
               END DO
             END DO
           ELSE
             DO p = 1,n
               ! If two nodal DOFs per node, the first DOF is the scalar potential V related to
               ! the A-V representation. We add -w^2 div D = -w^2 rho in a weak form when
-              ! E = A - grad V:
+              ! E = A - grad V. In the case of eigen analysis these terms are proportional
+              ! to the eigenvalue w^2 and hence belong to the mass matrix.
               i = (p-1)*ndofs + 1
               DO q = 1,nd-np
                 j = q+np
-                Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
-                Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+                cw = Eps * SUM(WBasis(q,:) * dBasisdx(p,:)) * weight
+                IF (EigenProblem) THEN
+                  MASS(i,j) = MASS(i,j) - cw
+                  MASS(j,i) = MASS(j,i) - cw
+                ELSE
+                  Gauge(i,j) = Gauge(i,j) + Omega**2 * cw
+                  Gauge(j,i) = Gauge(j,i) + Omega**2 * cw
+                END IF
               END DO
 
               DO q = 1,n
                 j = (q-1)*ndofs + 1
-                Gauge(i,j) = Gauge(i,j) - Omega**2 * Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
+                cw = Eps * SUM(dBasisdx(q,:) * dBasisdx(p,:)) * weight
+                IF (EigenProblem) THEN
+                  MASS(i,j) = MASS(i,j) + cw
+                ELSE
+                  Gauge(i,j) = Gauge(i,j) - Omega**2 * cw
+                END IF
               END DO
             END DO
           END IF
@@ -876,19 +908,39 @@ CONTAINS
                 END DO
               END DO
             END IF
-          ELSE
-            ! Here Gauss's law is not employed, only an additional gauge constraint is introduced
+          ELSE IF (LorenzCondition) THEN
+            ! Here Gauss's law is not employed, only the Lorenz gauge is introduced
             DO i = 1,np
               DO q = 1,nd-np
                 j = q+np
                 Gauge(i,j) = Gauge(i,j) - SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
                 Gauge(j,i) = Gauge(j,i) + Omega**2 * Eps * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
               END DO
-              IF (LorenzCondition) THEN
-                DO j = 1,np
-                  Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
-                END DO
-              END IF
+              DO j = 1,np
+                Gauge(i,j) = Gauge(i,j) + Omega**2 * Eps / muinv * Basis(i) * Basis(j) * weight
+              END DO
+            END DO
+          ELSE
+            ! Kikuchi's mixed formulation: the unknown is E and the nodal DOF is a Lagrange
+            ! multiplier p which imposes Gauss's law div(eps E) = 0 in the weak form
+            ! (eps E, grad q) = 0. The symmetric augmentation term is (eps grad p, v).
+            ! For eigenpairs with finite eigenvalues p = 0 and spurious modes with
+            ! eigenvalue zero are absent. In the harmonic case the constraint is scaled
+            ! similarly to the mass term, with the conductivity included.
+            IF (EigenProblem) THEN
+              EpsC = Eps
+            ELSE
+              EpsC = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+              IF (.NOT. LowFrequencyModel) EpsC = Omega**2 * Eps
+              IF (ConductorBody) EpsC = EpsC + im * Omega * Cond
+            END IF
+            DO i = 1,np
+              DO q = 1,nd-np
+                j = q+np
+                cw = EpsC * SUM(WBasis(q,:) * dBasisdx(i,:)) * weight
+                Gauge(i,j) = Gauge(i,j) + cw
+                Gauge(j,i) = Gauge(j,i) + cw
+              END DO
             END DO
           END IF
         END IF
@@ -1048,7 +1100,7 @@ CONTAINS
         PortBeta, jn, Cond, SurfImp, epsr, mur, ep
     REAL(KIND=dp), ALLOCATABLE :: Basis(:),dBasisdx(:,:),WBasis(:,:),RotWBasis(:,:)
     REAL(KIND=dp) :: th, DetJ, weight, TestVec(3), TrialVec(3), Normal(3)
-    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, ThinSheet, GoodConductor, Absorb
+    LOGICAL :: Stat, Found, UpdateStiff, WithNdofs, Multiplier, ThinSheet, GoodConductor, Absorb
     LOGICAL :: LineElement, DegenerateElement, Regularize, Consistent
     LOGICAL :: AllocationsDone = .FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -1117,6 +1169,8 @@ CONTAINS
 
     ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Element),:,1))
     WithNdofs = ndofs > 0
+    ! In Kikuchi's mixed formulation the nodal DOF is a Lagrange multiplier, not a potential:
+    Multiplier = ndofs == 1 .AND. .NOT. (UseGaussLaw .OR. LorenzCondition)
     np = n * ndofs
 
     GoodConductor = ListGetElementLogical(GoodConductor_h, Element, Found)
@@ -1298,7 +1352,7 @@ CONTAINS
       END IF
 
 
-      IF (WithNdofs) THEN
+      IF (WithNdofs .AND. .NOT. Multiplier) THEN
         ! The following term arises if the decomposition E = A - grad V is applied:
         IF (ABS(B) > AEPS) THEN
           DO i = 1,nd-np
@@ -1686,7 +1740,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
    REAL(KIND=dp), ALLOCATABLE, TARGET :: Gforce(:,:), MASS(:,:), FORCE(:,:)
 
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields
-   LOGICAL :: UseGaussLaw, LorenzCondition, EigenAnalysis
+   LOGICAL :: UseGaussLaw, LorenzCondition, EigenAnalysis, WithPotential
    INTEGER :: NOFEigen, iEigen
    TYPE(ValueList_t), POINTER :: SolverParams
    TYPE(ValueHandle_t), SAVE :: EpsCoeff_h, CurrDens_h, MuCoeff_h
@@ -1881,6 +1935,9 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
      n = GetElementNOFNodes()
      ndofs = pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
      np = n*ndofs
+     ! The first nodal DOF is the scalar potential V such that E = A - grad V, except
+     ! in Kikuchi's mixed formulation where it is a Lagrange multiplier:
+     WithPotential = ndofs == 2 .OR. (ndofs == 1 .AND. (UseGaussLaw .OR. LorenzCondition))
      IF (UseGaussLaw .OR. LorenzCondition) THEN
        IF (ndofs < 1) CALL Fatal(Caller, 'Nodal DOFs needed')
      END IF
@@ -1968,6 +2025,7 @@ END SUBROUTINE VectorHelmholtzCalcFields_Init
        n = GetElementNOFNodes()
        ndofs = pSolver % Def_Dofs(GetElementFamily(Element),Element % BodyId,1)
        np = n*ndofs
+       WithPotential = ndofs == 2 .OR. (ndofs == 1 .AND. (UseGaussLaw .OR. LorenzCondition))
 
        CALL ElPotLocalAssembly()
 
@@ -2182,7 +2240,7 @@ CONTAINS
       END IF
 
       EF_ip=CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)),KIND=dp)
-      IF (LorenzCondition .OR. UseGaussLaw) THEN
+      IF (WithPotential) THEN
         DO k=1,3
           EF_ip(k) = EF_ip(k) - &
               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)),KIND=dp)
@@ -2268,7 +2326,7 @@ CONTAINS
           EdgeBasis = Wbasis, RotBasis = RotWBasis, USolver = pSolver )
 
       EF_ip = CMPLX(MATMUL(SOL(1,np+1:nd),WBasis(1:nd-np,:)), MATMUL(SOL(2,np+1:nd),WBasis(1:nd-np,:)),KIND=dp)
-      IF (LorenzCondition .OR. UseGaussLaw) THEN
+      IF (WithPotential) THEN
         DO k=1,3
           EF_ip(k) = EF_ip(k) - &
               CMPLX(SUM(SOL(1,1:np:ndofs)*dBasisdx(1:n,k)), SUM(SOL(2,1:np:ndofs)*dBasisdx(1:n,k)),KIND=dp)

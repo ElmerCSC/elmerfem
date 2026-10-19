@@ -1,3 +1,5 @@
+! Solve the Maxwell eigenvalue problem  
+
 Check Keywords "Warn"
 
 Header
@@ -35,16 +37,22 @@ Solver 1
   Equation = "VectorHelmholtz"
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
 
+! ------------------------------------
+! The following keyword can be used to switch to the mixed form where
+! the Gauss law is enforced by using a Lagrange multiplier:
+! ------------------------------------
+  Use Lagrange Multiplier = True
+  
   Use Piola Transform = True
 !  Quadratic Approximation = True
 !  Gradient Basis Functions = True
 
   Eigen Analysis = True
-  Eigen System Values = 3
+  Eigen System Values = 5
   Eigen System Convergence Tolerance = 1.0e-8
   Eigen System Select = smallest magnitude
-  Eigen System Sorting = largest real part
-  Eigen System Shift = 2500.0
+  Eigen System Sorting = smallest real part
+  Eigen System Shift = 1000.0
   Eigen System Compute Residuals = True
 
   Linear System Solver = "Direct"
@@ -113,7 +121,7 @@ Solver 4
   Equation = "SaveScalars"
   Procedure = "SaveData" "SaveScalars"
   Save EigenValues = True
-  Show Norm Index = 3
+  Show Norm Index = 1
 !  FileName = "scalar_values.dat"
 End
 
@@ -122,6 +130,9 @@ Boundary Condition 1
 
   E re {e} = Real 0
   E im {e} = Real 0
+  ! In the case of the mixed form the Lagrange multiplier is also constrained:
+  E re {n} = Real 0
+  E im {n} = Real 0  
 End
 
 Solver 4 :: Reference Norm = 1.23198564E+03 ! Linear
