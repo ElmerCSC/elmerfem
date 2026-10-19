@@ -1112,7 +1112,7 @@
     TYPE(Matrix_t), POINTER :: Amat
     REAL(KIND=dp), POINTER :: res(:), dx(:), r(:), z(:)
     REAL(KIND=dp), ALLOCATABLE :: zshort(:), rshort(:)
-    REAL(KIND=dp) :: rnorm, coeff
+    REAL(KIND=dp) :: rnorm
     INTEGER, POINTER :: PrecSolvers(:), TmpArray(:)
     INTEGER, ALLOCATABLE :: AmsCycle(:)
     LOGICAL :: Found, ScaleRHS, DoMask, Additive
@@ -1298,13 +1298,17 @@
       DEALLOCATE(z)
     END IF
 
+#if 1
+    CALL LongRealToShortReal(dx,u)
+#else
     IF( ParEnv % PEs > 1 ) THEN
       DEALLOCATE(zshort, rshort)
       CALL ParallelVector( Amat, u(1:m), dx )
     ELSE
       u(1:n) = dx(1:n)
     END IF
-
+#endif
+    
   CONTAINS
 
     SUBROUTINE ShortRealToLongReal(v,res,m)
@@ -1328,13 +1332,36 @@
             res(i) = 0.0_dp
           END IF
         END DO        
+        IF(PRESENT(m)) m = j
       ELSE
         res(1:n) = v(1:n)
-        j = n
+        IF(PRESENT(m)) m = n
       END IF
-      IF(PRESENT(m)) m = j
       
     END SUBROUTINE ShortRealToLongReal
+
+
+    SUBROUTINE LongRealToShortReal(res,v)
+      REAL(KIND=dp) v(*)
+      REAL(KIND=dp) :: res(:)
+
+      INTEGER :: i,j,n
+      
+      n = Amat % NumberOfRows
+      
+      IF( ParEnv % PEs > 1 ) THEN
+        j = 0
+        DO i=1,n
+          IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) THEN
+            j=j+1
+            v(j) = res(i)
+          END IF
+        END DO
+      ELSE
+        v(1:n) = res(1:n) 
+      END IF
+      
+    END SUBROUTINE LongRealToShortReal
       
     
     SUBROUTINE ExperimentalStuff(dx,res)
@@ -1388,9 +1415,11 @@
       ! every partition holding a non-owned copy, or it stays frozen at
       ! whatever it was before this sweep.
       IF( ParEnv % PEs > 1 ) THEN
+#if 0 
         CALL ParallelVector( Amat, zshort, dx )
         CALL PartitionVector( Amat, dx, zshort )
         CALL ParallelSumVector( Amat, dx )
+#endif
       END IF
       
     END SUBROUTINE TailoredSmooth
@@ -1418,7 +1447,7 @@
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Variable_t), POINTER :: pVar
     TYPE(Matrix_t), POINTER :: Amat
-    REAL(KIND=dp), POINTER :: res(:), dx(:), r(:) => NULL(), z(:)
+    REAL(KIND=dp), POINTER :: res(:), dx(:), r(:), z(:)
     ! Complex views of the interleaved (Re,Im) reals behind res and dx, so that
     ! the transfers to and from the complex vectors v and u are contiguous
     ! copies rather than pairs of stride-2 gathers and scatters.
@@ -1428,7 +1457,7 @@
     REAL(KIND=dp) :: rnorm
     LOGICAL :: Found, ScaleRHS, Additive
     CHARACTER(MAX_NAME_LEN) :: str
-    INTEGER :: SlaveInd, SlaveMaxCnt, PrecInd, PrecIndMax, AmsCycleType, SmoothCnt, SolveInd
+    INTEGER :: SlaveInd, SlaveMaxCnt, PrecInd, PrecIndMax, AmsCycleType, SmoothCnt
     INTEGER :: i, n, m, DOFs
 !-------------------------------------------------------------------------------
 
@@ -1438,7 +1467,8 @@
     Amat => Solver % Matrix
     n = SIZE(Solver % Variable % Values)
     DOFs = Solver % Variable % dofs
-
+    NULLIFY(r)
+    
     str = ListGetString( Params,'Preconditioning Residual', UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
@@ -1496,10 +1526,10 @@
     IF(n /= SIZE(pVar % Values) ) THEN
       CALL Fatal('SlavePrecComplex','Residual should have same size as primary variable!')
     END IF
-
     res => pVar % Values
+
     CALL CmplxShortToRealLong(v,res,m)
-        
+
     str = ListGetString( Params,'Preconditioning Update', UnfoundFatal=.TRUE.)
     pVar => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE., UnfoundFatal=.TRUE. )
 
@@ -1542,7 +1572,7 @@
       dx(1:n) = 0.0_dp
 
       IF( SlaveInd == 0 ) THEN
-        CALL TailoredSmoothZ(dx,res)        
+        CALL TailoredSmoothZ(dx,res)   
       ELSE
         IF (ScaleRHS) THEN
           ! Perform back-scaling since Amat may be a scaled creature, and preconditioner solvers want unscaled stuff.
@@ -1550,7 +1580,7 @@
         END IF
 
         ! (dx,res) are the vectors that should go in here by their name
-        CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = MODULO(SlaveInd,10) )
+        CALL DefaultSlaveSolvers( Solver, 'Prec Solvers', SlaveInd = SlaveInd )
 
         IF (ScaleRHS) THEN
           ! Transform the search direction so that it corresponds to the scaled linear system
@@ -1562,7 +1592,7 @@
       IF( PrecIndMax == 1) EXIT
 
       ! Sum up cumulative solution
-      IF(.NOT. ASSOCIATED(z)) THEN
+      IF(PrecInd == 1) THEN
         ALLOCATE(z(n))
         z(1:n) = dx(1:n)
       ELSE
@@ -1590,14 +1620,20 @@
     ! At final solver revert the cumulative solution back to origonal vectors.
     IF(PrecIndMax > 1) THEN
       dx(1:n) = z(1:n)
-      CALL CmplxShortToRealLong(v,res)
       DEALLOCATE(z)
+      CALL CmplxShortToRealLong(v,res)
     END IF    
 
-    CALL RealLongToCmplxShort(u,dx)
+    IF( ParEnv % PEs > 1 ) THEN
+      DEALLOCATE(zshort, rshort)
+    END IF    
+    CALL RealLongToCmplxShort(dx,u)
 
+    
   CONTAINS
 
+    ! Copy incoming complex vector to real valued serial or parallel vector
+    ! since the data going to auxiliary spaces is presented as real vector. 
     SUBROUTINE CmplxShortToRealLong(v,res,m)
       COMPLEX(KIND=dp) v(*)
       REAL(KIND=dp) :: res(:)
@@ -1609,36 +1645,31 @@
       
       IF( ParEnv % PEs > 1 ) THEN
         ! In parallel "v" is short (only owned dofs), and "res" is long (also shared dofs).
-        !res(1:n) = v(1:n)
         j = 0
-        DO i=1,n
-          IF( Amat % ParallelInfo % Neighbourlist(i) % Neighbours(1) == Parenv % Mype ) THEN
-            j=j+1
-            IF(MOD(j,2)==1) THEN
-              res(i) = REAL(v((j+1)/2))
-            ELSE
-              res(i) = AIMAG(v((j+1)/2))
-            END IF
+        DO i=1,n/2
+          IF( Amat % ParallelInfo % Neighbourlist(2*i-1) % Neighbours(1) == Parenv % Mype ) THEN
+            j=j+1            
+            res(2*i-1) = REAL(v(j))
+            res(2*i) = AIMAG(v(j))
           ELSE
-            res(i) = 0.0_dp
+            res(2*i-1:2*i) = 0.0_dp
           END IF
         END DO
+        IF(PRESENT(m)) m = 2*j
       ELSE
         DO i=1,n/2
           res(2*i-1) = REAL(v(i))
           res(2*i) = AIMAG(v(i))
         END DO
-        j = n
+        IF(PRESENT(m)) m = n
       END IF
-
-      IF(PRESENT(m)) m = j
            
     END SUBROUTINE CmplxShortToRealLong
 
-
-    SUBROUTINE RealLongToCmplxShort(v,res)
-      COMPLEX(KIND=dp) v(*)
+    ! Does the opposite to previous   
+    SUBROUTINE RealLongToCmplxShort(res,v)
       REAL(KIND=dp) :: res(:)
+      COMPLEX(KIND=dp) v(*)
       
       INTEGER :: i,j,n
 
@@ -1652,8 +1683,10 @@
           IF( Amat % ParallelInfo % Neighbourlist(2*i-1) % Neighbours(1) == Parenv % Mype ) THEN
             j=j+1
             v(j)=CMPLX(res(2*i-1),res(2*i))
-          ELSE
-            v(j)=CMPLX(0.0_dp,0.0_dp)
+
+            IF( Amat % ParallelInfo % Neighbourlist(2*i) % Neighbours(1) /= Parenv % Mype ) THEN
+              CALL Fatal('RealToLongComplexShort','Inconsistent!')
+            END IF
           END IF
         END DO
       ELSE
@@ -1701,6 +1734,8 @@
       REAL(KIND=dp) :: dx(:), res(:)
       LOGICAL :: DoMask
       
+      SmoothCnt = SmoothCnt + 1
+      
       DoMask = .FALSE.
       str = ListGetString(Params,'MG Smoother')
       IF(len_TRIM(str) >= 6 ) THEN
@@ -1710,8 +1745,6 @@
         DoMask = ListGetLogical(Params,'Linear System Skip Mask', Found )
       END IF
 
-      SmoothCnt = SmoothCnt + 1
-      
       r(1:n) = 0.0_dp
       IF(DoMask) THEN
         BLOCK
@@ -1725,6 +1758,8 @@
         RNorm = MGSmooth( Solver, Amat, Mesh, dx, res, r, SmoothCnt, dofs )
       END IF
 
+      ! For jacobi this is not needed!
+#if 0
       ! MGSmooth only updates dx at owned rows; broadcast the fresh value to
       ! every partition holding a non-owned copy, or it stays frozen at
       ! whatever it was before this sweep.
@@ -1733,6 +1768,7 @@
         CALL PartitionVector( Amat, dx, zshort )
         CALL ParallelSumVector( Amat, dx )
       END IF
+#endif
       
     END SUBROUTINE TailoredSmoothZ
 
