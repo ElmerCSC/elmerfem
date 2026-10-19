@@ -1,3 +1,44 @@
+# ELMER_HOME and ELMER_LIB are what point the binaries at the build tree being
+# tested rather than at whatever happens to be installed.  RUN_ELMER_TEST and
+# EXECUTE_ELMER_SOLVER set them, but they only do so when they are called, and
+# a test that drives ElmerGrid, ViewFactors or Radiators directly through
+# EXECUTE_PROCESS spawns those before any macro has run.  Such a child then
+# inherits an empty environment and falls back to the compiled in
+# ELMER_SOLVER_HOME, i.e. to the install tree; on Windows getsolverhome()
+# ignores that define and looks next to the running exe instead, which in a
+# build tree holds no elements.def at all and the run dies before it writes
+# anything.  Set them here, at include time, so every child of a runtest.cmake
+# sees the same environment the solver gets.  Same values RUN_ELMER_TEST uses.
+#
+# BINARY_DIR is only defined when this is included from a runtest.cmake driven
+# by ctest; at configure time, where the test CMakeLists.txt include it, there
+# is nothing to point at and nothing to spawn.
+#
+# PATH matters just as much, and for a reason that only bites on Windows:
+# there is no RPATH there, so a freshly linked ViewFactors.exe finds
+# libelmersolver, fhutiter, matc, arpack and the compiler's own runtime DLLs
+# through PATH alone.  A child spawned before any macro ran therefore does not
+# start at all -- the loader kills it with STATUS_DLL_NOT_FOUND before main(),
+# so it writes nothing, not even to the error log the test redirected.  The
+# older radiation tests hid this: their ViewFactors call quietly did nothing
+# and ElmerSolver, which does run with PATH set, recomputed the missing
+# factors itself.  A test that reads ViewFactors.dat before the solver runs
+# has nothing to fall back on and just reports a file that does not exist.
+IF(DEFINED BINARY_DIR)
+  IF(NOT DEFINED ENV{ELMER_HOME} OR "$ENV{ELMER_HOME}" STREQUAL "")
+    SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  ENDIF()
+  IF(NOT DEFINED ENV{ELMER_LIB} OR "$ENV{ELMER_LIB}" STREQUAL "")
+    SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  ENDIF()
+  IF(NOT(WIN32))
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src:$ENV{PATH}")
+  ELSE()
+    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
+  ENDIF()
+ENDIF()
+
 MACRO(ADD_ELMERICE_LABEL test_name label_string)
   SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()
