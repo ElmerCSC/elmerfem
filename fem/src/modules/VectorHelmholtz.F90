@@ -36,8 +36,18 @@
 !------------------------------------------------------------------------------
 !> Solve the time-harmonic Maxwell equations using the curl-curl equation at a
 !> relatively high frequency using curl-conforming edge elements. Also a low-
-!> frequency model is available. With "Use Gauss Law = True" the A-V representation
-!> is used and to solve the additional scalar potential V the Gauss law is used.
+!> frequency model is available. Alternative formulations which require using
+!> additional unknowns can be activated as follows:
+!> Giving Use Lagrange Multiplier = True switches to a mixed formulation where
+!> a Lagrange multiplier is used to enforce Gauss's law. Other alternatives
+!> employ the Helmholtz decomposition, so that the field approximated by using
+!> edge elements is the vector potential. If Use Gauss Law = True is given,
+!> the Gauss law is used to solve V, whereas in the case of Lorenz Condition =
+!> True the vector potential and scalar potential are required to satisfy
+!> the Lorenz condition. Finally, with Gauged A-V Formulation = True the Coulomb
+!> gauge is enforced by using a Lagrange multiplier to ensure the unique
+!> decomposition of the electric field. This necessitates introducing two scalar
+!> fields.
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 
@@ -56,9 +66,10 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   LOGICAL :: Transient
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: SolverParams
-  LOGICAL :: Found, SecondOrder, PiolaVersion, SecondFamily, WithNDOFs
-  LOGICAL :: UseGaussLaw, UseMultiplier, LorenzCondition
-  INTEGER :: k
+  LOGICAL :: Found, PiolaVersion, SecondFamily, WithNDOFs
+  LOGICAL :: UseGaussLaw, UseMultiplier, LorenzCondition, GaugedAV
+  INTEGER :: k, NodalDofs
+  CHARACTER(LEN=MAX_NAME_LEN) :: EdgeDef, ElementDef
 !------------------------------------------------------------------------------
   SolverParams => GetSolverParams()
 
@@ -71,7 +82,15 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
   UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
   UseMultiplier = GetLogical(SolverParams, 'Use Lagrange Multiplier', Found)
   LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
-  WithNDOFs = UseGaussLaw .OR. UseMultiplier .OR. LorenzCondition
+  GaugedAV = GetLogical(SolverParams, 'Gauged A-V Formulation', Found)
+  
+  IF (GaugedAV .AND. (UseGaussLaw .OR. UseMultiplier .OR. LorenzCondition)) &
+      CALL Fatal('VectorHelmholtzSolver_Init0', &
+      '"Gauged A-V Formulation" cannot be combined with "Use Gauss Law", ' // &
+      '"Use Lagrange Multiplier" or "Lorenz Condition"')
+
+  ! Check whether the element definition will contain a nontrivial nodal part (n:1 or n:2):
+  WithNDOFs = UseGaussLaw .OR. UseMultiplier .OR. LorenzCondition .OR. GaugedAV
 
   ! With "Use Lagrange Multiplier" alone Kikuchi's mixed formulation is used: the unknown
   ! is E and the nodal DOF is a Lagrange multiplier which imposes Gauss's law:
@@ -81,45 +100,43 @@ SUBROUTINE VectorHelmholtzSolver_Init0(Model,Solver,dt,Transient)
     ! We use one place where all the edge element keywords are defined and checked.
     CALL EdgeElementStyle(SolverParams, PiolaVersion, SecondFamily, BasisDegree = k, Check = .TRUE. )
 
-    IF (WithNDOFs) THEN
-      IF ( k == 2 ) THEN
-        CALL ListAddString( SolverParams, "Element", &
-            "n:1 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-      ELSE IF( SecondFamily ) THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:2" )
-      ELSE IF( PiolaVersion ) THEN
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-      ELSE
-        CALL ListAddString( SolverParams, "Element", "n:1 e:1" )
-      END IF
+    ! The number of nodal DOFs depends only on the formulation, the DOFs related to the edge
+    ! element basis can be added by catenation
+    IF (GaugedAV) THEN
+      NodalDofs = 2
+    ELSE IF (WithNDOFs) THEN
+      NodalDofs = 1
     ELSE
-      SELECT CASE(k)
-      CASE(3)
-        IF (SecondFamily) THEN
-          CALL Fatal('VectorHelmholtzSolver_Init0', 'No ready support for the cubic element of the second kind' )
-        ELSE
-          CALL ListAddString( SolverParams, "Element", &
-              "n:0 e:3 -tri b:6 -tetra b:3 -tri_face b:6" )
-          CALL Fatal('VectorHelmholtzSolver_Init0', 'The use of cubic elements is not yet possible' )
-        END IF
-      CASE(2)
-        IF (SecondFamily) THEN
-          CALL ListAddString( SolverParams, "Element", &
-              "n:0 e:3 -tri b:3 -tri_face b:3" )
-        ELSE
-          CALL ListAddString( SolverParams, "Element", &
-              "n:0 e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2" )
-        END IF
-      CASE(1)
-        IF (SecondFamily) THEN
-          CALL ListAddString( SolverParams, "Element", "n:0 e:2" )
-        ELSE IF( PiolaVersion ) THEN
-          CALL ListAddString( SolverParams, "Element", "n:0 e:1 -quad b:2 -brick b:3 -quad_face b:2" )
-        ELSE
-          CALL ListAddString( SolverParams, "Element", "n:0 e:1" )
-        END IF
-      END SELECT
+      NodalDofs = 0
     END IF
+
+    SELECT CASE(k)
+    CASE(3)
+      IF (SecondFamily) THEN
+        CALL Fatal('VectorHelmholtzSolver_Init0', 'No ready support for the cubic element of the second kind' )
+      ELSE
+        EdgeDef = "e:3 -tri b:6 -tetra b:3 -tri_face b:6"
+        CALL Fatal('VectorHelmholtzSolver_Init0', 'The use of cubic elements is not yet possible' )
+      END IF
+    CASE(2)
+      IF (SecondFamily) THEN
+        EdgeDef = "e:3 -tri b:3 -tri_face b:3"
+      ELSE
+        EdgeDef = "e:2 -tri b:2 -quad b:4 -brick b:6 -pyramid b:3 -prism b:2 -quad_face b:4 -tri_face b:2"
+      END IF
+    CASE DEFAULT
+      IF (SecondFamily) THEN
+        EdgeDef = "e:2"
+      ELSE IF( PiolaVersion ) THEN
+        EdgeDef = "e:1 -quad b:2 -brick b:3 -quad_face b:2"
+      ELSE
+        EdgeDef = "e:1"
+      END IF
+    END SELECT
+
+    WRITE(ElementDef, '(A,I0,A)') 'n:', NodalDofs, ' '//TRIM(EdgeDef)
+    CALL Info('VectorHelmholtzSolver_Init0', 'Using Element = "'//TRIM(ElementDef)//'"', Level=6)
+    CALL ListAddString(SolverParams, "Element", TRIM(ElementDef))
   END IF
 
   CALL ListAddNewLogical(SolverParams, 'Bubbles in Global System', .TRUE.)
