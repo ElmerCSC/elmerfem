@@ -35,7 +35,7 @@ IF(DEFINED BINARY_DIR)
     SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/fem/src:$ENV{PATH}")
   ELSE()
     GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};${BINARY_DIR}/elmerice/Solvers;${BINARY_DIR}/elmerice/Utils;${BINARY_DIR}/fem/src;$ENV{PATH}")
   ENDIF()
 ENDIF()
 
