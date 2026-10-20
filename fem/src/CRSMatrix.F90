@@ -356,7 +356,11 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
-    IF ( .NOT.ASSOCIATED(Diag) .OR. i /= j .OR. .NOT. A % Ordered ) THEN
+    ! A row may lack the diagonal entry (Diag(i)=0), then search for it as for others.
+    k = 0
+    IF ( ASSOCIATED(Diag) .AND. i == j .AND. A % Ordered ) k = Diag(i)
+
+    IF ( k <= 0 ) THEN
       IF(PRESENT(Previ)) THEN
         k = previ+1
         DO WHILE(k<Rows(i+1)-1)
@@ -378,8 +382,6 @@ CONTAINS
         IF ( k==0 ) RETURN
         k = k + Rows(i) - 1
       END IF
-    ELSE
-      k = Diag(i)
     END IF
 !$omp atomic
     Values(k) = Values(k) + val
@@ -527,7 +529,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>    Set a given value to an element of a  CRS format matrix.
+!>    Set a given value to an element of a CRS format matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_SetMatrixElement( A,i,j,val )
 !------------------------------------------------------------------------------
@@ -550,15 +552,17 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
-    IF ( .NOT.ASSOCIATED(Diag) .OR. i /= j .OR. .NOT. A % Ordered ) THEN
+    ! A row may lack the diagonal entry (Diag(i)=0), then search for it as for others.
+    k = 0
+    IF ( ASSOCIATED(Diag) .AND. i == j .AND. A % Ordered ) k = Diag(i)
+
+    IF ( k <= 0 ) THEN
        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
       IF ( k==0 ) THEN
          A % FORMAT = MATRIX_LIST
          RETURN
        END IF
        k = k + Rows(i) - 1
-    ELSE
-       k = Diag(i)
     END IF
     Values(k) = val
   END SUBROUTINE CRS_SetMatrixElement

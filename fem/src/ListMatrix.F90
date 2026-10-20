@@ -375,6 +375,23 @@ CONTAINS
 
     A % FORMAT = MATRIX_LIST
 
+    ! The ILU factors depend on the CRS structure, which is now gone. ILU(0) shares
+    ! the structure of the matrix, other factors have their own.
+    IF( ASSOCIATED( A % ILUValues ) ) DEALLOCATE( A % ILUValues )
+    IF( ASSOCIATED( A % ILURows ) ) THEN
+      IF( .NOT. ASSOCIATED( A % ILURows, A % Rows ) ) DEALLOCATE( A % ILURows )
+    END IF
+    IF( ASSOCIATED( A % ILUCols ) ) THEN
+      IF( .NOT. ASSOCIATED( A % ILUCols, A % Cols ) ) DEALLOCATE( A % ILUCols )
+    END IF
+    IF( ASSOCIATED( A % ILUDiag ) ) THEN
+      IF( .NOT. ASSOCIATED( A % ILUDiag, A % Diag ) ) DEALLOCATE( A % ILUDiag )
+    END IF
+    A % ILUValues => Null()
+    A % ILURows => Null()
+    A % ILUCols => Null()
+    A % ILUDiag => Null()
+
     IF( ASSOCIATED( A % Rows ) ) DEALLOCATE( A % Rows )
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
@@ -1035,6 +1052,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      INTEGER :: k2
      REAL(KIND=dp) :: val, c, d
+     LOGICAL :: Found
      TYPE(ListMatrixEntry_t), POINTER :: p1, p2, prev2, Entry
 
      IF( PRESENT(coeff)) THEN
@@ -1086,7 +1104,9 @@ CONTAINS
          p2    => p2 % Next
        END DO
 
-       IF ( ASSOCIATED(p2) .AND. p2 % Index == k2 ) THEN
+       Found = .FALSE.
+       IF ( ASSOCIATED(p2) ) Found = ( p2 % Index == k2 )
+       IF ( Found ) THEN
          ! Entry already exists in row n2 — accumulate and advance past it
          p2 % Val = p2 % Val + c * val
          prev2 => p2
