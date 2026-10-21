@@ -93,8 +93,6 @@ MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
 ENDMACRO()
 
 MACRO(RUN_ELMERICE_TEST)
-  MESSAGE(STATUS "BINARY_DIR = ${BINARY_DIR}")
-
   # Query number of physical CPU cores of the host
   cmake_host_system_information(RESULT PHYS_CPU QUERY NUMBER_OF_PHYSICAL_CORES)
 
