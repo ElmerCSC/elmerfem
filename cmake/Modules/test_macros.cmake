@@ -107,6 +107,8 @@ MACRO(ADD_ELMER_TEST TestName)
         -DMPIEXEC_POSTFLAGS=${MPIEXEC_POSTFLAGS}
         -DWITH_MPI=${WITH_MPI}
         -DMPIEXEC_NTASKS=${_this_test_tasks}
+        # the following flag should be set the same as the setting in the workflow *.yaml files.
+        -DWITH_MATC=ON
         -P ${CMAKE_CURRENT_SOURCE_DIR}/runtest.cmake)
       SET_PROPERTY(TEST ${_this_test_name} APPEND PROPERTY LABELS ${_this_test_label})
       # If LABELS argument was given iterate through the given labels and add them
