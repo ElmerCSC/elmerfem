@@ -45,6 +45,9 @@
         USE Netcdf
         USE DefUtils
         USE NearestNeighbour
+#ifdef __NVCOMPILER
+        USE IEEE_ARITHMETIC, ONLY : ISNAN => IEEE_IS_NAN
+#endif
 
         IMPLICIT NONE
 
