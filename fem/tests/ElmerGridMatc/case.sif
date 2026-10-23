@@ -5,7 +5,7 @@
 
 Header
   CHECK KEYWORDS Warn
-  Mesh DB "." "rect"
+  Mesh DB "." "rect-matc"
   Include Path ""
   Results Directory ""
 End
