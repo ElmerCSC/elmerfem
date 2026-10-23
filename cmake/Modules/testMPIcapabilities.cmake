@@ -51,10 +51,41 @@ else()
     set(ELMER_MPI_DEFINITION "-DELMER_HAVE_MPIF_HEADER")
   endif()
 
-  try_run(CHECK_MPI_IN_PLACE_RUN_ERROR CHECK_MPI_IN_PLACE_COMPILE ${CMAKE_BINARY_DIR}
+  # Compile and run separately (instead of using try_run) so that the run can
+  # be limited by a timeout. A broken MPI stack can hang in MPI_Init when the
+  # program is started without mpiexec (e.g., Open MPI 5.0.10 with the UCX 'uct'
+  # BTL from UCX 1.20), which would otherwise stall the configuration forever.
+  set(ELMER_MPI_IN_PLACE_EXE
+    ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/testMPI_IN_PLACE${CMAKE_EXECUTABLE_SUFFIX})
+  file(REMOVE ${ELMER_MPI_IN_PLACE_EXE})
+
+  try_compile(CHECK_MPI_IN_PLACE_COMPILE ${CMAKE_BINARY_DIR}
     SOURCES ${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/CMakeTmp/testMPI_IN_PLACE.F90
     COMPILE_DEFINITIONS ${ELMER_MPI_DEFINITION}
-    LINK_LIBRARIES MPI::MPI_Fortran)
+    LINK_LIBRARIES MPI::MPI_Fortran
+    COPY_FILE ${ELMER_MPI_IN_PLACE_EXE})
+
+  if(CHECK_MPI_IN_PLACE_COMPILE)
+    execute_process(COMMAND ${ELMER_MPI_IN_PLACE_EXE}
+      TIMEOUT 60
+      RESULT_VARIABLE CHECK_MPI_IN_PLACE_RUN_RESULT
+      OUTPUT_QUIET ERROR_QUIET)
+
+    if(CHECK_MPI_IN_PLACE_RUN_RESULT STREQUAL "0")
+      set(CHECK_MPI_IN_PLACE_RUN_ERROR OFF)
+    elseif(CHECK_MPI_IN_PLACE_RUN_RESULT MATCHES "timeout")
+      message(WARNING
+        "The MPI_IN_PLACE test program did not finish within 60 seconds and was "
+        "killed. MPI programs started without mpiexec appear to hang in MPI_Init, "
+        "so ElmerSolver might hang as well when started that way. With Open MPI 5 "
+        "this can be caused by the UCX 'uct' BTL; try adding the line "
+        "'btl = ^uct' to ~/.openmpi/mca-params.conf (or setting the environment "
+        "variable OMPI_MCA_btl=^uct). Assuming that MPI_IN_PLACE is supported.")
+      set(CHECK_MPI_IN_PLACE_RUN_ERROR OFF)
+    else()
+      set(CHECK_MPI_IN_PLACE_RUN_ERROR ON)
+    endif()
+  endif()
 endif()
 
 if(CHECK_MPI_IN_PLACE_RUN_ERROR OR NOT CHECK_MPI_IN_PLACE_COMPILE)

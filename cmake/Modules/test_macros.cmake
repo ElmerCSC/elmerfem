@@ -246,13 +246,19 @@ MACRO(RUN_ELMER_TEST)
     # The multi-task tests still go through mpiexec, so a launcher failure of
     # that exact kind is retried once. Nothing else is: a solver that crashes
     # or misses its tolerance fails on the first attempt as before.
+    #
+    # Open MPI's PMIx client on the Ubuntu CI runners also intermittently
+    # segfaults in its own progress thread while handling a launcher message
+    # (backtrace through pmix_ptl_base_process_msg, no Elmer frame on it).
+    # That is retried once as well; it is matched on the PMIx frame in the
+    # backtrace, so a segfault in the solver itself still fails at once.
     FOREACH(_attempt 1 2)
       EXECUTE_PROCESS(COMMAND ${_elmer_cmd}
         RESULT_VARIABLE TEST_RESULT_VARIABLE
         OUTPUT_VARIABLE TEST_STDOUT_VARIABLE
         ERROR_VARIABLE TEST_STDERR_VARIABLE)
       IF(_attempt EQUAL 1 AND TEST_STDERR_VARIABLE MATCHES
-          "Failed to post close command|unable to tear down the job tree")
+          "Failed to post close command|unable to tear down the job tree|in pmix_ptl_base_")
         MESSAGE(STATUS "mpiexec launcher failure (exit ${TEST_RESULT_VARIABLE}), "
           "retrying once:\n${TEST_STDERR_VARIABLE}")
         IF(${MPIEXEC_NTASKS} GREATER 1)
