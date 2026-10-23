@@ -241,7 +241,7 @@
 
 !------------------------------------------------------------------------------
   SUBROUTINE ElectricPortModel(Phase,Solver,Element,GotPort,&
-      B,L,Basis,dBasisdx,WBasis)
+      B,L,Basis,dBasisdx,WBasis,Etan,Etil)
 !------------------------------------------------------------------------------
      INTEGER :: Phase
      TYPE(Solver_t) :: Solver
@@ -249,8 +249,14 @@
      LOGICAL, OPTIONAL :: GotPort
      COMPLEX(KIND=dp), OPTIONAL :: B, L(:)
      REAL(KIND=dp), OPTIONAL :: Basis(:), dBasisdx(:,:), WBasis(:,:)
+     ! For eigenmode ports: the tangential field e_t of the port mode and the field
+     ! e_t - grad(e_n)/(i beta) which is proportional to the tangential trace of the magnetic
+     ! field of the mode (here e_n is the component of the mode along the direction
+     ! of propagation).
+     COMPLEX(KIND=dp), OPTIONAL :: Etan(3), Etil(3)
 
-     LOGICAL :: Found, UseV
+     LOGICAL :: Found, UseV, ModeProjection
+     COMPLEX(KIND=dp) :: Et(3), Eg(3)
      TYPE(Solver_t), POINTER :: EigenSolver
      TYPE(Variable_t), POINTER :: EigenVar, PotVar
      REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:), ParentBasis(:)
@@ -270,7 +276,7 @@
 
      SAVE Omega, mu0inv, PortTypeIndex, EigenInd, Re_Eigenf, Im_Eigenf, UseV, EigenSolver, EigenVar, &
          PortBeta, PortZ, PortScale, PortDirection, PortLength, PortCenter, PortPassive, &
-         DofInds, ParentBasis, m,  n, nd, ndofs, np, eps0, rob0, Parent, PotVar
+         DofInds, ParentBasis, m,  n, nd, ndofs, np, eps0, rob0, Parent, PotVar, ModeProjection
 
 
      SELECT CASE ( Phase )
@@ -290,6 +296,10 @@
        CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
 
        Omega = ListGetAngularFrequency( Solver % Values )
+
+       ! Use the trace of the magnetic field of the port eigenmode to define the source
+       ! and the projection which extracts the modal amplitude:
+       ModeProjection = ListGetLogical( Solver % Values, 'Port Mode Projection', Found )
 
        Found = .FALSE.
        IF( ASSOCIATED( CurrentModel % Constants ) ) THEN
@@ -387,16 +397,36 @@
          END IF
        ELSE IF( PortTypeIndex == 3 ) THEN
          B = im * PortBeta
-         IF( PRESENT(L)) THEN
+         IF( PRESENT(L) .OR. PRESENT(Etan) .OR. PRESENT(Etil) ) THEN
+           Et = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
            DO p=1,nd
-             L(:) = L(:) + CMPLX(Re_Eigenf(np+p) * WBasis(p,:), Im_Eigenf(np+p) * WBasis(p,:), kind=dp)
+             Et(:) = Et(:) + CMPLX(Re_Eigenf(np+p) * WBasis(p,:), Im_Eigenf(np+p) * WBasis(p,:), kind=dp)
            END DO
 
            IF (UseV) THEN
              DO i=1,3
-               L(i) = L(i) - CMPLX(SUM(Re_Eigenf(2:np:ndofs)*dBasisdx(1:n,i)), &
+               Et(i) = Et(i) - CMPLX(SUM(Re_Eigenf(2:np:ndofs)*dBasisdx(1:n,i)), &
                    SUM(Im_Eigenf(2:np:ndofs)*dBasisdx(1:n,i)), KIND=dp)
              END DO
+           END IF
+
+           ! The component e_n of the mode along the propagation direction is
+           ! e_n = i beta P with P the first nodal DOF when potentials are used, otherwise
+           ! e_n = P / (i beta). Compute Eg = -grad(e_n)/(i beta):
+           DO i=1,3
+             Eg(i) = -CMPLX(SUM(Re_Eigenf(1:np:ndofs)*dBasisdx(1:n,i)), &
+                 SUM(Im_Eigenf(1:np:ndofs)*dBasisdx(1:n,i)), KIND=dp)
+           END DO
+           IF (.NOT. UseV) Eg = -Eg / PortBeta**2
+
+           IF (PRESENT(Etan)) Etan = Et
+           IF (PRESENT(Etil)) Etil = Et + Eg
+           IF (PRESENT(L)) THEN
+             IF (ModeProjection) THEN
+               L(:) = L(:) + Et(:) + Eg(:)
+             ELSE
+               L(:) = L(:) + Et(:)
+             END IF
            END IF
          END IF
        ELSE IF( PortTypeIndex == 4 ) THEN

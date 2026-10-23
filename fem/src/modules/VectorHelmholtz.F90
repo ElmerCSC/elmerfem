@@ -228,6 +228,14 @@ SUBROUTINE VectorHelmholtzSolver_Init(Model,Solver,dt,Transient)
     CALL ListAddNewLogical(SolverParams, 'Allocate Preconditioning Matrix', .TRUE.)
   END IF
 
+  ! The coupling of port DOFs due to the modal projection is not symmetric:
+  IF (ListGetLogical(SolverParams, 'Port Mode Projection', Found)) THEN
+    IF (ListGetLogical(SolverParams, 'Linear System Symmetric', Found)) THEN
+      CALL Info('VectorHelmholtzSolver_Init', 'Port Mode Projection: setting Linear System Symmetric = False')
+    END IF
+    CALL ListAddLogical(SolverParams, 'Linear System Symmetric', .FALSE.)
+  END IF
+
   !
   ! The following is for creating sources from pre-computed eigenfunctions:
   !
@@ -293,7 +301,7 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   COMPLEX(KIND=dp) :: PrecDampCoeff
   LOGICAL :: PiolaVersion, EdgeBasis, LowFrequencyModel, LorenzCondition
   LOGICAL :: UseGaussLaw, ChargeConservation
-  LOGICAL :: EigenProblem, ZeroShift
+  LOGICAL :: EigenProblem, ZeroShift, ModeProjection
   TYPE(ValueList_t), POINTER :: SolverParams
   TYPE(Solver_t), POINTER :: pSolver
 
@@ -388,6 +396,10 @@ SUBROUTINE VectorHelmholtzSolver( Model,Solver,dt,Transient )
   LorenzCondition = GetLogical(SolverParams, 'Lorenz Condition', Found)
   UseGaussLaw = GetLogical(SolverParams, 'Use Gauss Law', Found)
   ChargeConservation = GetLogical(SolverParams, 'Apply Conservation of Charge', Found)
+  ModeProjection = GetLogical(SolverParams, 'Port Mode Projection', Found)
+  IF (ModeProjection .AND. ParEnv % PEs > 1) THEN
+    CALL Fatal(Caller, '"Port Mode Projection" is not yet available in parallel')
+  END IF
 
   ! Resolve internal nonlinearities, if requested:
   ! ----------------------------------------------
@@ -484,6 +496,8 @@ CONTAINS
     !-----------------
     CALL Info(Caller,'Starting bulk assembly',Level=12)
 
+    IF (ModeProjection .AND. .NOT. EigenProblem) CALL PortModeProjection(.FALSE.)
+
     CALL DefaultInitialize()
     IF(ASSOCIATED(AmsMat)) AmsMat % Values = 0.0_dp
     IF(ASSOCIATED(AmsScalMat)) AmsScalMat % Values = 0.0_dp
@@ -542,6 +556,8 @@ CONTAINS
 
        CALL LocalMatrixBC(BC,Element,n,nd,InitHandles )
      END DO
+
+    IF (ModeProjection .AND. .NOT. EigenProblem) CALL PortModeProjection(.TRUE.)
 
     CALL Info(Caller,'Local assembly done',Level=12)
 
@@ -1101,6 +1117,188 @@ CONTAINS
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The standard BC of an "eigenmode" port, (n x curl E)_T = -i beta E_T + 2 i beta e_t,
+!> is exact only if the port mode has no component along the direction of propagation.
+!> For a hybrid mode e_t + e_p p (e.g. the quasi-TEM mode of a line on a dielectric
+!> substrate) the trace of the magnetic field of the mode is proportional to
+!> i beta Etil, with Etil = e_t - grad(e_p)/(i beta), so that for E_T = c e_t,
+!> with c the sum of the amplitudes of the incident and reflected modes,
+!>
+!>         (n x curl E)_T = -i beta c Etil + 2 i beta Etil.
+!>
+!> Here the source term is changed to 2 i beta Etil (see ElectricPortModel) and the
+!> boundary operator is augmented with the rank-one term -i beta (Etil - e_t) c(E),
+!> where c(E) = <E_T,Etil>/<e_t,Etil> is the modal amplitude given by the projection
+!> which uses the trace of the magnetic field. This couples all DOFs of the port, so
+!> the sparsity pattern of the matrix is first extended (Assemble = .FALSE.) and the
+!> coupling is then added after the standard boundary assembly (Assemble = .TRUE.).
+!------------------------------------------------------------------------------
+  SUBROUTINE PortModeProjection(Assemble)
+!------------------------------------------------------------------------------
+    LOGICAL, INTENT(IN) :: Assemble
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: A
+    TYPE(Matrix_t), POINTER, SAVE :: ExtendedA => NULL()
+    TYPE(Element_t), POINTER :: Element, Face, Parent
+    TYPE(ValueList_t), POINTER :: BC
+    TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(GaussIntegrationPoints_t) :: IP
+    TYPE(ValueHandle_t), SAVE :: MuCoeff_h
+    INTEGER, ALLOCATABLE :: PortKey(:), Keys(:), Loc(:), PortDofs(:), Indexes(:)
+    INTEGER, SAVE :: ExtendedNnz = -1
+    INTEGER :: bc_id, nkeys, port, ndp, Active, t, i, j, k, ip_ind, m, n, nd, np, ndofs, p, q, ri, rj
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), WBasis(:,:), RotWBasis(:,:)
+    REAL(KIND=dp) :: DetJ, weight
+    COMPLEX(KIND=dp), ALLOCATABLE :: Gv(:), Hv(:)
+    COMPLEX(KIND=dp) :: B, L(3), Et(3), Etil(3), mur, muinv, Nrm, val
+    LOGICAL :: Found, GotPort, stat
+!------------------------------------------------------------------------------
+    A => Solver % Matrix
+
+    IF (.NOT. Assemble) THEN
+      ! The pattern is extended only once for each matrix
+      IF (ASSOCIATED(ExtendedA, A) .AND. SIZE(A % Values) == ExtendedNnz) RETURN
+    END IF
+
+    ! Identify the eigenmode ports: BCs sharing the same "Port Index" form one port
+    ALLOCATE(PortKey(Model % NumberOfBCs), Keys(Model % NumberOfBCs))
+    PortKey = 0
+    nkeys = 0
+    DO bc_id=1,Model % NumberOfBCs
+      BC => Model % BCs(bc_id) % Values
+      IF (ListGetInteger(BC, 'Port Type Index', Found) /= 3) CYCLE
+      k = ListGetInteger(BC, 'Port Index', Found)
+      IF (.NOT. Found) k = -bc_id
+      PortKey(bc_id) = k
+      IF (ALL(Keys(1:nkeys) /= k)) THEN
+        nkeys = nkeys + 1
+        Keys(nkeys) = k
+      END IF
+    END DO
+    IF (nkeys == 0) RETURN
+
+    m = Mesh % MaxElementDOFs
+    ALLOCATE(Loc(A % NumberOfRows/2), PortDofs(A % NumberOfRows/2), Indexes(m))
+    IF (Assemble) THEN
+      ALLOCATE(Basis(m), dBasisdx(m,3), WBasis(m,3), RotWBasis(m,3), &
+          Gv(A % NumberOfRows/2), Hv(A % NumberOfRows/2))
+      CALL ListInitElementKeyword(MuCoeff_h, 'Material', 'Relative Reluctivity', InitIm=.TRUE.)
+    ELSE
+      CALL Info(Caller, 'Extending the matrix structure for coupling port DOFs', Level=6)
+      CALL List_ToListMatrix(A)
+    END IF
+
+    Active = GetNOFBoundaryElements()
+
+    DO port=1,nkeys
+      Loc = 0
+      ndp = 0
+      Nrm = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      IF (Assemble) THEN
+        Gv = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+        Hv = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+      END IF
+
+      DO t=1,Active
+        Element => GetBoundaryElement(t)
+        bc_id = GetBCId(Element)
+        IF (bc_id < 1) CYCLE
+        IF (PortKey(bc_id) /= Keys(port) .OR. ListGetInteger(Model % BCs(bc_id) % Values, &
+            'Port Type Index', Found) /= 3) CYCLE
+        IF (GetElementFamily(Element) < 3) CYCLE
+        k = GetBoundaryFaceIndex(Element)
+        Face => Mesh % Faces(k)
+        IF (.NOT. ActiveBoundaryElement(Face)) CYCLE
+        Face => SetCurrentElement(Face)
+
+        n = Face % TYPE % NumberOfNodes
+        ndofs = MAXVAL(Solver % Def_Dofs(GetElementFamily(Face),:,1))
+        np = n * ndofs
+        nd = GetElementDOFs(Indexes, Face)
+
+        DO i=np+1,nd
+          j = Solver % Variable % Perm(Indexes(i))
+          IF (j < 1) CYCLE
+          IF (Loc(j) == 0) THEN
+            ndp = ndp + 1
+            Loc(j) = ndp
+            PortDofs(ndp) = j
+          END IF
+        END DO
+
+        IF (.NOT. Assemble) CYCLE
+
+        CALL GetElementNodes(Nodes, Face)
+        Parent => GetBulkElementAtBoundary(Face)
+        CALL ElectricPortModel(2, Solver, Face, GotPort)
+        IF (.NOT. GotPort) CYCLE
+
+        IP = GaussPoints(Face, PReferenceElement=PiolaVersion, EdgeBasisDegree=EdgeBasisDegree)
+        DO ip_ind=1,IP % n
+          stat = ElementInfo(Face, Nodes, IP % U(ip_ind), IP % V(ip_ind), IP % W(ip_ind), detJ, Basis, dBasisdx, &
+              EdgeBasis = WBasis, RotBasis = RotWBasis, USolver = pSolver)
+          weight = detJ * IP % s(ip_ind)
+
+          mur = CMPLX(1.0_dp, 0.0_dp, KIND=dp)
+          IF (ASSOCIATED(Parent)) THEN
+            mur = ListGetElementComplex(MuCoeff_h, Basis, Parent, Found, GaussPoint = ip_ind)
+            IF (.NOT. Found) mur = 1.0_dp
+          END IF
+          muinv = mur * mu0inv
+
+          L = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
+          CALL ElectricPortModel(3, Solver, Face, GotPort, B, L, Basis, dBasisdx, WBasis, Et, Etil)
+
+          Nrm = Nrm + muinv * SUM(Et * Etil) * weight
+          DO i=np+1,nd
+            j = Solver % Variable % Perm(Indexes(i))
+            IF (j < 1) CYCLE
+            p = Loc(j)
+            Gv(p) = Gv(p) + muinv * B * SUM((Etil - Et) * WBasis(i-np,:)) * weight
+            Hv(p) = Hv(p) + muinv * SUM(Etil * WBasis(i-np,:)) * weight
+          END DO
+        END DO
+      END DO
+
+      IF (Assemble) THEN
+        IF (ABS(Nrm) < TINY(1.0_dp)) CALL Fatal(Caller, 'Port mode with vanishing norm')
+        WRITE(Message,'(A,I0,A,I0,A,2ES12.4)') 'Port ', Keys(port), ' with ', ndp, &
+            ' DOFs coupled by modal projection, norm: ', REAL(Nrm), AIMAG(Nrm)
+        CALL Info(Caller, Message, Level=6)
+      END IF
+
+      ! Add the coupling -Gv(p) Hv(q) / Nrm in terms of the real-valued 2x2 blocks:
+      DO p=1,ndp
+        ri = 2*PortDofs(p)-1
+        DO q=1,ndp
+          rj = 2*PortDofs(q)-1
+          IF (Assemble) THEN
+            val = -Gv(p) * Hv(q) / Nrm
+            CALL CRS_AddToMatrixElement(A, ri, rj, REAL(val))
+            CALL CRS_AddToMatrixElement(A, ri, rj+1, -AIMAG(val))
+            CALL CRS_AddToMatrixElement(A, ri+1, rj, AIMAG(val))
+            CALL CRS_AddToMatrixElement(A, ri+1, rj+1, REAL(val))
+          ELSE
+            CALL List_AddToMatrixElement(A % ListMatrix, ri, rj, 0.0_dp)
+            CALL List_AddToMatrixElement(A % ListMatrix, ri, rj+1, 0.0_dp)
+            CALL List_AddToMatrixElement(A % ListMatrix, ri+1, rj, 0.0_dp)
+            CALL List_AddToMatrixElement(A % ListMatrix, ri+1, rj+1, 0.0_dp)
+          END IF
+        END DO
+      END DO
+    END DO
+
+    IF (.NOT. Assemble) THEN
+      CALL List_ToCRSMatrix(A)
+      ExtendedA => A
+      ExtendedNnz = SIZE(A % Values)
+      CALL Info(Caller, 'Number of matrix entries after the extension: '//I2S(ExtendedNnz), Level=6)
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE PortModeProjection
 !------------------------------------------------------------------------------
 
 !-----------------------------------------------------------------------------

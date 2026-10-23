@@ -1903,7 +1903,7 @@ MODULE LumpingUtils
 
       vol = vol / area
 
-      PRINT *,'LumpedCurr av:',vol,curr,port_curr,Zimp *curr, CONJG(Zimp) * port_curr
+!      PRINT *,'LumpedCurr av:',vol,curr,port_curr,Zimp *curr, CONJG(Zimp) * port_curr
 
       OutFlux = (vol + Zimp * curr) / (2*SQRT(REAL(Zimp)))
       InFlux = (vol - CONJG(Zimp) * port_curr  ) / (2*SQRT(REAL(Zimp)))
@@ -1923,7 +1923,7 @@ MODULE LumpingUtils
         CALL Warn(Caller,'Source seems to be close to zero!')
       END IF
 
-      PRINT *,'LumpedCurr e:',int_el,int_norm,area,trans,Zimp,ABS(int_norm)
+!      PRINT *,'LumpedCurr e:',int_el,int_norm,area,trans,Zimp,ABS(int_norm)
 
     END IF
 
@@ -1957,9 +1957,9 @@ MODULE LumpingUtils
 
       TYPE(ValueHandle_t), SAVE :: PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, PortDirection_h, PortCenter_h
       INTEGER :: PortTypeIndex, PortDirection
-      COMPLEX(KIND=dp) :: PortZ
+      COMPLEX(KIND=dp) :: PortZ, Etan(3), Etil(3)
       REAL(KIND=dp) :: PortLength, PortScale, PortCenter(3)
-      LOGICAL :: GotPort
+      LOGICAL :: GotPort, ModeProjection
 
       SAVE AllocationsDone, WBasis, RotWBasis, Basis, dBasisdx, e_local, mu0inv, eps0
 
@@ -2046,6 +2046,13 @@ MODULE LumpingUtils
 
       CALL ElectricPortModel(2,pSolver,Element,GotPort)
 
+      ! With "Port Mode Projection" the amplitude of an eigenmode is extracted by using
+      ! the trace of the modal magnetic field, which makes the projection orthogonal to
+      ! the other modes:
+      ModeProjection = .FALSE.
+      IF (GotPort) ModeProjection = ListGetLogical(pSolver % Values, 'Port Mode Projection', Found) .AND. &
+          ListGetInteger(BC, 'Port Type Index', Found) == 3
+
       ! Numerical integration:
       !-----------------------
       DO t=1,IP % n
@@ -2071,7 +2078,7 @@ MODULE LumpingUtils
 
         L = (0_dp, 0_dp)
         IF(GotPort) THEN
-          CALL ElectricPortModel(3,pSolver,Element,GotPort,B,L,Basis,dBasisdx,WBasis)
+          CALL ElectricPortModel(3,pSolver,Element,GotPort,B,L,Basis,dBasisdx,WBasis,Etan,Etil)
 
           !IF(t==1) PRINT *,'B1:',Element % ElementIndex,B,SUM(ABS(L)),Element % BoundaryInfo % Constraint
         ELSE IF( ListGetElementLogical( Absorb_h, Element, Found ) ) THEN
@@ -2105,11 +2112,18 @@ MODULE LumpingUtils
           END DO
         END IF
 
-        ! Integral over electric field: This gives the phase
-        int_el = int_el + weight * SUM(e_ip * CONJG(L) )
+        IF (ModeProjection) THEN
+          ! The ratio int_el/int_norm gives the modal amplitude while int_norm is
+          ! proportional to the power of the mode:
+          int_el = int_el + weight * muinv * SUM(e_ip * CONJG(Etil))
+          int_norm = int_norm + weight * muinv * SUM(Etan * CONJG(Etil))
+        ELSE
+          ! Integral over electric field: This gives the phase
+          int_el = int_el + weight * SUM(e_ip * CONJG(L) )
 
-        ! Norm of electric field used for normalization
-        int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) )
+          ! Norm of electric field used for normalization
+          int_norm = int_norm + weight * ABS( SUM( L * CONJG(L) ) )
+        END IF
 
         trans = trans + B * weight / Omega
         area = area + weight
