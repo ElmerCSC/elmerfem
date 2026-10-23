@@ -31,3 +31,6 @@ INSTALL(TARGETS matc Matc_bin
   RUNTIME DESTINATION "bin"
   LIBRARY DESTINATION ${ELMER_INSTALL_LIB_DIR}
   ARCHIVE DESTINATION ${ELMER_INSTALL_LIB_DIR})
+
+MESSAGE(STATUS "------------------------------------------------")
+MESSAGE(STATUS "  [MATC] Compiling MATC executable")
