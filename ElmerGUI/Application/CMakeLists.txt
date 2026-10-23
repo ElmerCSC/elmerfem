@@ -92,16 +92,6 @@ SET(SOURCES src/bodypropertyeditor.cpp
   twod/twodview.cpp 
   twod/curveeditor.cpp)
 
-# ElmerGUI uses ElmerGrid source to read and process .grd input files.
-# ElmerGUI includes ElmerVTK, for post processing.
-# Compiling ElmerGUI now uses a static library, elmergrid_core,
-# built from the ElmerGrid source.  This means that ElmerGUI can be
-# synchronized/harmonized with ElmerGrid.  Since the ElmerGrid source
-# is used for the static library build, the old EQ_PLUGIN definition
-# is no longer needed and can be removed completely.
-#
-# ADD_DEFINITIONS(-DEG_PLUGIN)
-
 IF(WITH_QWT)
   SET(HEADERS ${HEADERS} src/convergenceview.h)
   SET(SOURCES ${SOURCES} src/convergenceview.cpp)
