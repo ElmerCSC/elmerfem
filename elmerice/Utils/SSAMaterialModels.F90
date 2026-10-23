@@ -184,6 +184,7 @@ MODULE SSAMaterialModels
     SELECT CASE (iFriction)
 
     CASE(BUDD)
+      Constants => GetConstants()
       gravity = ListGetConstReal( Constants, 'Gravity Norm', UnFoundFatal=.TRUE. )
       ! calculate haf from N = rho_i g z*
       qq = ListGetConstReal( Material, 'SSA Haf Exponent', Found, UnFoundFatal=.TRUE.)
