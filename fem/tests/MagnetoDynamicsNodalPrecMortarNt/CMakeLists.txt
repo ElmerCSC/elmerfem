@@ -5,4 +5,4 @@ CONFIGURE_FILE( case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO extrude.eg half_wire2d_discont.msh linsys_nodalprec.sif DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(MagnetoDynamicsNodalPrecMortarNt LABELS whitney)
+ADD_ELMER_TEST(MagnetoDynamicsNodalPrecMortarNt LABELS whitney NPROCS 1 3)

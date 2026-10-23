@@ -1,5 +1,5 @@
 include(test_macros)
 execute_process(COMMAND ${ELMERGRID_BIN} 14 2 half_wire2d_discont.msh -autoclean)
 execute_process(COMMAND ${ELMERGRID_BIN} extrude.eg)
-
+execute_process(COMMAND ${ELMERGRID_BIN} 2 2 wire3d -partcell 1 1 ${MPIEXEC_NTASKS} -nooverwrite)
 RUN_ELMER_TEST()
