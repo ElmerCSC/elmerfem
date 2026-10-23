@@ -5,18 +5,7 @@
 #define _FEMDEF_H_
 
 /*
-This header file, egdef.h, is used by ElmerGrid and by ElmerGUI.
-
-The following definition, DISABLE_METIS, is needed only for debugging
-purposes and Metis would not normally be disabled.
-Historically, DISABLE_METIS was added when building ElmerGUI with a
-second copy of the ElmerGrid source code, where the Metis
-partitioning capability was not needed in ElmerGUI.  Now that
-ElmerGrid is built using a single copy of the source code, the
-original need for the flag is no longer present.
-
-The flag defined here, USE_METIS, is used in the ElmerGrid source files.
-The old flag, EG_PLUGIN, is no longer needed and has been removed.
+The following flag, DISABLE_METIS, is needed only for debugging.
 */
 
 #ifdef DISABLE_METIS
