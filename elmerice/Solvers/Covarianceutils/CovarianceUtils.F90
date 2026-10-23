@@ -54,7 +54,43 @@
         MODULE PROCEDURE CovarianceInitD,CovarianceInitL
       END INTERFACE
 
+      ! Setup kept between calls by the covariance solvers. It is stored per
+      ! solver instance: SAVEd data would be shared by all instances.
+      TYPE CovarianceState_t
+        LOGICAL :: Initialized = .FALSE.
+        TYPE(Solver_t), POINTER :: MSolver => NULL(), KMSolver => NULL()
+        REAL(KIND=dp), ALLOCATABLE :: aap(:) ! matrix in packed format
+        REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), norm(:), One(:), rr(:,:)
+        INTEGER :: nn = 0, PbDim = 0
+        INTEGER, ALLOCATABLE :: ActiveNodes(:), InvPerm(:)
+        CHARACTER(LEN=MAX_NAME_LEN) :: CovType = ' '
+        REAL(KIND=dp) :: std = 0.0_dp
+      END TYPE CovarianceState_t
+
+      TYPE(CovarianceState_t), ALLOCATABLE, TARGET, SAVE, PRIVATE :: CovarianceStates(:)
+
       CONTAINS
+
+        ! Return the covariance setup of the given solver instance.
+        FUNCTION GetCovarianceState(Solver) RESULT(State)
+          TYPE(Solver_t) :: Solver
+          TYPE(CovarianceState_t), POINTER :: State
+
+          TYPE(CovarianceState_t), ALLOCATABLE :: TmpStates(:)
+          INTEGER :: SolverId
+
+          SolverId = Solver % SolverId
+          IF( SolverId < 1 ) CALL Fatal('GetCovarianceState','Solver index not set!')
+
+          IF( .NOT. ALLOCATED(CovarianceStates) ) THEN
+            ALLOCATE( CovarianceStates(MAX(SolverId,CurrentModel % NumberOfSolvers)) )
+          ELSE IF( SIZE(CovarianceStates) < SolverId ) THEN
+            ALLOCATE( TmpStates(SolverId) )
+            TmpStates(1:SIZE(CovarianceStates)) = CovarianceStates
+            CALL MOVE_ALLOC( TmpStates, CovarianceStates )
+          END IF
+          State => CovarianceStates(SolverId)
+        END FUNCTION GetCovarianceState
 
         SUBROUTINE GetActiveNodesSet(Solver,n,ActiveNodes,InvPerm,PbDim)
           TYPE(Solver_t) :: Solver
@@ -107,7 +143,7 @@
 
           REAL(KIND=dp),DIMENSION(n) :: x1
           TYPE(ValueList_t), POINTER :: SolverParams
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
           REAL(KIND=dp) :: std
 
           SolverParams => GetSolverParams(Solver)
@@ -134,7 +170,7 @@
 
           REAL(KIND=dp),DIMENSION(n) :: x1
           TYPE(ValueList_t), POINTER :: SolverParams
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
           REAL(KIND=dp) :: std
 
           SolverParams => GetSolverParams(Solver)
@@ -160,7 +196,7 @@
           REAL(KIND=dp),DIMENSION(n),INTENT(OUT) :: y
 
           TYPE(ValueList_t), POINTER :: SolverParams
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
           REAL(KIND=dp) :: std
 
           SolverParams => GetSolverParams(Solver)
@@ -545,7 +581,7 @@
           INTEGER :: p
 
           CHARACTER(LEN=MAX_NAME_LEN) :: SolverName="CovarianceInit"
-          character*1,parameter :: uplo='L'
+          CHARACTER(LEN=1),parameter :: uplo='L'
 
           LOGICAL :: Parallel
 

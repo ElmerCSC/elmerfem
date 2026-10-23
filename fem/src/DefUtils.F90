@@ -4183,7 +4183,7 @@ CONTAINS
 
          n = SIZE(Solver % Matrix % rhs)
 
-         LFact = ListGetLogical( Params,'Linear System Refacrtorize', Found )
+         LFact = ListGetLogical( Params,'Linear System Refactorize', Found )
          IF(.NOT. Found) LFact = .TRUE.
          FreeFact = ListGetLogical( Params,'Linear System Free Factorization', Found )
 

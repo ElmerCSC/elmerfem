@@ -1,9 +1,7 @@
 To execute the test:
 --------------------
-Require two calls of the FreeSurfaceSolver. 
-It is then needed to make a copy of the object file FreeSurfaceSolver.so 
-(or FreeSurfaceSolver.dylib for mac): 
-cp $ELMER_HOME/share/elmersolver/lib/FreeSurfaceSolver.so MyFreeSurfaceSolver.so
+Uses two instances of the FreeSurfaceSolver.
+
 ElmerSolver mismip.sif
 
 

@@ -241,16 +241,24 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
 
   LOGICAL ::&
        firstTime=.TRUE., Found, AllocationsDone = .FALSE., stat, &
-       NeedOldValues, LimitDisp,  Bubbles = .TRUE.,&
+       NeedOldValues, LimitDisp,  Bubbles,&
        NormalFlux = .TRUE., SubstantialSurface = .TRUE.,&
        UseBodyForce = .TRUE., ApplyDirichlet=.FALSE.,  ALEFormulation=.FALSE.,&
        RotateFS, ReAllocate=.TRUE., ResetLimiters=.FALSE., ComputeLocalMaxDisp=.FALSE.
-  LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:), ActiveNode(:,:)
+  LOGICAL, ALLOCATABLE ::  LimitedSolution(:,:)
+  LOGICAL, POINTER :: ActiveNode(:,:) => NULL()
+
+  ! The limiter active set must survive between calls, so keep it per solver
+  ! instance: SAVEd data is shared by all instances using this module.
+  TYPE ActiveNode_t
+    LOGICAL, POINTER :: Values(:,:) => NULL()
+  END TYPE ActiveNode_t
+  TYPE(ActiveNode_t), ALLOCATABLE :: ActiveNodes(:), TmpActiveNodes(:)
 
   INTEGER :: &
        i,j,K,L, p, q, R, t,N,NMAX,MMAX,nfamily, deg, Nmatrix,&
        edge, bf_id,DIM,istat,LocalNodes,nocorr,&
-       NSDOFs,NonlinearIter,iter, numberofsurfacenodes, PrevSize = 0
+       NSDOFs,NonlinearIter,iter, numberofsurfacenodes, PrevSize = 0, SolverId
   INTEGER, POINTER ::&
        FreeSurfPerm(:), FlowPerm(:), NodeIndexes(:), EdgeMap(:,:)
 
@@ -283,7 +291,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
        ElementNodes, AllocationsDone, ReAllocate, Velo, TimeForce, &
        ElemFreeSurf, Flux, SubstantialSurface, NormalFlux,&
        UseBodyForce, LimitedSolution, LowerLimit, &
-       UpperLimit, ActiveNode, ResetLimiters, OldValues, OldRHS, &
+       UpperLimit, ActiveNodes, OldValues, OldRHS, &
        ResidualVector, StiffVector, MeshVelocity, &
        ComputeLocalMaxDisp, LocalMaxDisp, VariableName, PrevSize
 
@@ -362,6 +370,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
   IF(.NOT. Found) Relax = 1.0_dp
   NeedOldValues = (Found .AND. (Relax < 1.0_dp)) .OR. LimitDisp
 
+  ResetLimiters = .FALSE.
   ApplyDirichlet = GetLogical( SolverParams,'Apply Dirichlet', Found)
   IF ( .NOT.Found ) THEN
     ApplyDirichlet = .FALSE.
@@ -392,6 +401,7 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName, 'Using horizontal Eulerian Formulation',Level=6 )
   END IF
 
+  Bubbles = .TRUE.
   StabilizeFlag = GetString( SolverParams, &
        'Stabilization Method',Found )
   SELECT CASE(StabilizeFlag)
@@ -439,33 +449,30 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
     K = SIZE( SystemMatrix % Values )
     L = SIZE( SystemMatrix % RHS )
 
-    IF ( AllocationsDone ) THEN
-      DEALLOCATE( ElementNodes % x,    &
-           ElementNodes % y,    &
-           ElementNodes % z,    &
-           TimeForce,        &
-           FORCE,    &
-           STIFF, &
-           MASS,  &
-           Velo,  &
-           MeshVelocity, &
-           Flux, &
-           ElemFreeSurf,&
-           SourceFunc )
-      IF (ComputeLocalMaxDisp) THEN
-         DEALLOCATE( LocalMaxDisp )
-      END IF
-      IF( ApplyDirichlet ) THEN
-        DEALLOCATE( LowerLimit,                      &
-             UpperLimit, &
-             LimitedSolution,  &
-             ActiveNode,                      &
-             ResidualVector, &
-             StiffVector,  &
-             OldValues, &
-             OldRHS)
-      END IF
-    END IF
+    ! Deallocate whatever is allocated: the SAVEd arrays are shared by all
+    ! instances of this solver, and the previous call may have been made by
+    ! another instance with different 'Apply Dirichlet' or
+    ! 'Compute Local Maximum Displacement' settings.
+    IF ( ASSOCIATED(ElementNodes % x) ) DEALLOCATE( ElementNodes % x )
+    IF ( ASSOCIATED(ElementNodes % y) ) DEALLOCATE( ElementNodes % y )
+    IF ( ASSOCIATED(ElementNodes % z) ) DEALLOCATE( ElementNodes % z )
+    IF ( ALLOCATED(TimeForce) ) DEALLOCATE( TimeForce )
+    IF ( ALLOCATED(FORCE) ) DEALLOCATE( FORCE )
+    IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF )
+    IF ( ALLOCATED(MASS) ) DEALLOCATE( MASS )
+    IF ( ALLOCATED(Velo) ) DEALLOCATE( Velo )
+    IF ( ALLOCATED(MeshVelocity) ) DEALLOCATE( MeshVelocity )
+    IF ( ALLOCATED(Flux) ) DEALLOCATE( Flux )
+    IF ( ALLOCATED(ElemFreeSurf) ) DEALLOCATE( ElemFreeSurf )
+    IF ( ALLOCATED(SourceFunc) ) DEALLOCATE( SourceFunc )
+    IF ( ALLOCATED(LocalMaxDisp) ) DEALLOCATE( LocalMaxDisp )
+    IF ( ALLOCATED(LowerLimit) ) DEALLOCATE( LowerLimit )
+    IF ( ALLOCATED(UpperLimit) ) DEALLOCATE( UpperLimit )
+    IF ( ALLOCATED(LimitedSolution) ) DEALLOCATE( LimitedSolution )
+    IF ( ALLOCATED(ResidualVector) ) DEALLOCATE( ResidualVector )
+    IF ( ALLOCATED(StiffVector) ) DEALLOCATE( StiffVector )
+    IF ( ALLOCATED(OldValues) ) DEALLOCATE( OldValues )
+    IF ( ALLOCATED(OldRHS) ) DEALLOCATE( OldRHS )
 
 
     IF (Bubbles) THEN
@@ -504,7 +511,6 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
       ALLOCATE( LowerLimit( MMAX ), &
            UpperLimit( MMAX ), &
            LimitedSolution( MMAX, 2 ),  &
-           ActiveNode( MMAX, 2 ),                      &
            ResidualVector( L ),                    &
            StiffVector( L ), &
            OldValues( K ), &
@@ -513,7 +519,6 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
       IF ( istat /= 0 ) THEN
         CALL Fatal(SolverName,'Memory allocation error 4, Aborting.')
       END IF
-      ActiveNode = .FALSE.
       LimitedSolution = .FALSE.
       ResidualVector = 0.0_dp
     END IF
@@ -534,7 +539,34 @@ SUBROUTINE FreeSurfaceSolver( Model,Solver,dt,TransientSimulation )
     PointerToResidualVector => VarSurfResidual % Values
   END IF
 
-  IF (ResetLimiters)  ActiveNode = .FALSE.
+  !------------------------------------------------------------------------------
+  !    Get the limiter active set of this solver instance
+  !------------------------------------------------------------------------------
+  IF( ApplyDirichlet ) THEN
+    SolverId = Solver % SolverId
+    IF( SolverId < 1 ) CALL Fatal(SolverName,'Solver index not set!')
+    IF( .NOT. ALLOCATED(ActiveNodes) ) THEN
+      ALLOCATE( ActiveNodes(MAX(SolverId,Model % NumberOfSolvers)) )
+    ELSE IF( SIZE(ActiveNodes) < SolverId ) THEN
+      ALLOCATE( TmpActiveNodes(SolverId) )
+      TmpActiveNodes(1:SIZE(ActiveNodes)) = ActiveNodes
+      CALL MOVE_ALLOC( TmpActiveNodes, ActiveNodes )
+    END IF
+
+    ActiveNode => ActiveNodes(SolverId) % Values
+    IF( ASSOCIATED(ActiveNode) ) THEN
+      IF( Solver % MeshChanged .OR. SIZE(ActiveNode,1) /= Model % Mesh % NumberOfNodes ) THEN
+        DEALLOCATE( ActiveNode )
+      END IF
+    END IF
+    IF( .NOT. ASSOCIATED(ActiveNode) ) THEN
+      ALLOCATE( ActiveNode(Model % Mesh % NumberOfNodes,2) )
+      ActiveNode = .FALSE.
+      ActiveNodes(SolverId) % Values => ActiveNode
+    END IF
+
+    IF (ResetLimiters)  ActiveNode = .FALSE.
+  END IF
   !------------------------------------------------------------------------------
   ! Non-linear iteration loop
   !------------------------------------------------------------------------------

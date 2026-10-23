@@ -45,7 +45,7 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Variable_t), POINTER :: TimeVariable
   TYPE(ValueList_t), POINTER :: SolverParams
 
-  LOGICAL :: Found, CoordinatesWritten = .FALSE.
+  LOGICAL :: Found, CoordinatesWritten
   LOGICAL :: EigenAnalysis = .FALSE., FirstTimeStep
 
   INTEGER :: i,j,k,m,n,dim, Code, body_id, ElementCounter, Nloop, Loop, ExtCount
@@ -138,7 +138,10 @@ SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
   ! Write the GiD msh-file:
   !------------------------
   dim = CoordinateSystemDimension()
-  IF( CoordinatesWritten ) GOTO 10
+  ! The msh-file is written once per solver instance. Counting the steps is
+  ! left to ResultOutputSolver, which keeps the count per instance.
+  IF( .NOT. FirstTimeStep ) GOTO 10
+  CoordinatesWritten = .FALSE.
 
   OPEN(NEWUNIT=GidUnit, FILE=MshFile )
 

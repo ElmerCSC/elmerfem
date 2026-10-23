@@ -356,7 +356,11 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
-    IF ( .NOT.ASSOCIATED(Diag) .OR. i /= j .OR. .NOT. A % Ordered ) THEN
+    ! A row may lack the diagonal entry (Diag(i)=0), then search for it as for others.
+    k = 0
+    IF ( ASSOCIATED(Diag) .AND. i == j .AND. A % Ordered ) k = Diag(i)
+
+    IF ( k <= 0 ) THEN
       IF(PRESENT(Previ)) THEN
         k = previ+1
         DO WHILE(k<Rows(i+1)-1)
@@ -378,8 +382,6 @@ CONTAINS
         IF ( k==0 ) RETURN
         k = k + Rows(i) - 1
       END IF
-    ELSE
-      k = Diag(i)
     END IF
 !$omp atomic
     Values(k) = Values(k) + val
@@ -527,7 +529,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>    Set a given value to an element of a  CRS format matrix.
+!>    Set a given value to an element of a CRS format matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE CRS_SetMatrixElement( A,i,j,val )
 !------------------------------------------------------------------------------
@@ -550,15 +552,17 @@ CONTAINS
     Diag   => A % Diag
     Values => A % Values
 
-    IF ( .NOT.ASSOCIATED(Diag) .OR. i /= j .OR. .NOT. A % Ordered ) THEN
+    ! A row may lack the diagonal entry (Diag(i)=0), then search for it as for others.
+    k = 0
+    IF ( ASSOCIATED(Diag) .AND. i == j .AND. A % Ordered ) k = Diag(i)
+
+    IF ( k <= 0 ) THEN
        k = CRS_Search( Rows(i+1)-Rows(i),Cols(Rows(i):Rows(i+1)-1),j )
       IF ( k==0 ) THEN
          A % FORMAT = MATRIX_LIST
          RETURN
        END IF
        k = k + Rows(i) - 1
-    ELSE
-       k = Diag(i)
     END IF
     Values(k) = val
   END SUBROUTINE CRS_SetMatrixElement
@@ -724,7 +728,7 @@ CONTAINS
                                           !! (to matrix rows and columns, if Dofs = 1)
      REAL(KIND=dp), OPTIONAL, TARGET :: GlobalValues(:)
 !------------------------------------------------------------------------------
-     INTEGER :: i,j,k,l,c,Row,Col
+     INTEGER :: i,j,k,l,c,cp,Row,Col
      REAL(KIND=dp), POINTER :: Values(:)
      INTEGER, POINTER :: Cols(:),Rows(:),Diag(:)
 !------------------------------------------------------------------------------
@@ -764,15 +768,25 @@ CONTAINS
              Row  = Dofs * Indeces(i) - k
              IF ( Diag(Row) <= 0)  CYCLE
              DO j=1,N
+                cp = 0
                 DO l=0,Dofs-1
                    IF ( Indeces(j) <= 0 ) CYCLE
                    Col  = Dofs * Indeces(j) - l
-                   IF ( Col >= Row ) THEN
-                     c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
-                   ELSE
-                     c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+                   ! A node's columns are adjacent in the row, so try the slot
+                   ! next to the previous hit before searching.
+                   c = 0
+                   IF ( cp > Rows(Row) ) THEN
+                     IF ( Cols(cp-1)==Col ) c = cp-1
+                   END IF
+                   IF ( c == 0 ) THEN
+                     IF ( Col >= Row ) THEN
+                       c = BinarySearch(Cols, Col, Diag(Row), Rows(Row+1)-1)
+                     ELSE
+                       c = BinarySearch(Cols, Col, Rows(Row), Diag(Row)-1)
+                     END IF
                    END IF
                    IF (c > 0) THEN
+                     cp = c
 !$omp atomic
                      Values(c) = Values(c) + LocalMatrix(Dofs*i-k,Dofs*j-l)
                    END IF

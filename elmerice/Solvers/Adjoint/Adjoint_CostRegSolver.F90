@@ -131,7 +131,7 @@ SUBROUTINE Adjoint_CostRegSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: HaveNodalVariable
   LOGICAL :: HaveDer
 
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
 
   SolverParams => GetSolverParams()

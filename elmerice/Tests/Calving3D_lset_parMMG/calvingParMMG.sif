@@ -349,7 +349,7 @@ End
 
 Solver 10
   Equation = "CalvingResultOutput"
-  Procedure = File "ResultOutputSolve2" "ResultOutputSolver"
+  Procedure = File "ResultOutputSolve" "ResultOutputSolver"
   Exec Solver = "Never" !auxiliary solver called by Calving3D
 
   Output File Name  = "plane_$namerun"_" !"
@@ -423,7 +423,7 @@ Solver 15
   Variable = "Zs Bottom"
   Exec Solver = "After Timestep"
   Variable DOFs =  1
-  Procedure =  "FreeSurfaceSolver1" "FreeSurfaceSolver"
+  Procedure =  "FreeSurfaceSolver" "FreeSurfaceSolver"
   Solver Timing = Logical True
 
 !  Before Linsolve = "EliminateDirichlet" "EliminateDirichlet"
@@ -508,7 +508,7 @@ Solver 16
   ! usually, the solver is executed only after the thermo-mechanical
   ! problem has obtained a solution on the time-level
   Exec Solver = "After TimeStep"
-  Procedure =  File "MeshSolve1" "MeshSolver"
+  Procedure =  File "MeshSolve" "MeshSolver"
   Solver Timing = Logical True
 
   Variable = Vertical Mesh Update
@@ -585,7 +585,7 @@ End
 
 Solver 22
   Equation = "Remesh Mesh Update"
-  Procedure = File "MeshSolve2" "MeshSolver"
+  Procedure = File "MeshSolve" "MeshSolver"
   Exec Solver = "Never" !auxiliary solver called by Remesh
   Solver Timing = Logical True
 
@@ -619,7 +619,7 @@ End
 
 Solver 20
   Equation = "ResultOutputPreCalve"
-  Procedure = File "ResultOutputSolve1" "ResultOutputSolver"
+  Procedure = File "ResultOutputSolve" "ResultOutputSolver"
   Exec Solver = "After Timestep"
 !  Exec Solver = "Never"
 
@@ -640,7 +640,7 @@ End
 
 Solver 26
   Equation = "ResultOutputPostCalve"
-  Procedure = File "ResultOutputSolve3" "ResultOutputSolver"
+  Procedure = File "ResultOutputSolve" "ResultOutputSolver"
   Exec Solver = "After Timestep"
 !  Exec Solver = "Never"
 

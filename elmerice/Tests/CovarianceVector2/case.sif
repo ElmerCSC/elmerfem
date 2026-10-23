@@ -82,7 +82,7 @@ End
 Solver 2
   Equation = "MaternICovariance"
   Variable = "CorrMI"
-  Procedure = "ElmerIceSolvers2" "CovarianceVectorMultiplySolver"
+  Procedure = "ElmerIceSolvers" "CovarianceVectorMultiplySolver"
 
   input variable = string "impulse"
 
@@ -103,7 +103,7 @@ End
 Solver 3
   Equation = "MaternOpCovariance"
   Variable = "Corrdo"
-  Procedure = "ElmerIceSolvers3" "CovarianceVectorMultiplySolver"
+  Procedure = "ElmerIceSolvers" "CovarianceVectorMultiplySolver"
 
   input variable = string "impulse"
 

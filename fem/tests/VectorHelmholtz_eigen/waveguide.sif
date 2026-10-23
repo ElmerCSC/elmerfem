@@ -1,0 +1,140 @@
+! Solve the Maxwell eigenvalue problem  
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "shoebox_tets"
+End
+
+Simulation
+  Max Output Level = 10
+
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+End
+
+Constants
+ Permeability of Vacuum = Real 1.0
+ Permittivity of Vacuum = Real 1.0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Relative Permittivity = Real 1
+  !Relative Permittivity im = Real 0
+End
+
+Equation 1
+  Active Solvers(3) = 1 2 3
+End
+
+Solver 1
+  Equation = "VectorHelmholtz"
+  Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
+
+! ------------------------------------
+! The following keyword can be used to switch to the mixed form where
+! the Gauss law is enforced by using a Lagrange multiplier:
+! ------------------------------------
+  Use Lagrange Multiplier = True
+  
+  Use Piola Transform = True
+!  Quadratic Approximation = True
+!  Gradient Basis Functions = True
+
+  Eigen Analysis = True
+  Eigen System Values = 5
+  Eigen System Convergence Tolerance = 1.0e-8
+  Eigen System Select = smallest magnitude
+  Eigen System Sorting = smallest real part
+  Eigen System Shift = 1000.0
+  Eigen System Compute Residuals = True
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+! Outer iteration
+!  Linear System Solver = iterative 
+  Linear System Iterative Method = GCR 
+  Linear System Max Iterations = 200
+  Linear System GCR Restart = 50
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Residual Output = 1
+  Linear System Scaling = True
+  Linear System Preconditioning = multigrid
+
+
+! MG parameters only active when preconditioning set to "multigrid"
+  Edge Basis = True
+  MG Method = p
+  MG Levels = 2
+  MG Max Iterations = 1
+  MG Smoother = cjacobi
+  MG Pre Smoothing iterations = 6
+  MG Post Smoothing Iterations = 6
+  MG Smoother Relaxation Factor = $ 1/6
+
+  MG Lowest Linear Solver = Direct
+  mglowest: Linear System Scaling = True
+  mglowest: Linear System Direct Method = umfpack
+
+  Linear System Abort Not Converged = False
+  Steady State Convergence Tolerance = 1e-09
+End
+
+Solver 2
+!  Exec Solver = never
+  Equation = "calcfields"
+
+  Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
+
+  Calculate Elemental Fields = False
+  Calculate Magnetic Field Strength = True
+  Calculate Electric field = True
+
+  Steady State Convergence Tolerance = 1
+  Linear System Solver = "Iterative"
+  Linear System Preconditioning = None
+  Linear System Residual Output = 10
+  Linear System Max Iterations = 5000
+  Linear System Iterative Method = CG
+  Linear System Convergence Tolerance = 1.0e-9
+End
+
+Solver 3
+  Equation = VtuOutput
+  Equation = "result output"
+  Procedure = "ResultOutputSolve" "ResultOutputSolver"
+  Output File Name = case
+  Vtu Format = Logical True
+  Save Geometry IDs = True
+  Ascii Output = True
+  Eigen Analysis = True
+End 
+
+Solver 4
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+  Show Norm Index = 1
+!  FileName = "scalar_values.dat"
+End
+
+Boundary Condition 1
+  Target Boundaries(6) = 1 2 3 4 5 6
+
+  E re {e} = Real 0
+  E im {e} = Real 0
+  ! In the case of the mixed form the Lagrange multiplier is also constrained:
+  E re {n} = Real 0
+  E im {n} = Real 0  
+End
+
+Solver 4 :: Reference Norm = 1.23198564E+03 ! Linear
+!Solver 4 :: Reference Norm = 1.233705E+03   ! Qudratic Approximation
+

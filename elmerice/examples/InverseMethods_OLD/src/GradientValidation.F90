@@ -57,7 +57,7 @@ SUBROUTINE GradientValidation ( Model,Solver,dt,TransientSimulation )
   logical,allocatable :: VisitedNode(:)
 
   CHARACTER(LEN=MAX_NAME_LEN) :: CostSolName,VarSolName,GradSolName,PSolName,ResultFile
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
 !
   save FirstVisit

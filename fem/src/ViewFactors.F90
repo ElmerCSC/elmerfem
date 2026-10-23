@@ -1688,7 +1688,7 @@ CONTAINS
          PRINT *,'X coord:',model % nodes % x(element % nodeindexes)
          PRINT *,'Y coord:',model % nodes % y(element % nodeindexes)
          PRINT *,'Z coord:',model % nodes % z(element % nodeindexes)
-         DO i=1,3
+         DO i=1,SIZE(element % nodeindexes)
            j = element % nodeindexes(i)
            PRINT *,'r:',sqrt(model % nodes % x(j)**2 + model % nodes % y(j)**2 + model % nodes % z(j)**2)
          END DO

@@ -54,21 +54,11 @@
       INTEGER :: DOFs
 
 
-      TYPE(Solver_t), POINTER, SAVE :: MSolver,KMSolver
-      REAL(kind=dp),allocatable,save :: aap(:) ! matrix in packed format
-      REAL(kind=dp),allocatable,save :: x(:),y(:),norm(:)
-
-      INTEGER,SAVE  :: nn
-      INTEGER, ALLOCATABLE, SAVE :: ActiveNodes(:),InvPerm(:)
-      INTEGER,SAVE :: PbDim
-
-      CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CovType
-      REAL(kind=dp),SAVE :: std
+      TYPE(CovarianceState_t), POINTER :: State
       REAL(kind=dp) :: sigma2
       INTEGER :: Op
 
-      LOGICAL, SAVE :: Firsttime=.TRUE.
-      LOGICAL, SAVE :: Normalize
+      LOGICAL :: Normalize
       LOGICAL :: Parallel
       LOGICAL :: Found
 
@@ -78,6 +68,7 @@
       Parallel=(ParEnv % PEs > 1)
 
       SolverParams => GetSolverParams()
+      State => GetCovarianceState(Solver)
 
       VarName = ListGetString(SolverParams,"Input Variable",UnFoundFatal=.TRUE.)
 
@@ -92,19 +83,19 @@
          CALL FATAL(SolverName,'Sorry 1DOFs variables')
 
       !! some initialisation
-      IF (Firsttime) THEN
+      IF (.NOT. State % Initialized) THEN
 
-        CALL GetActiveNodesSet(Solver,nn,ActiveNodes,InvPerm,PbDim)
+        CALL GetActiveNodesSet(Solver,State % nn,State % ActiveNodes,State % InvPerm,State % PbDim)
 
         !Sanity check
-        IF (ANY(Perm(ActiveNodes(1:nn)).LT.0)) &
+        IF (ANY(Perm(State % ActiveNodes(1:State % nn)).LT.0)) &
           CALL FATAL(SolverName,"Pb with input variable perm")
 
         !! The covariance type
-        CovType = ListGetString(SolverParams,"Covariance type",UnFoundFatal=.TRUE.)
-        std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
+        State % CovType = ListGetString(SolverParams,"Covariance type",UnFoundFatal=.TRUE.)
+        State % std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
 
-        SELECT CASE (CovType)
+        SELECT CASE (State % CovType)
 
           CASE('diagonal')
             CALL INFO(SolverName,"Using diagonal covariance",level=3)
@@ -113,66 +104,66 @@
             CALL INFO(SolverName,"Using full matrix covariance",level=3)
 
             Op=1
-            ALLOCATE(aap(nn*(nn+1)/2))
-            CALL CovarianceInit(Solver,nn,InvPerm,aap,Op,PbDim)
+            ALLOCATE(State % aap(State % nn*(State % nn+1)/2))
+            CALL CovarianceInit(Solver,State % nn,State % InvPerm,State % aap,Op,State % PbDim)
 
           CASE('diffusion operator')
             CALL INFO(SolverName,"Using diffusion operator covariance",level=3)
 
-            CALL CovarianceInit(Solver,MSolver,KMSolver)
+            CALL CovarianceInit(Solver,State % MSolver,State % KMSolver)
 
         END SELECT
 
-       allocate(x(nn),y(nn))
+       allocate(State % x(State % nn),State % y(State % nn))
 
        IF (Normalize) THEN
-          allocate(norm(nn))
+          allocate(State % norm(State % nn))
 
           !input vector
-          x(:) = 1._dp
+          State % x(:) = 1._dp
 
           ! C . x
-          SELECT CASE (CovType)
+          SELECT CASE (State % CovType)
 
             CASE('diagonal')
-              sigma2=std**2
-              norm(:)=sigma2*x(:)
+              sigma2=State % std**2
+              State % norm(:)=sigma2*State % x(:)
 
             CASE('full matrix')
-              CALL CovarianceVectorMultiply(Solver,nn,aap,x,norm)
+              CALL CovarianceVectorMultiply(Solver,State % nn,State % aap,State % x,State % norm)
 
             CASE('diffusion operator')
               ! y = SIGMA C SIGMA . x
-              CALL CovarianceVectorMultiply(Solver,MSolver,KMSolver,nn,x,norm)
+              CALL CovarianceVectorMultiply(Solver,State % MSolver,State % KMSolver,State % nn,State % x,State % norm)
 
            END SELECT
        END IF
 
-       Firsttime=.FALSE.
+       State % Initialized = .TRUE.
       END IF
 
       !input vector
-      x(Solver%Variable%Perm(ActiveNodes(1:nn))) = Values(Perm(ActiveNodes(1:nn)))
+      State % x(Solver%Variable%Perm(State % ActiveNodes(1:State % nn))) = Values(Perm(State % ActiveNodes(1:State % nn)))
 
       ! C . x
-      SELECT CASE (CovType)
+      SELECT CASE (State % CovType)
 
         CASE('diagonal')
-          sigma2=std**2
-          y(:)=sigma2*x(:)
+          sigma2=State % std**2
+          State % y(:)=sigma2*State % x(:)
 
         CASE('full matrix')
-          CALL CovarianceVectorMultiply(Solver,nn,aap,x,y)
+          CALL CovarianceVectorMultiply(Solver,State % nn,State % aap,State % x,State % y)
 
         CASE('diffusion operator')
           ! y = SIGMA C SIGMA . x
-          CALL CovarianceVectorMultiply(Solver,MSolver,KMSolver,nn,x,y)
+          CALL CovarianceVectorMultiply(Solver,State % MSolver,State % KMSolver,State % nn,State % x,State % y)
 
       END SELECT
 
-      IF (Normalize) y(:)=y(:)/norm(:)
+      IF (Normalize) State % y(:)=State % y(:)/State % norm(:)
 
-      Solver % Variable % Values(Solver%Variable%Perm(ActiveNodes(1:nn)))=&
-                    y(Solver%Variable%Perm(ActiveNodes(1:nn)))
+      Solver % Variable % Values(Solver%Variable%Perm(State % ActiveNodes(1:State % nn)))=&
+                    State % y(Solver%Variable%Perm(State % ActiveNodes(1:State % nn)))
 
      END SUBROUTINE CovarianceVectorMultiplySolver

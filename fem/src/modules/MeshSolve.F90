@@ -102,11 +102,12 @@ END SUBROUTINE MeshSolver_Init
   REAL(KIND=dp), POINTER :: MeshUpdate(:),Displacement(:), &
        MeshVelocity(:)
 
-  INTEGER, POINTER :: TPerm(:), MeshPerm(:), StressPerm(:), MeshVeloPerm(:)
+  INTEGER, POINTER :: MeshPerm(:), StressPerm(:), MeshVeloPerm(:)
+  INTEGER, ALLOCATABLE :: TPerm(:)
 
-  LOGICAL :: AllocationsDone = .FALSE., Isotropic = .TRUE., &
+  LOGICAL :: Isotropic = .TRUE., &
       GotForceBC, Found, ComputeMeshVelocity, DisplaceFirst, &
-      SkipFirstMeshVelocity = .FALSE., FirstTime = .TRUE., &
+      SkipFirstMeshVelocity, FirstTime, &
       SkipDisplace, DoIt
   REAL(KIND=dp),ALLOCATABLE:: STIFF(:,:),&
        LOAD(:,:),FORCE(:), ElasticModulus(:,:,:),PoissonRatio(:), &
@@ -114,14 +115,17 @@ END SUBROUTINE MeshSolver_Init
   INTEGER :: dim
   REAL(KIND=dp) :: at,at0
 
-  SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, AllocationsDone, &
-       ElasticModulus, PoissonRatio, TPerm, Alpha, Beta, &
-       SkipFirstMeshVelocity, FirstTime
+  ! The SAVEd work arrays are shared by all instances of this solver, so they
+  ! are resized as needed. Per-instance "first call" is Solver % TimesVisited.
+  SAVE STIFF, LOAD, FORCE, MeshVelocity, MeshVeloPerm, &
+       ElasticModulus, PoissonRatio, TPerm, Alpha, Beta
 
 !------------------------------------------------------------------------------
 ! Get variables needed for solution
 !------------------------------------------------------------------------------
   IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
+
+  FirstTime = ( Solver % TimesVisited == 0 )
 
   NULLIFY( MeshVelocity )
   IF ( TransientSimulation ) THEN
@@ -166,9 +170,10 @@ END SUBROUTINE MeshSolver_Init
      STDOFs       =  StressSol % DOFs
      Displacement => StressSol % Values
 
-     IF( .NOT.AllocationsDone .OR. Solver % MeshChanged ) THEN
-        IF ( AllocationsDone ) DEALLOCATE( TPerm )
-
+     IF( ALLOCATED(TPerm) ) THEN
+        IF( SIZE(TPerm) /= SIZE(MeshPerm) ) DEALLOCATE( TPerm )
+     END IF
+     IF( .NOT. ALLOCATED(TPerm) ) THEN
         ALLOCATE( TPerm( SIZE(MeshPerm) ), STAT=istat )
         IF ( istat /= 0 ) THEN
            CALL Fatal( 'MeshSolve', 'Memory allocation error.' )
@@ -180,12 +185,12 @@ END SUBROUTINE MeshSolver_Init
         IF ( StressPerm(i) /= 0 .AND. MeshPerm(i) /= 0 ) TPerm(i) = 0
      END DO
 
-     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
+     IF ( .NOT. FirstTime .OR. DisplaceFirst ) THEN
         CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, TPerm,   STDOFs )
      END IF
      CALL DisplaceMesh( Solver % Mesh, Displacement,  -1, StressPerm, STDOFs )
   ELSE
-     IF ( AllocationsDone .OR. DisplaceFirst ) THEN
+     IF ( .NOT. FirstTime .OR. DisplaceFirst ) THEN
         CALL DisplaceMesh( Solver % Mesh, MeshUpdate, -1, MeshPerm, STDOFs )
      END IF
   END IF
@@ -193,14 +198,15 @@ END SUBROUTINE MeshSolver_Init
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
-  IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
-     N = Solver % Mesh % MaxElementDOFs
-
-     IF ( AllocationsDone ) THEN
+  N = Solver % Mesh % MaxElementDOFs
+  IF( ALLOCATED(STIFF) ) THEN
+     IF( SIZE(Beta) /= N .OR. SIZE(FORCE) /= STDOFs*N ) THEN
         DEALLOCATE(  ElasticModulus, PoissonRatio, &
              FORCE, Alpha, Beta, STIFF, LOAD, STAT=istat )
      END IF
+  END IF
 
+  IF ( .NOT. ALLOCATED(STIFF) ) THEN
      ALLOCATE( &
           Alpha(3,N), Beta(N), &
           ElasticModulus( 6,6,N ), PoissonRatio( N ), &
@@ -210,10 +216,6 @@ END SUBROUTINE MeshSolver_Init
      IF ( istat /= 0 ) THEN
         CALL Fatal( 'MeshSolve', 'Memory allocation error.' )
      END IF
-
-!------------------------------------------------------------------------------
-     AllocationsDone = .TRUE.
-!------------------------------------------------------------------------------
   END IF
 !------------------------------------------------------------------------------
 
@@ -378,7 +380,6 @@ END SUBROUTINE MeshSolver_Init
        ELSE
           CALL INFO('MeshSolve', 'Skipping computation of initial Mesh Velocity', Level=3)
        END IF
-       FirstTime = .FALSE.
     END IF
 
     IF ( ComputeMeshVelocity .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN

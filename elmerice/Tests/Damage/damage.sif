@@ -242,7 +242,7 @@ Solver 5
   Exported Variable 1 = -dofs 1 "Zb Residual"
   Exported Variable 2 = -dofs 1 "ReferenceZb"
   
-  Procedure = "FreeSurfaceSolver1" "FreeSurfaceSolver"
+  Procedure = "FreeSurfaceSolver" "FreeSurfaceSolver"
   
   
   Linear System Solver = Iterative

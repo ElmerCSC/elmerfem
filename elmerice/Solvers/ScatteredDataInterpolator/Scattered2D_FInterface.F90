@@ -47,9 +47,7 @@
         enum , BIND(C) 
             ENUMERATOR :: SIBSON, NON_SIBSONIAN
         end enum
-        common /nn_rule/nn_rule
-        INTEGER(KIND(SIBSON)) :: nn_rule
-        BIND(C) :: /nn_rule/
+        INTEGER(KIND(SIBSON)), BIND(C, name="nn_rule") :: nn_rule
 
         INTERFACE
            SUBROUTINE nnpi_interpolate_points(nin,pin,wmin,nout,pout) BIND(C)
