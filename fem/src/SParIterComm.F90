@@ -263,10 +263,7 @@ CONTAINS
 
     !******************************************************************
 
-    ! Ensure ParEnv points to the module-level ParEnv_Common storage.
-    ! (With gfortran/Intel this is done via module-level pointer initialisation;
-    !  nvfortran does not support that for derived types with pointer components.)
-    IF (.NOT.ASSOCIATED(ParEnv)) ParEnv => ParEnv_Common
+    CALL ParEnvAssociateCommon()
 
     ParallelEnv => ParEnv
 
