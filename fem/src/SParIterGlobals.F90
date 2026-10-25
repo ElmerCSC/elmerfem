@@ -66,14 +66,28 @@ real(kind=dp):: xxx, yyy
   ! Following is in correct place
 
   TYPE (ParEnv_t), SAVE, TARGET :: ParEnv_Common
+#ifdef __NVCOMPILER
   ! nvhpc cannot initialise a pointer to a derived type with pointer components
-  ! at module level (NVFORTRAN-S-0034).  ParEnv is initialised explicitly in
-  ! ParCommInit (SParIterComm.F90) before first use.
-  TYPE (ParEnv_t), POINTER, SAVE :: ParEnv
+  ! at module level (NVFORTRAN-S-0034). Every entry point that sets up the
+  ! parallel environment calls ParEnvAssociateCommon() first instead.
+  TYPE (ParEnv_t), POINTER, SAVE :: ParEnv => NULL()
+#else
+  TYPE (ParEnv_t), POINTER, SAVE :: ParEnv => ParEnv_Common
+#endif
   TYPE (SParIterSolverGlobalD_t), POINTER :: PIGpntr
   TYPE (SParIterSolverGlobalD_t), POINTER :: GlobalData
 
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> Aim > ParEnv < at the common environment if it is not aimed anywhere yet.
+!------------------------------------------------------------------------------
+  SUBROUTINE ParEnvAssociateCommon()
+!------------------------------------------------------------------------------
+    IF( .NOT. ASSOCIATED( ParEnv ) ) ParEnv => ParEnv_Common
+!------------------------------------------------------------------------------
+  END SUBROUTINE ParEnvAssociateCommon
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Aim the global > ParEnv < at the parallel environment of the given matrix.
