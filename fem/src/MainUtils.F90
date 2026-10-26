@@ -5690,11 +5690,13 @@ END BLOCK
 
          CALL CreateSplitFEMVariable(Solver)
          Solver % Matrix => CreateSplitFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
-         IF(ASSOCIATED(pMatrix % ParMatrix)) THEN ! prevents error on free parmatrix
-            pMatrix % ParMatrix % SplittedMatrix % InsideMatrix % Solver => pMatrix % Solver
-         END IF         
-         CALL FreeMatrix(pMatrix)
-
+         IF(ASSOCIATED(pMatrix)) THEN
+           IF(ASSOCIATED(pMatrix % ParMatrix)) THEN ! prevents error on free parmatrix
+             pMatrix % ParMatrix % SplittedMatrix % InsideMatrix % Solver => pMatrix % Solver
+           END IF
+           CALL FreeMatrix(pMatrix)
+         END IF
+           
          IF(DoCreate) THEN
            CALL CreateSplitFEMAddMesh(Solver) 
          ELSE
