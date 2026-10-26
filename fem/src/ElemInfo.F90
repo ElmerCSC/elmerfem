@@ -3883,7 +3883,11 @@ SUBROUTINE FaceElementOrientation(Element, ReverseSign, FaceIndex, Nodes)
         PRINT *, 'CONFLICTING SIGN REVERSIONS SUGGESTED'
         PRINT *, ReverseSign(1:4)
         PRINT *, ReverseSign2(1:4)
+#ifdef __NVCOMPILER
+        ERROR STOP 1
+#else
         ERROR STOP EXIT_ERROR
+#endif
       END IF
     END IF
 
