@@ -1910,7 +1910,7 @@ CONTAINS
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: CreateBC, CreateBulk, AddMeshMode
     TYPE(ValueList_t), POINTER :: Vlist
-    CHARACTER(*) :: ProjectPrefix
+    CHARACTER(*), OPTIONAL :: ProjectPrefix
     TYPE(Mesh_t), POINTER :: NewMesh
 !------------------------------------------------------------------------------
     INTEGER :: i, j, k, n
@@ -1923,8 +1923,9 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Values(:)
     CHARACTER(:), ALLOCATABLE :: VarName
     TYPE(ValueList_t), POINTER :: Params
+    INTEGER, ALLOCATABLE :: BulkMap(:)
     CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMMesh'
-
+   
     SAVE MeshPerm
     
 !------------------------------------------------------------------------------
@@ -2009,7 +2010,13 @@ CONTAINS
 
     Params => CurrentModel % Simulation 
     InterfaceBC = ListGetInteger( Params,'SplitFEM Interface BC',Found )    
-        
+
+    ! In order to create parents we need a mapping from old to new bulk elements
+    IF(CreateBC) THEN
+      ALLOCATE(BulkMap(Mesh % NumberOfBulkElements))
+      BulkMap = 0
+    END IF
+    
     ! The 1st cycle just compute the number of elements.
     ! In between allocate the mesh elements.
     ! The 2nd cycle add the detected elements to the list.
@@ -2024,6 +2031,7 @@ CONTAINS
           CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )          
           !IF(.NOT. IsActive) CYCLE      
           IF(IsCut) THEN
+            IF(CreateBC) BulkMap(t) = nBulk+1
 10          pElement => CutInterfaceBulk(Element,isCut,isMore,Sweep)        
             !IF(.NOT. IsCut) CYCLE
             IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
@@ -2051,7 +2059,13 @@ CONTAINS
               IF(ASSOCIATED(Perm)) THEN
                 IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
                   nBC = nBC + 1
-                  IF(Sweep==1) CALL AddElementData(pElement,nBulk+nBC,InterfaceBC)
+                  IF(Sweep==1) THEN
+                    IF(CreateBulk) THEN 
+                      CALL AddElementData(pElement,nBulk+nBC,InterfaceBC,BulkMap(t))
+                    ELSE
+                      CALL AddElementData(pElement,nBulk+nBC,InterfaceBC)
+                    END IF
+                  END IF
                 END IF
               END IF
               IF(IsMore) GOTO 20
@@ -2059,7 +2073,6 @@ CONTAINS
           END IF
         END DO
       END IF
-
       
       IF( Sweep == 0 ) THEN
         IF( CreateBulk ) THEN
@@ -2086,7 +2099,9 @@ CONTAINS
       IF( ParEnv % PEs > 1 ) CALL SplitFEMParallelMesh()
     
       ! If we create interface only then we have original numbering and may use 
-      CALL InterpolateLevelsetVariables()
+      IF(PRESENT(ProjectPrefix)) THEN
+        CALL InterpolateLevelsetVariables()
+      END IF
     END IF
       
     IF(.NOT. ( CreateBulk .OR. AddMeshMode) ) DEALLOCATE(MeshPerm)
@@ -2284,13 +2299,14 @@ CONTAINS
 
     ! Here we just add some data to the new mesh.
     !--------------------------------------------
-    SUBROUTINE AddelementData(pElement,ElemInd,BCtag)
+    SUBROUTINE AddelementData(pElement,ElemInd,BCtag,NewBulkInd)
       TYPE(Element_t), POINTER :: pElement
       INTEGER :: ElemInd
       INTEGER, OPTIONAL :: BCTag
+      INTEGER, OPTIONAL :: NewBulkInd
       
       TYPE(Element_t), POINTER :: Enew
-      INTEGER :: n
+      INTEGER :: i,n,hits
 
       Enew => NewMesh % Elements(ElemInd)        
       Enew % PartIndex = pElement % PartIndex
@@ -2313,8 +2329,28 @@ CONTAINS
       IF(PRESENT(BCTag)) THEN
         ALLOCATE(Enew % BoundaryInfo)
         Enew % BoundaryInfo % Constraint = BCTag
+        Enew % BoundaryInfo % Left => NULL()
+        Enew % BoundaryInfo % Right => NULL()
       END IF
 
+      ! We know for each original bulk element the 1st splitted bulk element.
+      ! The parent should be that or some of the following ones. 
+      IF(PRESENT(NewBulkInd)) THEN
+        DO k=NewBulkInd,NewBulkInd+10
+          hits = 0
+          DO i=1,n
+            IF(ANY(Enew % NodeIndexes(i) == NewMesh % Elements(k) % NodeIndexes)) hits = hits+1
+          END DO
+          IF(hits==n) THEN
+            Enew % BoundaryInfo % Left => NewMesh % Elements(k)
+            EXIT
+          END IF
+        END DO
+        IF(hits /= n) THEN
+          CALL Fatal('AddElementData','Could not find parent for boundary element!')
+        END IF
+      END IF
+      
       ! This effects only parallel runs, but testing parallel costs more...      
       Enew % PartIndex = ParEnv % MyPe
       

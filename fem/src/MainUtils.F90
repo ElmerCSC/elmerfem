@@ -60,6 +60,7 @@ MODULE MainUtils
   USE MeshGraph, ONLY : Colouring_Deallocate, ElmerColouringToGraph, &
       ElmerGraphColour, ElmerMeshToDualGraph, Graph_Deallocate
   USE MeshLoad, ONLY : LoadMesh2
+  USE MeshIO, ONLY : WriteMeshToDisk2
   USE MeshSplit, ONLY : SplitMeshEqual
   
   USE SolverBasics, ONLY : CalculateEntityWeights, &
@@ -5645,7 +5646,7 @@ END BLOCK
      LOGICAL :: GotLoops, GlobalBubbles
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
-     TYPE(Mesh_t), POINTER :: Mesh, pMesh
+     TYPE(Mesh_t), POINTER :: Mesh, pMesh, sMesh
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -5937,7 +5938,7 @@ END BLOCK
      END IF
      
      ! We do not need the old meshes. When we reach a new timestep
-     ! they have already been saved. 
+     ! they have already been saved.
      IF(ListGetLogical(Params,'SplitFEM Interpolate',Found ) ) THEN
        CALL Info('SolverActive','Interpolating SplitFEM data!',Level=10)
 
@@ -5957,17 +5958,31 @@ END BLOCK
 
        ! We do not need to create the actual SplitFEM Mesh, but we might want to have it
        ! for visualization purposes. 
-       IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) )  THEN
+       NULLIFY(sMesh)
+       IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) .OR. &
+           ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
          ! This 2D mesh becomes Mesh % Next % Next
-         Solver % Mesh % Next % Next => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+         sMesh => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
              .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
+         IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) ) THEN         
+           Solver % Mesh % Next % Next => sMesh
+         END IF
        END IF
        IF(ParEnv % PEs > 1) THEN
           Solver % Matrix % Comm = OrigComm
           ParEnv % ActiveComm = Solver % Matrix % Comm
           ParEnv % Active = OrigActive
        END IF
-   
+
+       IF(ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
+         BLOCK
+           CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir
+           MeshDir = TRIM(Mesh % Name)//'-split'           
+           CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
+           CALL WriteMeshToDisk2(Model, sMesh, MeshDir)
+         END BLOCK
+       END IF
+  
        CALL Info('SolverActive','Reverting SplitFEM fields to normal!',Level=10)
        CALL SplitFEMVariableRevert(Model,Solver % Mesh)
      END IF
