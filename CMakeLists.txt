@@ -227,6 +227,10 @@ IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "GNU")
   ENDIF()
 ENDIF()
 
+IF("${CMAKE_Fortran_COMPILER_ID}" MATCHES "NVHPC|PGI")
+  SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -Mbackslash")
+ENDIF()
+
 
 # Import targets with information for using MPI or the MPI stub
 ADD_LIBRARY(Elmer::MPI_Fortran INTERFACE IMPORTED)
