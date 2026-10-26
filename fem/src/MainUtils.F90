@@ -2485,7 +2485,7 @@ CONTAINS
         ALLOCATE( Solver % Matrix % RHS(Solver % Matrix % NumberOFRows), STAT=AllocStat )
         IF( AllocStat /= 0 ) CALL Fatal(Caller,'Allocation error for Rhs')
         Solver % Matrix % RHS = 0.0d0
-
+        
         Solver % Matrix % RHS_im => NULL()
         IF ( HarmonicAnal .OR. HarmonicMode ) THEN
           ALLOCATE( Solver % Matrix % RHS_im(Solver % Matrix % NumberOFRows), STAT=AllocStat)

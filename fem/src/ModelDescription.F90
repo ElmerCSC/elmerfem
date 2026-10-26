@@ -58,7 +58,6 @@ MODULE ModelDescription
     USE LoadMod
     USE BinIO
     USE ElementDescription
-
     IMPLICIT NONE
 
     CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' ', OutputPath = ' ', SimulationId=' '
