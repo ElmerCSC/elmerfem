@@ -304,10 +304,34 @@ IF(WITH_CHOLMOD)
   FIND_PACKAGE(SPQR)
 ENDIF()
 
-# cuDSS: NVIDIA's GPU sparse direct solver. Single-GPU only for now.
+# cuDSS: NVIDIA's GPU sparse direct solver. 
 IF(WITH_CUDSS)
   FIND_PACKAGE(CUDAToolkit REQUIRED)
+
+  # Find cuDSS from CUDSS_ROOT.
   FIND_PACKAGE(CUDSS REQUIRED)
+  SET(COMPILE_CUDSS_COMMLAYER TRUE CACHE BOOL "Compile cuDSS communication layer library. Not required if the cuDSS supplied one works.")
+
+
+  IF(COMPILE_CUDSS_COMMLAYER)
+    SET(CUDSS_COMMLAYER_SRC_MPI "${CUDSS_INCLUDE_DIR}/../src/cudss_commlayer_openmpi.cu" CACHE FILEPATH "Source file for the cuDSS MPI communication layer.")
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+      enable_language(CUDA)
+    else()
+      message(FATAL_ERROR "cuDSS communication layer requires a CUDA compiler.")
+    endif()
+
+    add_library(elmer_cudss_commlayer SHARED ${CUDSS_COMMLAYER_SRC_MPI})
+    target_include_directories(elmer_cudss_commlayer PRIVATE ${CUDA_INCLUDE_DIR} ${CUDSS_INCLUDE_DIR})
+    target_link_libraries(elmer_cudss_commlayer PRIVATE MPI::MPI_C CUDA::cudart)
+    install(TARGETS elmer_cudss_commlayer LIBRARY DESTINATION ${ELMER_INSTALL_LIB_DIR})
+    SET(ELMER_CUDSS_COMMLAYER_NAME "\"libelmer_cudss_commlayer${CMAKE_SHARED_LIBRARY_SUFFIX}\"" CACHE INTERNAL "")
+  ELSE()
+    SET(ELMER_CUDSS_COMMLAYER_NAME NULL INTERNAL)
+  ENDIF(COMPILE_CUDSS_COMMLAYER)
+
 ENDIF()
 
 # if(APPLE)
