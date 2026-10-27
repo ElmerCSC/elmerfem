@@ -62,6 +62,9 @@
      USE ParallelUtils, ONLY : ParallelInit, ParallelFinalize
      USE ElementUtils, ONLY: FreeMatrix, TangentDirections, CreateMatrix
      USE ElementDescription, ONLY : InitializeElementDescriptions, NormalVector
+#ifdef HAVE_PERMON
+     USE PermonInterface, ONLY : permon_init, permon_finalize
+#endif
 #ifdef HAVE_EXTOPTIM
      USE OptimizationUtils, ONLY : ControlParameters, ControlResetMesh, &
          ExternalOptimization_minpack, ExternalOptimization_newuoa, &
@@ -143,6 +146,9 @@
 
      LOGICAL :: Silent=.FALSE., Version=.FALSE., GotModelName, FinishEarly=.FALSE.
      LOGICAL :: FirstLoad = .TRUE., FirstTime=.TRUE., Found
+#ifdef HAVE_PERMON
+  LOGICAL, SAVE :: PermonInitialized = .FALSE.
+#endif
 
      INTEGER :: iostat, iSweep = 1, OptimIters
      LOGICAL :: GotOptimIters
@@ -549,6 +555,10 @@
 !------------------------------------------------------------------------------
        CALL AddSolvers()
 
+#ifdef HAVE_PERMON
+  CALL MaybeInitPermon()
+#endif
+
 !------------------------------------------------------------------------------
 !      Time integration and/or steady state steps
 !------------------------------------------------------------------------------
@@ -767,6 +777,9 @@
 
      IF ( Initialize <= 0 ) CALL FreeModel(CurrentModel)
 
+#ifdef HAVE_PERMON
+  IF ( FirstTime .AND. PermonInitialized ) CALL permon_finalize()
+#endif
 
      IF ( FirstTime ) CALL ParallelFinalize()
      FirstTime = .FALSE.
@@ -776,6 +789,28 @@
      RETURN
 
    CONTAINS
+
+#ifdef HAVE_PERMON
+     ! Initialize PERMON when a solver actually requests it.
+     SUBROUTINE MaybeInitPermon()
+       INTEGER :: i
+       LOGICAL :: use_permon, found_local
+
+       IF( PermonInitialized ) RETURN
+
+       use_permon = .FALSE.
+       DO i=1,CurrentModel % NumberOfSolvers
+         use_permon = ListGetLogical( CurrentModel % Solvers(i) % Values, &
+             'Linear System Use Permon', found_local )
+         IF( use_permon ) EXIT
+       END DO
+
+       IF( use_permon ) THEN
+         CALL permon_init()
+         PermonInitialized = .TRUE.
+       END IF
+     END SUBROUTINE MaybeInitPermon
+#endif
 
 
      ! If we want to start a new adaptive simulation with the original mesh
