@@ -472,6 +472,7 @@ CONTAINS
 !
 !------------------------------------------------------------------------------
      USE MaterialModels
+     USE CoordinateSystems, ONLY : CoordinateSystemDimension
      IMPLICIT NONE
 
      REAL(KIND=dp), DIMENSION(:)   :: FORCE,UX,UY,UZ

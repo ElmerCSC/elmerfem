@@ -656,6 +656,7 @@ CONTAINS
 !
 !******************************************************************************
      USE MaterialModels
+     USE CoordinateSystems, ONLY : CoordinateSystemDimension
 
      IMPLICIT NONE
 

@@ -1927,6 +1927,7 @@ CONTAINS
 !******************************************************************************
 !------------------------------------------------------------------------------
    USE ElementUtils
+   USE CoordinateSystems, ONLY : CoordinateSystemDimension
 
    IMPLICIT NONE
 

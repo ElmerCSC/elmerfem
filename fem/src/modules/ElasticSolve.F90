@@ -5324,6 +5324,7 @@ CONTAINS
        PseudoTraction, MixedFormulation, LargeDeflection)
 !------------------------------------------------------------------------------
     USE Integration
+    USE CoordinateSystems, ONLY : CoordinateSystemDimension
     USE LinearAlgebra
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:)
