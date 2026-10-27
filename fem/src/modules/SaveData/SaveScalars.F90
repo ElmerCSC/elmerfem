@@ -120,6 +120,7 @@ END SUBROUTINE SaveScalars_init
 SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE Interpolation
   USE ElementUtils
   USE MeshBasics, ONLY : ClosestElementInMesh, ClosestNodeInMesh, NodeToDGIndex

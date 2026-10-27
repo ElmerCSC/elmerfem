@@ -265,6 +265,7 @@ SUBROUTINE StokesSolver( Model,Solver,dt,TransientSimulation )
 !
 !******************************************************************************
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE ParallelUtils, ONLY : ParallelUpdateResult, ParallelUpdateSolve
   USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem, RowEquilibration
   USE MaterialModels
