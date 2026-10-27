@@ -282,10 +282,11 @@ CONTAINS
     END DO
 
     A % NumberOfRows = n
-  A % Rows => Rows
-  A % Diag => Diag
-  A % Cols => Cols
-  A % Values => Values
+    A % Rows => Rows
+    A % Diag => Diag
+    A % Cols => Cols
+    A % Values => Values
+
     A % Ordered=.FALSE.
     CALL CRS_SortMatrix( A )
 
@@ -1347,3 +1348,5 @@ CONTAINS
 END MODULE ListMatrix
 
 !> \} ElmerLib
+
+
