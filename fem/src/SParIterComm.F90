@@ -263,6 +263,8 @@ CONTAINS
 
     !******************************************************************
 
+    CALL ParEnvAssociateCommon()
+
     ParallelEnv => ParEnv
 
     ParEnv % MyPE = 0

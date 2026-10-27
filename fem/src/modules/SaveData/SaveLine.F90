@@ -957,6 +957,9 @@ CONTAINS
   SUBROUTINE WriteFieldsAtElement( Element, BC_id, &
       node_id, dgnode_id, Basis, UseNode, NodalFlux, LocalCoord, &
       GlobalCoord, linepos, ParNode )
+#ifdef __NVCOMPILER
+    USE IEEE_ARITHMETIC, ONLY : ISNAN => IEEE_IS_NAN
+#endif
 
     TYPE(Element_t), POINTER :: Element
     REAL(KIND=dp), TARGET, OPTIONAL :: Basis(:)
