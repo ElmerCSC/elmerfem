@@ -328,6 +328,9 @@
 #ifdef HAVE_ADIOS2
          CALL Info( 'MAIN', ' ADIOS2 library linked in.' )
 #endif
+#ifdef HAVE_CUDSS
+         CALL Info( 'MAIN', ' cuDSS library linked in.' )
+#endif
          CALL Info( 'MAIN', '=============================================================')
        END IF
 
