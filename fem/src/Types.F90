@@ -1241,8 +1241,11 @@ MODULE Types
     ! and so was shared by every instance. Crt holds the circuit variable values
     ! of the previous timestep, sized Circuit_tot_n; Tstep is the timestep it was
     ! last refreshed on; MultName is the name of the A solver's Lagrange
-    ! multiplier variable the values are read from.
-    REAL(KIND=dp), ALLOCATABLE :: Crt(:)
+    ! multiplier variable the values are read from. CrtPrev is the timestep
+    ! before that, for BDF2, and CrtHist counts how many of Crt/CrtPrev hold
+    ! real history (0..2) since the structures were built.
+    REAL(KIND=dp), ALLOCATABLE :: Crt(:), CrtPrev(:)
+    INTEGER :: CrtHist = 0
     INTEGER :: Tstep = -1
     LOGICAL :: Parallel = .FALSE.
     CHARACTER(:), ALLOCATABLE :: MultName
