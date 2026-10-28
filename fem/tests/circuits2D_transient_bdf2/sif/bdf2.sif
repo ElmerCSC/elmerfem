@@ -1,0 +1,132 @@
+! BDF2 time integration of CircuitsAndDynamics.
+!
+! A stranded coil driven by a voltage source through a lumped series inductor,
+! so that both the circuit's own A dx/dt term (L di/dt) and the coil coupling
+! d/dt terms are integrated. L is large compared to the coil inductance (~0.34 H)
+! so that the circuit term dominates: before it was integrated with BDF2 this
+! case converged only at first order. The timestep doubles halfway to also
+! cover the variable timestep weights.
+!
+! The case is from circuits2D_transient_stranded.
+Check Keywords "Warn"
+$ Lind = 2.0
+INCLUDE sif/bdf2-circuit.definitions
+INCLUDE 1381/mesh.names
+Header 1
+   Mesh DB "." "1381"
+End
+$ ntimesteps = 40
+$ freq = 50
+$ stepsize = 0.9999/(ntimesteps*freq)
+Simulation 1
+   Max Output Level = 5
+   Coordinate System = Axi symmetric
+   Simulation Type = Transient
+   Timestepping Method = BDF
+   BDF Order = 2
+   Timestep Sizes(2) = $ stepsize (2*stepsize)
+   Timestep Intervals(2) = 10 5
+   Steady State Max Iterations = 1
+End
+Solver 1
+   Exec Solver = Always
+   Equation = Circuits
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamics"
+End
+Solver 2
+   Equation = "Mag"
+   Variable = A
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2D"
+   NonLinear System Relaxation Factor=1
+   Export Lagrange Multiplier = Logical True
+   Linear System Solver = Iterative
+   Linear System Iterative Method = bicgstab
+   Linear System Convergence Tolerance = 1.e-12
+   Linear System Max Iterations = 3000
+   Linear System Residual Output = 10
+   Linear System Abort not Converged = False
+   Linear System ILUT Tolerance=1e-8
+   linear system preconditioning = circuit
+   BicgStabL Polynomial Degree = 2
+   Steady State Convergence Tolerance = 1e-06
+End
+Solver 3
+   Exec Solver = Always
+   Equation = Circuits Output
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+Solver 4
+   Exec Solver = Always
+   Equation = "sv"
+   Procedure = "SaveData" "SaveScalars"
+!   Filename = bdf2.dat
+   show norm index = 4
+End
+Equation 1
+   Active Solvers(1) = 2
+End
+Equation 2
+   Active Solvers(2) = 1 2
+End
+Material 1
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000
+End
+Material 2
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+Material 3
+   Name = aluminium
+   Relative Permeability = 1
+   Electric Conductivity = 1e7
+End
+Body 1
+   Name = Core
+   Target Bodies(6) = 1 2 3 4 5 6
+   Equation = 1
+   Material = 1
+End
+Body 2
+   Name = air
+   Target Bodies(2) = 9 7
+   Equation = 1
+   Material = 2
+End
+Body 3
+   Name = test 1
+   Target Bodies = 8
+   Equation = 2
+   Material = 3
+End
+Component 1
+   Name = String test inductor
+   Master Bodies = Integer 3
+   Coil Type = String stranded
+   Number of Turns = Real 1000
+End
+Body Force 1
+   Name = "Circuit"
+   testsource = Variable time
+     Real MATC "1.41421356237 * sin(2*pi*freq*tx)"
+End
+Boundary Condition 1
+   Target Boundaries(4) = $ center0 center1 center2 center3
+   A = Real 0
+End
+Boundary Condition 2
+   Target Boundaries(2) = 4 6
+   Name = "Air Gap"
+   Air Gap = logical True
+   Air Gap Length = Real 0.0001
+   Air Gap Relative Permeability = Real 1
+End
+Boundary Condition 3
+   Target Boundaries(7) = 10 13 14 17 18 19 27
+   Infinity BC = Logical True
+End
+
+Solver 2 :: Reference Norm = 1.00762350E-03
+Solver 4 :: Reference Norm = 1.99104814E-03
