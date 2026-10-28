@@ -30,8 +30,7 @@ Solver 3
   Linear System Skip Mask = Logical True
 
 ! Standard parameter for outer iteration
-!  Linear System Symmetric = True
-  Linear System Row Equilibration = True 
+!  Linear System Row Equilibration = True
 
   Linear System Solver = String "Iterative"
   Linear System Iterative Method = "gcr"
@@ -41,14 +40,14 @@ Solver 3
   Linear System Max Iterations = 20 !$niter
   Linear System Abort Not Converged = False
 
-!  Linear System Scaling = False
+  Ams Cycle(4) = Integer 0 1 2 0
 
+!  Linear System Scaling = False
   Apply Mortar BCs = False
 
 !  MG Smoother = "masked jacobi"
 
 ! Standard parameter for outer iteration
-  Linear System Scaling = True
   Linear System Nullify First Guess = Logical True
 End
 

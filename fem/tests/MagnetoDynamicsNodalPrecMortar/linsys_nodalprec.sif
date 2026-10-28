@@ -11,7 +11,7 @@ End
 
 Solver 3 
   Linear System Preconditioning = "auxiliary space solver"
-!  Prec Solvers(2) = Integer 7 8  
+!  Prec Solvers(2) = Integer 8 7  
   Prec Solvers(1) = Integer 7 
 
 ! Now set internally by solver
@@ -19,8 +19,6 @@ Solver 3
 ! Exported Variable 2 = ams update
 ! Preconditioning Residual = String "ams res"
 ! Preconditioning Update = String "ams update"
-
-  Additive Smoother = Logical True
 
   MG Post Smoothing Iterations(1) = 5
   MG Smoother Relaxation Factor = Real $1.0/3.0
@@ -34,8 +32,6 @@ Solver 3
   Linear System Skip Mask = Logical True
 
 ! Standard parameter for outer iteration
-!  Linear System Symmetric = True
-  Linear System Row Equilibration = False 
 
   Linear System Solver = String "Iterative"
   Linear System Iterative Method = "gcr"
@@ -45,12 +41,12 @@ Solver 3
   Linear System Max Iterations = $niter
   Linear System Abort Not Converged = False
 
-!  Linear System Scaling = False
-
+  Linear System Scaling = False
+  Ams Cycle(3) = Integer 0 1 0 
   Apply Mortar BCs = False
 
 ! Standard parameter for outer iteration
-  Linear System Scaling = True
+!  Linear System Scaling = True
   Linear System Nullify First Guess = Logical True
 End
 

@@ -1968,8 +1968,10 @@ CONTAINS
     LOGICAL :: Converged, Diverged, UseStopCFun
     INTEGER :: ncg, ne, np, iters
     REAL(KIND=dp) :: final_norm_gp
-
     INTEGER :: n
+    INTEGER :: NumberOfCols
+    INTEGER :: kmax, kk
+    CHARACTER(LEN=100) :: msg
 
     ! MPRGP parameters (passed from calling routine)
     REAL(KIND=dp) :: Gamma, TolFactor
@@ -2011,7 +2013,8 @@ CONTAINS
     ! The serial matrix and limiter have different size than the parallel ones.
     Aser => CurrentModel % Solver % Matrix
     IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
-      cser(1:ndim) = cser(1:ndim) / (Aser % DiagScaling * Aser % RhsScaling)
+      cser(1:Aser % NumberOfRows) = cser(1:Aser % NumberOfRows) / &
+          (Aser % DiagScaling(1:Aser % NumberOfRows) * Aser % RhsScaling)
     END IF
     IF( ParEnv % PEs == 1) THEN
       c => cser
@@ -2027,23 +2030,15 @@ CONTAINS
       END DO
     END IF
 
-
     Converged = .FALSE.
     Diverged = .FALSE.
     n = ndim
-    CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, TolFactor, &
-        ncg, ne, np, iters, Converged, final_norm_gp )
 
-    CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
-          ', ncg='//I2S(ncg)//', ne='//I2S(ne)//', np='//I2S(np), Level=10)
-
-    IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
-    IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
-    IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
-
+    CALL solve_with_elmer()
 
     IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
-      cser(1:ndim) = cser(1:ndim) * (Aser % DiagScaling * Aser % RhsScaling)
+      cser(1:Aser % NumberOfRows) = cser(1:Aser % NumberOfRows) * &
+          (Aser % DiagScaling(1:Aser % NumberOfRows) * Aser % RhsScaling)
     END IF
     IF( ParEnv % PEs > 1) DEALLOCATE(c)
 
@@ -2067,7 +2062,7 @@ CONTAINS
       INTEGER, INTENT(IN) :: maxit
       REAL(KIND=dp), INTENT(IN) :: Gamma
       LOGICAL, INTENT(IN) :: adapt
-      INTEGER, INTENT(IN) :: bound      ! 'lower' or 'upper'
+      INTEGER, INTENT(IN) :: bound      ! 'lower' (0) or 'upper' (1)
       REAL(KIND=dp), INTENT(IN) :: TolFactor
       INTEGER, INTENT(OUT) :: ncg, ne, np, iters
       LOGICAL, INTENT(OUT) :: converged
@@ -2085,7 +2080,7 @@ CONTAINS
       ! Local declarations (all here)
       ! ---------------------------
       REAL(KIND=dp), ALLOCATABLE :: g(:), gf(:), gc(:), gr(:), gp(:)
-      REAL(KIND=dp), ALLOCATABLE :: z(:), p(:), Ap(:), yy(:), D(:), Agr(:)
+      REAL(KIND=dp), ALLOCATABLE :: p(:), Ap(:), yy(:), D(:), Agr(:)
       LOGICAL, ALLOCATABLE :: J(:)
       LOGICAL, ALLOCATABLE :: p_mask(:)
       INTEGER :: bs
@@ -2094,7 +2089,7 @@ CONTAINS
       REAL(KIND=dp) :: rtp, pAp, acg, beta
       REAL(KIND=dp) :: grg, grAgr
       REAL(KIND=dp) :: eps_local
-      TYPE(Matrix_t), POINTER :: MatA
+      TYPE(Matrix_t), POINTER :: MatA, MatB
       REAL(KIND=dp) :: tol
 
       REAL(KIND=dp), ALLOCATABLE :: v(:),w(:)
@@ -2104,7 +2099,7 @@ CONTAINS
       ! ---------------------------
       ! Allocate scratch vectors
       ! ---------------------------
-      ALLOCATE(g(n), gf(n), gc(n), gr(n), gp(n), z(n), p(n), Ap(n), yy(n), J(n), Agr(n), STAT=allocstat)
+      ALLOCATE(g(n), gf(n), gc(n), gr(n), gp(n), p(n), Ap(n), yy(n), J(n), Agr(n), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('itermethod_mprgp','Allocation failed for scratch vectors')
       END IF
@@ -2165,13 +2160,7 @@ CONTAINS
       END IF
 
       gp = gf + gc
-      ! preconditioning: z = M^{-1} * g on free set
-      z = g
-      CALL pcondrsubr( g, z, ipar )
-      WHERE (.NOT. J)
-        z = 0.0_dp
-      END WHERE
-      p = z
+      p = gf
 
       ! counters
       ncg = 0
@@ -2188,8 +2177,8 @@ CONTAINS
         iters = iters + 1
         IF ( dotprodfun(n, gc, 1, gc, 1) <= (Gamma**2) * dotprodfun(n, gr, 1, gf, 1) ) THEN
           ! CG step
-          CALL matvecsubr( p, Ap, ipar )
-          rtp = dotprodfun(n, z, 1, g, 1) ! residual * p
+          CALL matvecsubr( p, Ap, ipar )        
+          rtp = dotprodfun(n, p, 1, g, 1) ! residual * p
           pAp = dotprodfun(n, p, 1, Ap, 1)
 
           IF (ABS(pAp) < eps_local) THEN
@@ -2226,18 +2215,10 @@ CONTAINS
               J = (x < c - tol)
             END IF
 
-            ! precondition
-            z = g
-            CALL pcondrsubr( g, z, ipar )
-            WHERE (.NOT. J)
-              z = 0.0_dp
-            END WHERE
-
-            beta = dotprodfun(n, z, 1, Ap, 1) / pAp
-            p = z - beta * p
-
             ! update gf,gc,gr,gp
             gf = MERGE(g, 0.0_dp, J)
+            beta = dotprodfun(n, gf, 1, Ap, 1) / pAp
+            p = gf - beta * p
 
             IF (bs == 1) THEN
               gc = 0.0_dp
@@ -2268,7 +2249,6 @@ CONTAINS
 #endif
                   a_f, 1, MPI_DOUBLE_PRECISION, MPI_MIN, comm, ierr )
             END IF
-
             IF (a_f < 0.0_dp) a_f = 0.0_dp
             ! halfstep
             IF (bs == 1) THEN
@@ -2283,7 +2263,7 @@ CONTAINS
               J = (x < c - tol)
             END IF
             g = g - a_f * Ap
-
+            gf = MERGE(g, 0.0_dp, J)
             ! adaptive alpha
             IF (adapt) THEN
               CALL matvecsubr( gr, Agr, ipar )
@@ -2297,30 +2277,24 @@ CONTAINS
                 IF (alpha <= 0.0_dp .OR. alpha > 1.0_dp / lAl) alpha = 1.0_dp / lAl
               END IF
             END IF
+            
 
             IF (bs == 1) THEN
               WHERE (J)
-                x = MAX(x - alpha * g, c)
+                x = MAX(x - alpha * gf, c)
               END WHERE
             ELSE
               WHERE (J)
-                x = MIN(x - alpha * g, c)
+                x = MIN(x - alpha * gf, c)
               END WHERE
             END IF
 
             CALL matvecsubr( x, g, ipar )
             g = g - b
 
-            ! recompute z and p
-            z = g
-            CALL pcondrsubr( g, z, ipar )
-            WHERE (.NOT. J)
-              z = 0.0_dp
-            END WHERE
-            p = z
-
             ! update gf,gc,gr,gp
             gf = MERGE(g, 0.0_dp, J)
+            p = gf
 
             IF (bs == 1) THEN
               gc = 0.0_dp
@@ -2339,7 +2313,6 @@ CONTAINS
             gp = gf + gc
             ne = ne + 1
           END IF
-
         ELSE
           ! proportioning step
           CALL matvecsubr( gc, Ap, ipar )    ! A*gc
@@ -2371,16 +2344,10 @@ CONTAINS
             J = (x < c - tol)
           END IF
           g = g - acg * Ap
-
-          z = g
-          CALL pcondrsubr( g, z, ipar )
-          WHERE (.NOT. J)
-            z = 0.0_dp
-          END WHERE
-          p = z
-
+          
           ! update gf,gc,gr,gp
           gf = MERGE(g, 0.0_dp, J)
+          p = gf
 
           IF (bs == 1) THEN
             gc = 0.0_dp
@@ -2399,7 +2366,6 @@ CONTAINS
           gp = gf + gc
           np = np + 1
         END IF
-
       END DO  ! main loop
 
       final_norm_gp = normfun(n, gp, 1)
@@ -2410,7 +2376,7 @@ CONTAINS
 
       ! cleanup
       IF (ALLOCATED(D)) DEALLOCATE(D)
-      DEALLOCATE(g, gf, gc, gr, gp, z, p, Ap, yy, J)
+      DEALLOCATE(g, gf, gc, gr, gp, p, Ap, yy, J)
 
     !----------------------------------------------------------
     END SUBROUTINE MPRGP
@@ -2445,6 +2411,17 @@ CONTAINS
       out_norm = normfun(nloc, w, 1)
       DEALLOCATE(v, w)
     END SUBROUTINE estimate_matrix_norm
+
+    SUBROUTINE solve_with_elmer()
+      CALL Info('itermethod_mprgp', 'Permon not requested, calling MPRGP', Level=12)
+      CALL MPRGP(ndim, x, b, c, MinTol, Rounds, Gamma, adapt, bound, TolFactor, &
+          ncg, ne, np, iters, Converged, final_norm_gp )
+      CALL Info('MPRGPSolver','MPRGP finished: iters='//I2S(iters)// &
+            ', ncg='//I2S(ncg)//', ne='//I2S(ne)//', np='//I2S(np), Level=10)
+      IF(Converged) HUTI_INFO = HUTI_CONVERGENCE
+      IF(Diverged) HUTI_INFO = HUTI_DIVERGENCE
+      IF ( (.NOT. Converged) .AND. (.NOT. Diverged) ) HUTI_INFO = HUTI_MAXITER
+    END SUBROUTINE solve_with_elmer
 
 !--------------------------------------------------------------
   END SUBROUTINE itermethod_mprgp

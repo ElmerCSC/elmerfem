@@ -37,6 +37,10 @@ Solver 3
 
 !  MG Smoother = "masked jacobi"
 
+!  Preconditioning Alternate = Logical True
+!  MG Post Smoothing Iterations = 5
+
+
 ! Standard parameter for outer iteration
   Linear System Scaling = True
   Linear System Nullify First Guess = Logical True
@@ -143,28 +147,28 @@ End
 ! Additions to BC's related to AMS
 
 Boundary Condition 1
-  amsx = Real 0.0
-  amsy= Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
 End
 
 Boundary Condition 2
-  amsx = Real 0.0
-  amsy= Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
 End
 
 Boundary Condition 3
-  amsx = Real 0.0
-  amsy= Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
 End
 
 
 Boundary Condition 4
-  amsx = Real 0.0
-  amsy= Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
 End
 
 Boundary Condition 5
-  amsx = Real 0.0
-  amsy= Real 0.0
-  amsz = Real 0.0
+  amsa 1 = Real 0.0
+  amsa 2 = Real 0.0
+  amsa 3 = Real 0.0
 End
