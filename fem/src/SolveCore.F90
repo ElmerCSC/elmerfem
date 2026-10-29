@@ -1655,6 +1655,7 @@ CONTAINS
 
     IF ( NotParallel ) THEN
       IF(ListGetLogical(Params, 'Linear System Use Hypre', Found)) Method = 'hypre'
+      IF(ListGetLogical(Params, 'Linear System Use Permon', Found)) Method = 'permon'
 
       CALL Info(Caller,'Serial linear System Solver: '//TRIM(Method),Level=8)
 
@@ -1676,6 +1677,8 @@ CONTAINS
         CALL SolveHypre( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
+      CASE('permon')
+        CALL SolvePermon( A, x, b, Solver, A % ParallelInfo ) 
       CASE DEFAULT
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
@@ -1699,6 +1702,9 @@ CONTAINS
         CALL ROCSolver( A, x, b, Solver )
       CASE('direct')
         CALL DirectSolver( A, x, b, Solver )
+      ! probably not needed, should be handled by the parallel iterative solver
+      !CASE('permon')
+      !  CALL SolvePermon(A, x, b, Solver, A % ParallelInfo, A % ParMatrix % SplittedMatrix)
       CASE DEFAULT
         CALL Fatal(Caller,'Unknown "Linear System Solver": '//TRIM(Method))
       END SELECT
