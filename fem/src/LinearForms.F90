@@ -88,7 +88,7 @@ CONTAINS
         ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
         IF (noAlphaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -101,7 +101,7 @@ CONTAINS
           END DO
         ELSE
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -117,14 +117,14 @@ CONTAINS
         DO k=1, dim
           IF (noAlphaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*GradU(i,j,k)
               END DO
             END DO
           ELSE
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*alpha(i)*GradU(i,j,k)
               END DO
@@ -171,7 +171,7 @@ CONTAINS
         ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
         IF (noAlphaWeight .AND. noBetaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -184,7 +184,7 @@ CONTAINS
           END DO
         ELSE IF (.NOT. noAlphaWeight .AND. noBetaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -197,7 +197,7 @@ CONTAINS
           END DO
         ELSE IF (noAlphaWeight .AND. .NOT. noBetaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -210,7 +210,7 @@ CONTAINS
           END DO
         ELSE
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -226,28 +226,28 @@ CONTAINS
         DO k=1, dim
           IF (noAlphaWeight .AND. noBetaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*GradU(i,j,k)
               END DO
             END DO
           ELSE IF (.NOT. noAlphaWeight .AND. noBetaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*alpha(i)*GradU(i,j,k)
               END DO
             END DO
           ELSE IF (noAlphaWeight .AND. .NOT. noBetaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*beta(i,k)*GradU(i,j,k)
               END DO
             END DO
           ELSE
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*alpha(i)*beta(i,k)*GradU(i,j,k)
               END DO
@@ -303,7 +303,7 @@ CONTAINS
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD PRIVATE(l)
+                ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -315,14 +315,14 @@ CONTAINS
        ELSE
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*V(i,j)
                 END DO
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*alpha(i)*V(i,j)
                 END DO
@@ -366,7 +366,7 @@ CONTAINS
           ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !_ELMER_OMP_SIMD PRIVATE(l)
+                ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -376,7 +376,7 @@ CONTAINS
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD PRIVATE(l)
+                ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -388,14 +388,14 @@ CONTAINS
        ELSE
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*U(i,j)
                 END DO
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*alpha(i)*U(i,j)
                 END DO
@@ -454,14 +454,14 @@ CONTAINS
 
       IF (blklen < VECTOR_SMALL_THRESH) THEN
         IF (noAlphaWeight) THEN
-          !_ELMER_OMP_SIMD PRIVATE(l)
+          ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
           DO i=1,n
             DO l=ii,iin
               UdotF(i) = UdotF(i) + U(l,i)*F(l)*weight(l)
             END DO
           END DO
         ELSE
-          !_ELMER_OMP_SIMD PRIVATE(l)
+          ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
           DO i=1,n
             DO l=ii,iin
               UdotF(i) = UdotF(i) + U(l,i)*F(l)*weight(l)*alpha(l)
@@ -470,12 +470,12 @@ CONTAINS
         END IF
       ELSE
         IF (noAlphaWeight) THEN
-          !_ELMER_OMP_SIMD
+          ELMER_OMP_SIMD
           DO i=ii,iin
             wrk(i-ii+1) = weight(i)*F(i)
           END DO
         ELSE
-          !_ELMER_OMP_SIMD
+          ELMER_OMP_SIMD
           DO i=ii,iin
             wrk(i-ii+1) = weight(i)*F(i)*alpha(i)
           END DO

@@ -64,8 +64,11 @@ Solver 1
 
   ! MPRGP specific parameters
   Linear System MPRGP Gamma = Real 1.0
-  Linear System MPRGP Adaptive = Logical False
+  Linear System MPRGP Adaptive = Logical True
   Linear System Symmetric = Logical True
+
+! Uncomment to use Permon integration
+!  Linear System Use Permon = Logical True
 End 
 
 

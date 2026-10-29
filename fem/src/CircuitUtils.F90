@@ -416,6 +416,8 @@ CONTAINS
     Ckt % ASolver => NULL()                     ! borrowed
 
     IF( ALLOCATED(Ckt % Crt) ) DEALLOCATE(Ckt % Crt)
+    IF( ALLOCATED(Ckt % CrtPrev) ) DEALLOCATE(Ckt % CrtPrev)
+    Ckt % CrtHist = 0
     IF( ALLOCATED(Ckt % MultName) ) DEALLOCATE(Ckt % MultName)
     Ckt % Tstep = -1
     Ckt % Parallel = .FALSE.

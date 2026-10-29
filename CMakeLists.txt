@@ -101,6 +101,7 @@ SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
+SET(WITH_PERMON FALSE CACHE BOOL "Use PERMON")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
@@ -217,16 +218,6 @@ IF(WITH_OpenMP)
   IF(OpenMP_Fortran_INCLUDE_DIR)
     INCLUDE_DIRECTORIES("${OpenMP_Fortran_INCLUDE_DIR}")
   ENDIF()
-
-  # Set variables for supported OpenMP version
-  IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.0)
-    SET(HAVE_OPENMP40 TRUE)
-    MARK_AS_ADVANCED(HAVE_OPENMP40)
-    IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.5)
-      SET(HAVE_OPENMP45 TRUE)
-      MARK_AS_ADVANCED(HAVE_OPENMP45)
-    ENDIF()
-  ENDIF()
 ENDIF()
 
 # Get rid of the annoying rank mismatch warning
@@ -313,10 +304,34 @@ IF(WITH_CHOLMOD)
   FIND_PACKAGE(SPQR)
 ENDIF()
 
-# cuDSS: NVIDIA's GPU sparse direct solver. Single-GPU only for now.
+# cuDSS: NVIDIA's GPU sparse direct solver. 
 IF(WITH_CUDSS)
   FIND_PACKAGE(CUDAToolkit REQUIRED)
+
+  # Find cuDSS from CUDSS_ROOT.
   FIND_PACKAGE(CUDSS REQUIRED)
+  SET(COMPILE_CUDSS_COMMLAYER TRUE CACHE BOOL "Compile cuDSS communication layer library. Not required if the cuDSS supplied one works.")
+
+
+  IF(COMPILE_CUDSS_COMMLAYER)
+    SET(CUDSS_COMMLAYER_SRC_MPI "${CUDSS_INCLUDE_DIR}/../src/cudss_commlayer_openmpi.cu" CACHE FILEPATH "Source file for the cuDSS MPI communication layer.")
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+      enable_language(CUDA)
+    else()
+      message(FATAL_ERROR "cuDSS communication layer requires a CUDA compiler.")
+    endif()
+
+    add_library(elmer_cudss_commlayer SHARED ${CUDSS_COMMLAYER_SRC_MPI})
+    target_include_directories(elmer_cudss_commlayer PRIVATE ${CUDA_INCLUDE_DIR} ${CUDSS_INCLUDE_DIR})
+    target_link_libraries(elmer_cudss_commlayer PRIVATE MPI::MPI_C CUDA::cudart)
+    install(TARGETS elmer_cudss_commlayer LIBRARY DESTINATION ${ELMER_INSTALL_LIB_DIR})
+    SET(ELMER_CUDSS_COMMLAYER_NAME "\"libelmer_cudss_commlayer${CMAKE_SHARED_LIBRARY_SUFFIX}\"" CACHE INTERNAL "")
+  ELSE()
+    SET(ELMER_CUDSS_COMMLAYER_NAME NULL INTERNAL)
+  ENDIF(COMPILE_CUDSS_COMMLAYER)
+
 ENDIF()
 
 # if(APPLE)
@@ -615,6 +630,28 @@ IF(MPI_FOUND)
   # Permon
   IF(WITH_FETI4I)
     FIND_PACKAGE(FETI4I REQUIRED)
+  ENDIF()
+
+  IF(WITH_PERMON)
+    IF(NOT PERMON_DIR)
+      MESSAGE(FATAL_ERROR "WITH_PERMON=ON but PERMON_DIR is not set")
+    ENDIF()
+
+    SET(PERMON_INCLUDE_DIR "${PERMON_DIR}/include")
+    SET(PERMON_LIB_DIR     "${PERMON_DIR}/${PETSC_ARCH}/lib")
+    MESSAGE(STATUS "DEBUG PERMON_DIR=${PERMON_DIR} PETSC_ARCH=${PETSC_ARCH}")
+    
+    IF(EXISTS "${PERMON_LIB_DIR}/libpermon.so")
+      SET(PERMON_LIBRARIES "${PERMON_LIB_DIR}/libpermon.so")
+    ELSEIF(EXISTS "${PERMON_LIB_DIR}/libpermon.a")
+      SET(PERMON_LIBRARIES "${PERMON_LIB_DIR}/libpermon.a")
+    ELSE()
+      MESSAGE(FATAL_ERROR "Could not find libpermon.so or libpermon.a at ${PERMON_LIB_DIR}")
+    ENDIF()
+
+    INCLUDE_DIRECTORIES(${PERMON_INCLUDE_DIR})
+    SET(HAVE_PERMON TRUE CACHE BOOL "PERMON support enabled")
+    ADD_DEFINITIONS(-DHAVE_PERMON)
   ENDIF()
 ENDIF()
 

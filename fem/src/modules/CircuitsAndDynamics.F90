@@ -132,6 +132,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
   LOGICAL :: Found
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'CircuitsAndDynamics'
+  ! Time discretization of every d/dt term, see SetBDFWeights().
+  INTEGER :: BDFOrder
+  REAL(KIND=dp) :: BDFw(3)
+  LOGICAL :: NewStep
 
 !------------------------------------------------------------------------------
 
@@ -238,6 +242,10 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     ! Kept in the container, so it may already exist from a previous build.
     IF(ALLOCATED(Ckt % Crt)) DEALLOCATE(Ckt % Crt)
     ALLOCATE(Ckt % Crt(Ckt % Circuit_tot_n))
+    IF(ALLOCATED(Ckt % CrtPrev)) DEALLOCATE(Ckt % CrtPrev)
+    ALLOCATE(Ckt % CrtPrev(Ckt % Circuit_tot_n))
+    Ckt % CrtPrev = 0._dp
+    Ckt % CrtHist = 0
   END IF
 
   ! Not from the local: it is only assigned inside the build block above.
@@ -248,10 +256,15 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
     IF( TransientSimulation ) CALL SetDynamicAngle()
   END IF
 
-  IF (Ckt % Tstep /= GetTimestep()) THEN
+  NewStep = (Ckt % Tstep /= GetTimestep())
+  IF (NewStep) THEN
     Ckt % Tstep = GetTimestep()
-    ! Circuit variable values from previous timestep:
+    ! Circuit variable values from previous timestep, and the one before that
+    ! for BDF2. Kept here rather than as a second PrevValues column of the
+    ! Lagrange multiplier, which the library resizes with only one column.
     ! -----------------------------------------------
+    IF (Ckt % CrtHist > 0) Ckt % CrtPrev = Ckt % Crt
+    Ckt % CrtHist = MIN(Ckt % CrtHist + 1, 2)
     Ckt % Crt = 0._dp
 
     LagrangeVar => VariableGet( Solver % Mesh % Variables, Ckt % MultName )
@@ -300,6 +313,8 @@ SUBROUTINE CircuitsAndDynamics( Model,Solver,dt,TransientSimulation )
 
   CM % RHS = 0._dp
   IF(ASSOCIATED(CM % Values)) CM % Values = 0._dp
+
+  CALL SetBDFWeights()
 
   ! Write Circuit equations:
   ! ------------------------
@@ -352,7 +367,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BF, Params
     TYPE(Matrix_t), POINTER :: CM
     INTEGER :: i, nm, RowId, ColId, j
-    REAL(KIND=dp) :: vphi
+    REAL(KIND=dp) :: vphi, xprev
     LOGICAL :: Found
 
     Circuit => CurrentModel % CircuitModel % Circuits(p)
@@ -392,8 +407,10 @@ CONTAINS
           ! A d/dt(x): (x could be voltage or current):
           !--------------------------------------------
           IF(Cvar % A(j) /= 0._dp) THEN
-            CALL AddToMatrixElement(CM, RowId, ColId, Cvar % A(j)/dt)
-            CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j) * Crt(ColId-nm) / dt
+            xprev = Crt(ColId-nm)
+            IF(BDFOrder > 1) xprev = -(BDFw(2)*Crt(ColId-nm) + BDFw(3)*Ckt % CrtPrev(ColId-nm))
+            CALL AddToMatrixElement(CM, RowId, ColId, Cvar % A(j)*BDFw(1)/dt)
+            CM % RHS(RowId) = CM % RHS(RowId) + Cvar % A(j) * xprev / dt
           END IF
         END IF
         ! B x:
@@ -672,12 +689,11 @@ CONTAINS
 
     CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
 
-    IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN
-      tscl=1.0_dp
-    ELSE
-      tscl=1.5_dp
+    ! The matrix gets tscl*val/dt and the rhs pPot*val/dt, see SetBDFWeights().
+    tscl = BDFw(1)
+    IF(BDFOrder > 1) THEN
       CALL GetLocalSolution(ppPOT,UElement=Element,USolver=ASolver,tstep=-2)
-      pPot = 2*pPOT - 0.5_dp*ppPOT
+      pPot = -(BDFw(2)*pPOT + BDFw(3)*ppPOT)
     END IF
 
     ncdofs=nd
@@ -879,12 +895,11 @@ CONTAINS
       CALL GetPermittivity(Material, Permittivity, nn)
     ELSE
       CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
-      IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN
-        tscl=1.0_dp
-      ELSE
-        tscl=1.5_dp
+      ! The matrix gets tscl*val/dt and the rhs pPot*val/dt, see SetBDFWeights().
+      tscl = BDFw(1)
+      IF(BDFOrder > 1) THEN
         CALL GetLocalSolution(ppPOT,UElement=Element,USolver=ASolver,tstep=-2)
-        pPot = (2*pPOT - 0.5_dp*ppPOT)
+        pPot = -(BDFw(2)*pPOT + BDFw(3)*ppPOT)
       END IF
     END IF
 
@@ -1089,12 +1104,11 @@ CONTAINS
 
     CALL GetLocalSolution(pPOT,UElement=Element,USolver=ASolver,tstep=-1)
 
-    IF(Solver % Order<2.OR.GetTimeStep()<=2) THEN
-      tscl=1.0_dp
-    ELSE
-      tscl=1.5_dp
+    ! The matrix gets tscl*val/dt and the rhs pPot*val/dt, see SetBDFWeights().
+    tscl = BDFw(1)
+    IF(BDFOrder > 1) THEN
       CALL GetLocalSolution(ppPOT,UElement=Element,USolver=ASolver,tstep=-2)
-      pPot = 2*pPOT - 0.5_dp*ppPOT
+      pPot = -(BDFw(2)*pPOT + BDFw(3)*ppPOT)
     END IF
 
     ncdofs=nd
@@ -1229,6 +1243,55 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Set the rotation angle in case moment of inertia and torque are given.
+!------------------------------------------------------------------------------
+!> Weights of the time derivative of every circuit and coupling term:
+!> dx/dt ~ (BDFw(1)*x^n + BDFw(2)*x^{n-1} + BDFw(3)*x^{n-2})/dt.
+!> The order follows the A solver, the same MIN(DoneTime,Order) rule the library
+!> uses for its own BDF, since the coupling terms have to be discretized like
+!> the field equation they are added to. It used to read the order of the
+!> circuit solver and switch to BDF2 one step later than the field did, and the
+!> circuit's own A dx/dt terms were always backward Euler. Only up to BDF2.
+!------------------------------------------------------------------------------
+  SUBROUTINE SetBDFWeights()
+!------------------------------------------------------------------------------
+    TYPE(Variable_t), POINTER :: DtVar
+    CHARACTER(:), ALLOCATABLE :: Method
+    INTEGER :: AOrder
+    REAL(KIND=dp) :: r
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+    BDFOrder = 1
+    BDFw = [1.0_dp, -1.0_dp, 0.0_dp]
+    IF(.NOT. TransientSimulation) RETURN
+
+    Method = ListGetString(ASolver % Values,'Timestepping Method',Found)
+    IF(.NOT. Found) RETURN
+    IF(Method /= 'bdf') RETURN
+
+    AOrder = MAX(MIN(ASolver % DoneTime, ASolver % Order), 1)
+    IF(AOrder > 2 .AND. NewStep) THEN
+      CALL Warn(Caller,'Circuit equations implement BDF only up to order 2, A solver uses order '&
+          //I2S(AOrder))
+    END IF
+    ! Also limited by the circuit history, which restarts when the structures are rebuilt.
+    BDFOrder = MIN(AOrder, 2, Ckt % CrtHist)
+    IF(BDFOrder < 2) RETURN
+
+    ! Variable timestep BDF2 as in VBDF_CRS, scaled by dt; r = dt_n/dt_{n-1}.
+    r = 1.0_dp
+    DtVar => VariableGet(ASolver % Mesh % Variables,'Timestep size')
+    IF(ASSOCIATED(DtVar)) THEN
+      IF(ASSOCIATED(DtVar % PrevValues)) r = dt / DtVar % PrevValues(1,1)
+    END IF
+    IF(ABS(r-1) > 1.0d-6) THEN
+      BDFw = [(1+2*r)/(1+r), -(1+r), r**2/(1+r)]
+    ELSE
+      BDFw = [1.5_dp, -2.0_dp, 0.5_dp]
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE SetBDFWeights
+!------------------------------------------------------------------------------
+
 !------------------------------------------------------------------------------
   SUBROUTINE SetDynamicAngle()
     TYPE(Variable_t), POINTER :: AngVar, VeloVar
