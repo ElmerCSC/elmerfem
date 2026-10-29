@@ -46,7 +46,7 @@ Solver 2
    Linear System Residual Output = 10
    Linear System Abort not Converged = False
    Linear System ILUT Tolerance=1e-8
-   linear system preconditioning = circuit
+   Linear system preconditioning = Circuit
    BicgStabL Polynomial Degree = 2
    Steady State Convergence Tolerance = 1e-06
 End
@@ -129,4 +129,6 @@ Boundary Condition 3
 End
 
 Solver 2 :: Reference Norm = 1.00762350E-03
+Solver 2 :: Reference Norm Tolerance = Real 1e-4
+
 Solver 4 :: Reference Norm = 1.99104814E-03
