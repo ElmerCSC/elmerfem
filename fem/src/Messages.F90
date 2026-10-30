@@ -309,7 +309,11 @@ CONTAINS
 
 !-----------------------------------------------------------------------
 
+#ifdef __NVCOMPILER
+     IF ( .NOT. OutputLevelMask(0) ) ERROR STOP 1
+#else
      IF ( .NOT. OutputLevelMask(0) ) ERROR STOP EXIT_ERROR
+#endif
 
      nadv = .FALSE.
      IF ( PRESENT( noAdvance ) ) nadv = noAdvance
@@ -324,7 +328,11 @@ CONTAINS
         ELSE
            WRITE( InfoOutUnit, '(A)', ADVANCE='YES' ) TRIM(String)
         END IF
+#ifdef __NVCOMPILER
+        ERROR STOP 1
+#else
         ERROR STOP EXIT_ERROR
+#endif
      END IF
      nadv1 = nadv
      CALL FLUSH(InfoOutUnit)
@@ -388,7 +396,11 @@ CONTAINS
      IF(.NOT.PRESENT(Caller)) CALL BACKTRACE
 #endif
 
+#ifdef __NVCOMPILER
+     ERROR STOP 1
+#else
      ERROR STOP EXIT_ERROR
+#endif
 !-----------------------------------------------------------------------
    END SUBROUTINE Assert
 !-----------------------------------------------------------------------

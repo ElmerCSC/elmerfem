@@ -513,6 +513,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     
     USE MaterialModels
+    USE CoordinateSystems, ONLY : CoordinateSystemDimension
     USE PorousMaterialModels
     
     REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:)

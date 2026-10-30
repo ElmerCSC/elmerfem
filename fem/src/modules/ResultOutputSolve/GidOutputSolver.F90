@@ -27,6 +27,7 @@
 SUBROUTINE GiDOutputSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE SaveUtils, ONLY : SolverOutputDirectory
   IMPLICIT NONE
 !------------------------------------------------------------------------------

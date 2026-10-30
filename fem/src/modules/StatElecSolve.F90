@@ -632,6 +632,8 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
+    USE CoordinateSystems, ONLY : CoordinateSystemDimension
+    USE Lists, ONLY : ListGetCReal
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
     TYPE(Element_t), POINTER :: Element

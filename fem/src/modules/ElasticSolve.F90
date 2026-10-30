@@ -70,6 +70,7 @@ END SUBROUTINE ElasticSolver_Init0
 SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE StressLocal, ONLY: StressFieldDefinition, SymTensorComponents
   IMPLICIT NONE
 
@@ -5323,6 +5324,7 @@ CONTAINS
        PseudoTraction, MixedFormulation, LargeDeflection)
 !------------------------------------------------------------------------------
     USE Integration
+    USE CoordinateSystems, ONLY : CoordinateSystemDimension
     USE LinearAlgebra
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: BoundaryMatrix(:,:), BoundaryVector(:)
