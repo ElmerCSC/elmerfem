@@ -1,7 +1,7 @@
 ! Consistency test for workflow where ElmerGrid input
 ! file contains MATC statements.
 !
-! R.B.  20.10.2026
+! R.B.  2.11.2026
 
 Header
   CHECK KEYWORDS Warn
@@ -16,8 +16,7 @@ Simulation
   Simulation Type = "Steady State"
   Steady State Max Iterations = 1
   Output Intervals = 0
-
-  Post File = case.vtu
+  ! Post File = case.vtu
 End
 
 Constants
@@ -40,7 +39,7 @@ End
 Solver 1
   Equation = "CheckMesh"
   Procedure = "MeshChecksum" "MeshChecksum"
-  Reference Values(8) = 2041 242400 800 530400 16160 20 35360 7.1054273576010019E-015
+  Reference Values(8) = 1406 181800 450 456300 22220 165 55770 9.5378752962930449
 End
 
 Solver 2
@@ -81,5 +80,5 @@ Boundary Condition 2
   Temperature = 1
 End
 
-Solver 1 :: Reference Norm = 1.625
-Solver 2 :: Reference Norm = 7.26030892E-01
+Solver 1 :: Reference Norm = 1.00000000E+00
+Solver 2 :: Reference Norm = 6.07443586E-01

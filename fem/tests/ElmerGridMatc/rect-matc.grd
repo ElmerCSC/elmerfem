@@ -1,16 +1,27 @@
 ***** ElmerGrid input file for structured grid generation *****
 Version = 210903
+
 DEBUG IO = True
 MATC = True
-$a=-1.0
-$b=1.0
+$p=pi/1000  ! scale mm to meters
+$a=0.0
+$b=p
+$c=p*2
+$d=p*3
+$e=p*4
+$f=p*5
+$g=p*6
+$h=p*7
+$j=p*8
+$k=p*9
 Coordinate System = Cartesian 2D
-Subcell Divisions in 2D = 1 1
-Subcell Limits 1 = $a b ! -1.0 1.0
-Subcell Limits 2 = $a b ! -1.0 1.0
+Subcell Divisions in 2D = 9 1
+Subcell Limits 1 = $a b c d e f g h j k
+Subcell Limits 2 = $a d
 DEBUG IO = False
+
 Material Structure in 2D
-  1
+  1 1 1 1 1 1 1 1 1
 End
 Materials Interval = 1 1
 Boundary Definitions
@@ -24,6 +35,5 @@ Numbering = Horizontal
 Coordinate Ratios = 1
 Element Innernodes = False
 Element Degree = 1
-Triangles = True
-Element Divisions 1 = 20
-Element Divisions 2 = 20
+Element Divisions 1 = 5 5 5 5 5 5 5 5 5
+Element Divisions 2 = 10
