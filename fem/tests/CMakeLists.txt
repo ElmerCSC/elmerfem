@@ -17,7 +17,7 @@ SET(MESH2D_BIN "${CMAKE_BINARY_DIR}/meshgen2d/src/Mesh2D")
 MACRO(SUBDIRLIST result curdir depth)
   set(glob_pattern "*")
   FOREACH(D RANGE 1 ${depth})
-    FILE(GLOB children RELATIVE ${curdir} ${glob_pattern}) 
+    FILE(GLOB children RELATIVE ${curdir} ${glob_pattern})
     FOREACH(child ${children})
       IF(IS_DIRECTORY ${curdir}/${child})
         LIST(APPEND dirlist ${child})
@@ -57,10 +57,10 @@ FOREACH(_subdir ${TEST_SUBDIRS})
 ENDFOREACH()
 
 IF(INSTALL_OLD_TESTS)
-  INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/. 
+  INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/.
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests
-    FILES_MATCHING REGEX 
-    ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d|best0)|HB|Makefile|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*")
+    FILES_MATCHING REGEX
+    ".+\\.(f90|F90|sif|mif|grd|eg|msh|good|dat|pos|result|in2d|best0)|HB|TEST\\.RESULT|ELMERSOLVER_STARTINFO|mesh\\.*")
 
   # Misc. directories for meshes etc.
   INSTALL(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/diffuser_sa/diffuser/.
@@ -73,7 +73,7 @@ IF(INSTALL_OLD_TESTS)
   INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/findnorm.c
     ${CMAKE_CURRENT_SOURCE_DIR}/ElmerSolver_test_how-to.txt
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests)
-  INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/runtests 
+  INSTALL(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/runtests
     DESTINATION ${CMAKE_BINARY_DIR}/elmertests)
 ENDIF(INSTALL_OLD_TESTS)
 

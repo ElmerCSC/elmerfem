@@ -4,92 +4,92 @@ SET(CMAKE_AUTORCC ON)
 SET(CMAKE_AUTOUIC OFF)
 #FIND_PACKAGE(Qt4 COMPONENTS QtOpenGL QtXml QtScript QtGui QtCore REQUIRED)
 
-SET(HEADERS src/bodypropertyeditor.h 
-  src/boundarydivision.h 
-  src/boundarypropertyeditor.h 
-  src/checkmpi.h 
-  src/dynamiceditor.h 
-  src/edfeditor.h 
-  src/egini.h 
-  src/generalsetup.h 
-  src/glcontrol.h 
-  src/glwidget.h 
-  src/helpers.h 
-  src/mainwindow.h 
-  src/materiallibrary.h 
-  src/maxlimits.h 
-  src/meshcontrol.h 
-  src/meshingthread.h 
-  src/meshtype.h 
-  src/meshutils.h 
-  src/operation.h 
-  src/parallel.h 
-  src/projectio.h 
-  src/sifgenerator.h 
-  src/sifwindow.h 
-  src/solverparameters.h 
-  src/summaryeditor.h 
-  src/objectbrowser.h 
-  src/solverlogwindow.h 
-  src/newprojectdialog.h 
+SET(HEADERS src/bodypropertyeditor.h
+  src/boundarydivision.h
+  src/boundarypropertyeditor.h
+  src/checkmpi.h
+  src/dynamiceditor.h
+  src/edfeditor.h
+  src/egini.h
+  src/generalsetup.h
+  src/glcontrol.h
+  src/glwidget.h
+  src/helpers.h
+  src/mainwindow.h
+  src/materiallibrary.h
+  src/maxlimits.h
+  src/meshcontrol.h
+  src/meshingthread.h
+  src/meshtype.h
+  src/meshutils.h
+  src/operation.h
+  src/parallel.h
+  src/projectio.h
+  src/sifgenerator.h
+  src/sifwindow.h
+  src/solverparameters.h
+  src/summaryeditor.h
+  src/objectbrowser.h
+  src/solverlogwindow.h
+  src/newprojectdialog.h
   plugins/egmain.h
   plugins/elmergrid_api.h
-  plugins/nglib_api.h 
-  plugins/tetgen.h 
-  plugins/tetlib_api.h 
-  twod/renderarea.h 
-  twod/twodview.h 
+  plugins/nglib_api.h
+  plugins/tetgen.h
+  plugins/tetlib_api.h
+  twod/renderarea.h
+  twod/twodview.h
   twod/curveeditor.h)
 
 
-SET(FORMS forms/bodypropertyeditor.ui 
-  forms/boundarydivision.ui 
-  forms/boundarypropertyeditor.ui 
-  forms/generalsetup.ui 
-  forms/glcontrol.ui 
-  forms/materiallibrary.ui 
-  forms/meshcontrol.ui 
-  forms/parallel.ui 
-  forms/solverparameters.ui 
+SET(FORMS forms/bodypropertyeditor.ui
+  forms/boundarydivision.ui
+  forms/boundarypropertyeditor.ui
+  forms/generalsetup.ui
+  forms/glcontrol.ui
+  forms/materiallibrary.ui
+  forms/meshcontrol.ui
+  forms/parallel.ui
+  forms/solverparameters.ui
   forms/summaryeditor.ui
   forms/newproject.ui)
 
 
-SET(SOURCES src/bodypropertyeditor.cpp 
-  src/boundarydivision.cpp 
-  src/boundarypropertyeditor.cpp 
-  src/checkmpi.cpp 
-  src/dynamiceditor.cpp 
-  src/edfeditor.cpp 
-  src/egini.cpp 
-  src/generalsetup.cpp 
-  src/glcontrol.cpp 
-  src/glwidget.cpp 
-  src/helpers.cpp 
-  src/main.cpp 
-  src/mainwindow.cpp 
-  src/materiallibrary.cpp 
-  src/maxlimits.cpp 
-  src/meshcontrol.cpp 
-  src/meshingthread.cpp 
-  src/meshtype.cpp 
-  src/meshutils.cpp 
-  src/operation.cpp 
-  src/parallel.cpp 
-  src/projectio.cpp 
-  src/sifgenerator.cpp 
-  src/sifwindow.cpp 
-  src/solverparameters.cpp 
-  src/summaryeditor.cpp 
-  src/solverlogwindow.cpp 
-  src/objectbrowser.cpp 
+SET(SOURCES src/bodypropertyeditor.cpp
+  src/boundarydivision.cpp
+  src/boundarypropertyeditor.cpp
+  src/checkmpi.cpp
+  src/dynamiceditor.cpp
+  src/edfeditor.cpp
+  src/egini.cpp
+  src/generalsetup.cpp
+  src/glcontrol.cpp
+  src/glwidget.cpp
+  src/helpers.cpp
+  src/main.cpp
+  src/mainwindow.cpp
+  src/materiallibrary.cpp
+  src/maxlimits.cpp
+  src/meshcontrol.cpp
+  src/meshingthread.cpp
+  src/meshtype.cpp
+  src/meshutils.cpp
+  src/operation.cpp
+  src/parallel.cpp
+  src/projectio.cpp
+  src/sifgenerator.cpp
+  src/sifwindow.cpp
+  src/solverparameters.cpp
+  src/summaryeditor.cpp
+  src/solverlogwindow.cpp
+  src/objectbrowser.cpp
   src/newprojectdialog.cpp
   plugins/egmain.cpp
   plugins/elmergrid_api.cpp
-  plugins/nglib_api.cpp 
-  plugins/tetlib_api.cpp 
-  twod/renderarea.cpp 
-  twod/twodview.cpp 
+  plugins/nglib_api.cpp
+  plugins/tetlib_api.cpp
+  twod/renderarea.cpp
+  twod/twodview.cpp
   twod/curveeditor.cpp)
 
 ADD_DEFINITIONS(-DEG_PLUGIN)
@@ -106,57 +106,57 @@ IF(WITH_VTK AND NOT WITHOUT_VTKPOST)
     INCLUDE(${VTK_USE_FILE})
   ENDIF()
   SET(HEADERS ${HEADERS}
-    vtkpost/axes.h 
-    vtkpost/featureedge.h 
-    vtkpost/vtkpost.h 
-    vtkpost/isosurface.h 
-    vtkpost/isocontour.h 
-    vtkpost/epmesh.h 
-    vtkpost/colorbar.h 
-    vtkpost/meshpoint.h 
-    vtkpost/meshedge.h 
-    vtkpost/surface.h 
-    vtkpost/preferences.h 
-    vtkpost/vector.h 
-    vtkpost/readepfile.h 
-    vtkpost/streamline.h 
-    vtkpost/timestep.h 
-    vtkpost/ecmaconsole.h 
+    vtkpost/axes.h
+    vtkpost/featureedge.h
+    vtkpost/vtkpost.h
+    vtkpost/isosurface.h
+    vtkpost/isocontour.h
+    vtkpost/epmesh.h
+    vtkpost/colorbar.h
+    vtkpost/meshpoint.h
+    vtkpost/meshedge.h
+    vtkpost/surface.h
+    vtkpost/preferences.h
+    vtkpost/vector.h
+    vtkpost/readepfile.h
+    vtkpost/streamline.h
+    vtkpost/timestep.h
+    vtkpost/ecmaconsole.h
     vtkpost/text.h)
 
   SET(FORMS ${FORMS}
-    vtkpost/axes.ui 
-    vtkpost/featureedge.ui 
-    vtkpost/isosurface.ui 
-    vtkpost/isocontour.ui 
-    vtkpost/colorbar.ui 
-    vtkpost/surface.ui 
-    vtkpost/meshpoint.ui 
-    vtkpost/meshedge.ui 
-    vtkpost/preferences.ui 
-    vtkpost/vector.ui 
-    vtkpost/readepfile.ui 
-    vtkpost/streamline.ui 
-    vtkpost/timestep.ui 
+    vtkpost/axes.ui
+    vtkpost/featureedge.ui
+    vtkpost/isosurface.ui
+    vtkpost/isocontour.ui
+    vtkpost/colorbar.ui
+    vtkpost/surface.ui
+    vtkpost/meshpoint.ui
+    vtkpost/meshedge.ui
+    vtkpost/preferences.ui
+    vtkpost/vector.ui
+    vtkpost/readepfile.ui
+    vtkpost/streamline.ui
+    vtkpost/timestep.ui
     vtkpost/text.ui)
 
   SET(SOURCES ${SOURCES}
-    vtkpost/axes.cpp 
-    vtkpost/featureedge.cpp 
-    vtkpost/vtkpost.cpp 
-    vtkpost/isosurface.cpp 
-    vtkpost/isocontour.cpp 
-    vtkpost/epmesh.cpp 
-    vtkpost/colorbar.cpp 
-    vtkpost/meshpoint.cpp 
-    vtkpost/meshedge.cpp 
-    vtkpost/surface.cpp 
-    vtkpost/preferences.cpp 
-    vtkpost/vector.cpp 
-    vtkpost/readepfile.cpp 
-    vtkpost/streamline.cpp 
-    vtkpost/timestep.cpp 
-    vtkpost/ecmaconsole.cpp 
+    vtkpost/axes.cpp
+    vtkpost/featureedge.cpp
+    vtkpost/vtkpost.cpp
+    vtkpost/isosurface.cpp
+    vtkpost/isocontour.cpp
+    vtkpost/epmesh.cpp
+    vtkpost/colorbar.cpp
+    vtkpost/meshpoint.cpp
+    vtkpost/meshedge.cpp
+    vtkpost/surface.cpp
+    vtkpost/preferences.cpp
+    vtkpost/vector.cpp
+    vtkpost/readepfile.cpp
+    vtkpost/streamline.cpp
+    vtkpost/timestep.cpp
+    vtkpost/ecmaconsole.cpp
     vtkpost/text.cpp)
 
   IF(WITH_MATC)
@@ -216,7 +216,7 @@ SET(CPACK_PACKAGE_EXECUTABLES ElmerGUI "ElmerGUI")
 TARGET_LINK_LIBRARIES(ElmerGUI elmergrid_core)
 
 IF(WITH_QT6)
-  TARGET_LINK_LIBRARIES(ElmerGUI Qt6::OpenGLWidgets Qt6::Qml Qt6::Xml Qt6::Gui Qt6::Core Qt6::Svg Qt6::Widgets Qt6::PrintSupport Qt6::OpenGLWidgets) 
+  TARGET_LINK_LIBRARIES(ElmerGUI Qt6::OpenGLWidgets Qt6::Qml Qt6::Xml Qt6::Gui Qt6::Core Qt6::Svg Qt6::Widgets Qt6::PrintSupport Qt6::OpenGLWidgets)
 ELSEIF(WITH_QT5)
   QT5_USE_MODULES(ElmerGUI OpenGL Xml Script Gui Core Svg Widgets PrintSupport)
 ENDIF()
@@ -260,7 +260,7 @@ IF(WITH_OCC)
   TARGET_LINK_LIBRARIES(ElmerGUI ${ELMER_OCC_LIBS})
   INCLUDE_DIRECTORIES(${OpenCASCADE_INCLUDE_DIR})
   IF(UNIX)
-    ADD_DEFINITIONS(-DHAVE_CONFIG_H -DHAVE_IOSTREAM -DHAVE_FSTREAM -DHAVE_LIMITS_H) 
+    ADD_DEFINITIONS(-DHAVE_CONFIG_H -DHAVE_IOSTREAM -DHAVE_FSTREAM -DHAVE_LIMITS_H)
   ELSEIF(WIN32)
     ADD_DEFINITIONS(-DWNT -DCSFDB)
   ENDIF()
