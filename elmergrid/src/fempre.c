@@ -80,7 +80,12 @@ int main(int argc, char *argv[])
   showmem = TRUE;
   
   printf("==================================================================\n");
-  printf("ElmerGrid mesh conversion and manipulation utility, Welcome!\n");
+#if USE_MATC
+  printf("ElmerGrid with MATC mesh conversion and manipulation utility, Welcome!\n");
+#else
+  printf("ElmerGrid without MATC mesh conversion and manipulation utility, Welcome!\n");
+#endif // USE_MATC
+
 #ifdef ELMER_FEM_VERSION
   /* Branch might not exist even though Revision would exist when git is in detached head state.
      Hence check the branch for existence. */

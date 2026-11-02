@@ -3127,7 +3127,7 @@ int LoadElmergrid(struct GridType **grid,int *nogrids,char *prefix,int info)
 #if USE_MATC
 	matcactive = TRUE;
 	mtc_init(NULL, stdout, stderr);
-	strcpy(command, "format( 12 )");	
+	strcpy(command, "format( 12, \"rowform\" )");
 	mtc_domath(command);	 
 	printf("MATC language activated with 12 digit accuracy.\n");	
 #else
