@@ -1,0 +1,97 @@
+! A Maxwell material with "Heat Expansion Coefficient" and "Strain Load", through
+! StressSolve's legacy assembly (StressCompose in Stress.F90). Both are eigenstrains:
+! the elastic strain is eps - alpha*dT - eps0, so their stress must be relaxed by
+! xPhi = 1/(1 + mu/eta dt) with the stiffness and taken off the elastic response
+! that advances the lag stress. Both were left unrelaxed, so the free body below
+! expanded by eps0/xPhi on the first step and then kept creeping, where nothing in
+! it is ever stressed.
+!
+! The unit square is held only against rigid motion -- d 1 = 0 on the left edge,
+! d 2 = 0 on the bottom -- so the exact answer is u = (eps_xx x, eps_yy y) at every
+! step, for any viscosity: eps_xx = alpha*dT + 0.05 = 0.15 and eps_yy = 0.1 - 0.02.
+! The reference norm is max |d 1| = 0.15 itself. Before the fix it came out 0.438
+! here and 0.327 through StressSolve's legacy assembly.
+!
+! The sibling ElasticMaxwellThermal runs the same case through ElasticSolve, so a
+! divergence between the two says which solver moved.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  Timestep Sizes = 1.0
+  Timestep Intervals = 5
+  Timestepping Method = BDF
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  Temperature = Real 100
+End
+
+! mu = E/(2(1+nu)) = 1/2.6, so with eta = 1 and dt = 1 xPhi = 0.72: strongly relaxing.
+Material 1
+  Density = Real 0
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.3
+  Maxwell Material = Logical True
+  Viscosity = Real 1
+  Heat Expansion Coefficient = Real 1.0e-3
+  Reference Temperature = Real 0
+End
+
+Body Force 1
+  Strain Load(6) = Real 0.05 -0.02 0 0 0 0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = True
+End
+
+Solver 1
+  Equation = "Elasticity Analysis"
+  Procedure = "StressSolve" "StressSolver"
+  Legacy Assembly = Logical True
+  Variable = -dofs 2 Displacement
+  Exported Variable 1 = Temperature
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 2
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  Variable 1 = String "Displacement 1"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Displacement 2"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 4
+  Displacement 1 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 1
+  Displacement 2 = Real 0
+End
+
+Solver 2 :: Reference Norm = Real 0.15

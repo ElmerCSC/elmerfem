@@ -3772,10 +3772,12 @@ CONTAINS
     ! history read from the previous step and NewLagStress what replaces it;
     ! ElasticStress is the UNRELAXED response, which the update needs and the
     ! assembly does not. Pres/Pres0 are the mixed formulation's pressure now and at
-    ! the previous step, zero without it.
+    ! the previous step, zero without it. EigenStress is C : eigenstrain, the
+    ! "Strain Load" and thermal part of the offset, which Maxwell relaxes.
     REAL(KIND=dp) :: xPhi, ShearModulus, MaxVisc, MuDer
     REAL(KIND=dp) :: Tau, MuEff, GpaMag, hKe, Kfam, PeStab
     REAL(KIND=dp) :: LagStress(3,3), NewLagStress(3,3), ElasticStress(3,3)
+    REAL(KIND=dp) :: EigenStress(3,3)
     REAL(KIND=dp) :: LagVec(6), Pres, Pres0
     REAL(KIND=dp) :: NodalVelo(3,ntot)
     INTEGER :: VeBase, VeIdx, nIP
@@ -4263,9 +4265,16 @@ CONTAINS
              END DO
           END IF
 
+          ! Under Maxwell C : eps0 is relaxed below with the stiffness instead: the
+          ! elastic part of the strain is eps - eps0, so its stress must be scaled
+          ! by xPhi exactly as C : eps is, and subtracted from the elastic response
+          ! that advances the lag stress. Left unrelaxed as before, a free body at
+          ! constant temperature expanded by alpha*dT/xPhi on the first step and
+          ! then kept creeping, where it should simply sit at alpha*dT.
           MatPoint % Strain = EigenStrain
           CALL MatModel % Stress( MatPoint, MatProps(1:nProps), MatState, MatResponse )
-          StressOffset = StressOffset - MatResponse % Stress
+          EigenStress = MatResponse % Stress
+          IF ( .NOT. MaxwellHere ) StressOffset = StressOffset - EigenStress
 
           !-------------------------------------------------------------------
           ! MAXWELL: the lag stress carried over from the previous step is an
@@ -4307,7 +4316,7 @@ CONTAINS
              CALL Vector62Tensor( VeStress % PrevValues(VeIdx+1:VeIdx+nve,1), &
                   LagStress, cdim, AxialSymmetry )
 
-             StressOffset = StressOffset - xPhi * ( LagStress - Pres0*Identity )
+             StressOffset = StressOffset - xPhi * ( LagStress - Pres0*Identity + EigenStress )
           END IF
        END IF
 
@@ -4380,7 +4389,7 @@ CONTAINS
        GeomStress = Stress2
 
        IF ( MaxwellHere ) THEN
-          ElasticStress = Stress2
+          ElasticStress = Stress2 - EigenStress
           Stress2 = xPhi * Stress2
        END IF
 
