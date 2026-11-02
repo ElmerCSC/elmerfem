@@ -70,8 +70,6 @@ MODULE SplitFemUtils
   TYPE(Matrix_t), POINTER :: NodeMatrix
   INTEGER :: SplitFemBody
   CHARACTER(:), ALLOCATABLE :: CutStr
-  TYPE(Solver_t), POINTER :: SlaveSolver => NULL()
-  INTEGER :: SlaveSolverId = 0
   INTEGER :: CutDofs = 0
   INTEGER :: nCase(20)
 
@@ -118,6 +116,8 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMPerm'
     !REAL(KIND=dp), POINTER :: CutValues(:), PrevCutValues(:,:)
 
+    CALL Info(Caller,'Creating permutation for SplitFEM',Level=20)
+    
     Params => CurrentModel % Simulation
     Mesh => Solver % Mesh
     ! Memorize original nodal matrix
@@ -637,7 +637,9 @@ CONTAINS
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Variable_t), POINTER :: Variable
     CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMVariable'
+#if 0 
     NULLIFY(CutValues, PrevCutValues)
+#endif
 
     IF(.NOT. ASSOCIATED(Solver % Variable)) THEN
       CALL Info(Caller,'Solver % Variable not associated, doing nothing!')
@@ -1870,6 +1872,11 @@ CONTAINS
       CALL Info('SplitFEMVariableFinalize','Reverting cut field back to original: '&
           //TRIM(Variable % Name),Level=20)
 
+      IF(InfoActive(25)) THEN
+        PRINT *,'Range SplitMesh:',MINVAL(Variable % Values),MAXVAL(Variable % Values)
+      END IF
+
+      
       IF(Variable % TYPE /= Variable_on_splitfem) THEN
         CALL Fatal('SplitFEMVarioableFinalize','Inconsistent variable type: '//I2S(Solver % Variable % Type))
       END IF
@@ -1891,6 +1898,11 @@ CONTAINS
         Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
 
       Solver % SplitFEMActive = .FALSE.
+
+      IF(InfoActive(25)) THEN
+        PRINT *,'Range OrigMesh:',MINVAL(Variable % Values),MAXVAL(Variable % Values)
+      END IF
+
     END DO
       
   END SUBROUTINE SplitFEMVariableRevert
@@ -2191,8 +2203,8 @@ CONTAINS
     !-----------------------------------------------------------------------------
     SUBROUTINE InterpolateLevelsetVariables()
 
-      INTEGER :: iVar, dofs, l
-      TYPE(Variable_t), POINTER :: Var
+      INTEGER :: iVar, dofs, l, j
+      TYPE(Variable_t), POINTER :: Var, pVar
       REAL(KIND=dp), POINTER :: Values(:)
       INTEGER, POINTER :: Perm(:)
       LOGICAL :: IsCutVar
@@ -2212,19 +2224,26 @@ CONTAINS
           ELSE                       
             VarName = ListGetString( Vlist,TRIM(ProjectPrefix)//' '//I2S(iVar), Found )
             IF(.NOT. Found ) EXIT    
-
-            ! These are cases {-2,-1,0} that are always done!
-            IF(ASSOCIATED(SlaveSolver)) THEN
-              IF(VarName == SlaveSolver % Variable % Name ) CYCLE
-            END IF
-            IF(VarName == Solver % Variable % Name ) CYCLE
             IF(VarName == CutStr ) CYCLE
           END IF
-            
+          
           Var => VariableGet( Mesh % Variables, VarName, ThisOnly = .TRUE. )
           IF(.NOT. ASSOCIATED(Var)) THEN
             CALL Fatal('InterpolateLevelsetVariable','Could not find variable in 2D mesh: '//TRIM(VarName))
           END IF
+
+          ! These are the CutFEM primary fields that are always done! Do not redo them. 
+          IF(iVar > 0 ) THEN
+            Found = .FALSE.
+            DO j = 1,CurrentModel % NumberOfSolvers
+              IF(CurrentModel % Solvers(j) % SplitFEM) THEN
+                Found = ASSOCIATED( Var, CurrentModel % Solvers(j) % Variable )
+                IF(Found) EXIT
+              END IF
+            END DO
+            IF(Found) CYCLE
+          END IF
+            
           IsCutVar = .FALSE.
         END IF
           
@@ -2377,7 +2396,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: str       
     LOGICAL :: Found, Nonzero, MovingLevelset, NormalMove, NodeHistory, Positive, CheckLS
     LOGICAL, ALLOCATABLE :: Trust(:), DoesElemIntersect(:)
-    INTEGER :: nVar,i,j,iAvoid,iSolver,jSolver,k,l,counter,NNeighbours,MyPE
+    INTEGER :: nVar,i,j,iAvoid,k,l,counter,NNeighbours,MyPE
     INTEGER, ALLOCATABLE :: LocalPerm(:),Neighbours(:),nSend(:),nRecv(:)
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(ValueList_t), POINTER :: Params
@@ -2401,6 +2420,7 @@ CONTAINS
     
     
     SAVE IsoMesh
+
 
     IsoMesh => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
         .TRUE.,.FALSE.,.FALSE.,CurrentModel % Simulation,'isoline variable')
@@ -2914,8 +2934,6 @@ CONTAINS
 
       nVar = 0
       iAvoid = 0
-      iSolver = 0
-      jSolver = 0
       TotLineLen = 0.0_dp
 
       Params => CurrentModel % Simulation
@@ -2926,10 +2944,16 @@ CONTAINS
 
         ! The levelset is really computed, do not interpolate it. 
         IF(str == CutStr) iAvoid = k 
-        IF(str == Solver % Variable % Name) iSolver = k
-        IF(ASSOCIATED(SlaveSolver)) THEN
-          IF(str == SlaveSolver % Variable % Name) jSolver = k
-        END IF
+
+        Found = .FALSE.
+        DO j=1, CurrentModel % NumberOfSolvers
+          IF( CurrentModel % Solvers(j) % Variable % Name == str ) THEN
+            IF( CurrentModel % Solvers(j) % SplitFEM ) THEN
+              CALL Info('PopulatePolyline','SplitFEM field '//TRIM(str)//' of solver '//I2S(j),Level=15)
+              EXIT
+            END IF
+          END IF
+        END DO
         
         Var1D => VariableGet( IsoMesh % Variables, str, ThisOnly = .TRUE. )
         IF(.NOT. ASSOCIATED(Var1D)) EXIT
@@ -2941,9 +2965,6 @@ CONTAINS
               MINVAL(Var1D % Values), MAXVAL(Var1D % Values) 
         END IF
       END DO
-
-      IF(iSolver > 0) CALL Info('PopulatePolyline','Field is SplitFEM field in primary solver: '//I2S(iSolver),Level=15)
-      IF(jSolver > 0) CALL Info('PopulatePolyline','Field is SplitFEM field in slave solver: '//I2S(jSolver),Level=15)
       
       m = Isomesh % NumberOfBulkElements
       MyPe = ParEnv % MyPe + 1
@@ -4213,9 +4234,9 @@ CONTAINS
           Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
           
           IF(Var2D % TYPE == Variable_on_splitfem) THEN
-            j = Solver % OrigPerm(node)
-            dofs = Solver % Variable % Dofs
-            pValues => Solver % OrigValues
+            j = Var2D % Solver % OrigPerm(node)
+            dofs = Var2D % Dofs
+            pValues => Var2D % Solver % OrigValues
           ELSE
             Var2D => VariableGet( Mesh % Variables, str, ThisOnly = .TRUE. )
             j = Var2D % Perm(node)
@@ -4228,7 +4249,7 @@ CONTAINS
             PRINT *,'We should maybe not be here?:',TRIM(str)
             STOP
           END IF
-            
+          
           ! Interpolate from the closest distance.
           ! This is done similarly as the interpolation of coordinates. 
           DO k2 = 1,dofs          

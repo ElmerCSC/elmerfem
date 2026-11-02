@@ -3452,6 +3452,8 @@ END FUNCTION SearchNodeL
         END IF       
         CALL Info(Caller,'Updating variable velocity: '//TRIM(str))
         VeloVar => VariableGet( Solver % Mesh % Variables, str )        
+
+        PRINT *,'Ssize velo:',SIZE(pVar % Values), SIZE(pVar % PrevValues(:,1)), SIZE(VeloVar % Values)
         VeloVar % Values = (pVar % Values - pVar % PrevValues(:,1)) / dt
       END IF
     END IF

@@ -282,22 +282,8 @@
         CALL Fatal( SolverName,'It is not possible to compute SSA problems WITH '//I2S(STDOFS)//' dofs!')
       END IF
 
-      IF( Solver % SplitFEM ) THEN
-        i = LIstGetInteger( SolverParams,'SplitFEM inside body',Found )
-        IF(.NOT. Found) i=1
-        j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Material')
-        Material => CurrentModel % Materials(j) % Values
-        j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Body Force')
-        BodyForce => CurrentModel % BodyForces(j) % Values
-      ELSE
-        ! Read the gravity in the Body Force Section 
-        BodyForce => GetBodyForce()
-
-        ! Read the Viscosity eta, density, and exponent m in MMaterial Section
-        ! Same definition as NS Solver in Elmer - n=1/m , A = 1/ (2 eta^n) 
-        Material => GetMaterial(Element)
-      END IF
-
+      ! Read the gravity in the Body Force Section 
+      BodyForce => GetBodyForce()
       NodalGravity = 0.0_dp
       IF ( ASSOCIATED( BodyForce ) ) THEN
         IF (STDOFs==1) THEN 
@@ -308,6 +294,10 @@
                BodyForce, 'Flow BodyForce 3', n, NodeIndexes, Found)
         END IF
       END IF
+
+      ! Read the Viscosity eta, density, and exponent m in MMaterial Section
+      ! Same definition as NS Solver in Elmer - n=1/m , A = 1/ (2 eta^n) 
+      Material => GetMaterial(Element)
 
       cn = ListGetConstReal( Material, 'Viscosity Exponent',Found)
       MinSRInv = ListGetConstReal( Material, 'Critical Shear Rate',Found)
