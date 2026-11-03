@@ -1644,6 +1644,7 @@ END SUBROUTINE HydrostaticNSSolver_Init
 SUBROUTINE HydrostaticNSSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE HydrostaticNSUtils
   USE MainUtils
   USE MeshTransform, ONLY : DetectExtrudedStructure

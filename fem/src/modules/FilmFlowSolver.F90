@@ -154,6 +154,7 @@ END SUBROUTINE FilmFlowSolver_Init
 SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE ParallelUtils, ONLY : ParallelSumNodalVector
   IMPLICIT NONE
 !------------------------------------------------------------------------------

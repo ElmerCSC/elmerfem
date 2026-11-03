@@ -771,6 +771,7 @@ CONTAINS
      ! ELMER_NO_MPI=1 to request serial-only operation in this case.
      CALL GET_ENVIRONMENT_VARIABLE('ELMER_NO_MPI', val, vlen, vstat)
      IF (vstat == 0 .AND. vlen > 0) THEN
+       CALL ParEnvAssociateCommon()
        ParEnv % MyPE = 0
        ParEnv % PEs  = 1
        ParEnv % ActiveComm = 0

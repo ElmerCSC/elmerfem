@@ -59,6 +59,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
     TYPE (ParEnv_t), POINTER :: ParallelEnv
 
+    CALL ParEnvAssociateCommon()
 #ifdef PARALLEL_FOR_REAL
     ParallelEnv => ParCommInit( )
 #else

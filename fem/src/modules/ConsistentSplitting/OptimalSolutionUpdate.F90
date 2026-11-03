@@ -44,6 +44,7 @@
 SUBROUTINE OptimalSolutionUpdate( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE ParallelUtils, ONLY : ParallelUpdateResult, ParallelUpdateSolve
 
   IMPLICIT NONE
