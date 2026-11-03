@@ -627,6 +627,8 @@ CONTAINS
 
   ! Given permutation make additional vector for containing the values of the splitfem
   ! field of the solver in question. Memorize the original nodal values.
+  ! It is assumed that the splitfem field is "Solver % Variable" and the orginal
+  ! values are contained within the Solver structure. 
   !---------------------------------------------------------------------------------
   SUBROUTINE CreateSplitFEMVariable(Solver)
 
@@ -1541,7 +1543,10 @@ CONTAINS
     
   END SUBROUTINE SplitFEMElementCount
     
-  
+
+  ! This creates the additional mesh consisting of sliptted elements around the interface.
+  ! Going through these elements is done always as the 2nd phase of system assembly.
+  !--------------------------------------------------------------------------------------
   SUBROUTINE CreateSplitFEMAddMesh(Solver) 
     TYPE(Solver_t) :: Solver
     
@@ -1620,7 +1625,8 @@ CONTAINS
     CALL Info('SplitFEMSetAddMesh','Swapping SplitFEM original mesh to interface mesh!',Level=10)
     
   END SUBROUTINE SplitFEMSetAddMesh
-    
+
+  ! Set mesh back into the origonal mesh with original list of active elements.  
   SUBROUTINE SplitFEMSetOrigMesh(Solver)
     TYPE(Solver_t) :: Solver
     
@@ -1640,8 +1646,6 @@ CONTAINS
     
   END SUBROUTINE SplitFEMSetOrigMesh
     
-
-
   
   ! Assembly a matrix for extrapolating values outside the active domain.
   ! Currently this is just diffusion matrix. We could perhaps use convection also. 
@@ -1845,6 +1849,8 @@ CONTAINS
   END SUBROUTINE SplitFEMVariableFinalize
 
 
+  ! When we leave the splitted mesh we need to go back to the original mesh also.
+  !------------------------------------------------------------------------------
   SUBROUTINE SplitFEMVariableRevert(Model,Mesh)
     TYPE(Model_t) :: Model
     TYPE(Mesh_t) :: Mesh
@@ -1875,7 +1881,6 @@ CONTAINS
       IF(InfoActive(25)) THEN
         PRINT *,'Range SplitMesh:',MINVAL(Variable % Values),MAXVAL(Variable % Values)
       END IF
-
       
       IF(Variable % TYPE /= Variable_on_splitfem) THEN
         CALL Fatal('SplitFEMVarioableFinalize','Inconsistent variable type: '//I2S(Solver % Variable % Type))
@@ -1935,7 +1940,7 @@ CONTAINS
     REAL(KIND=dp), POINTER :: Values(:)
     CHARACTER(:), ALLOCATABLE :: VarName
     TYPE(ValueList_t), POINTER :: Params
-    INTEGER, ALLOCATABLE :: BulkMap(:)
+    INTEGER, ALLOCATABLE :: BulkMap(:), BulkCnt(:)
     CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMMesh'
    
     SAVE MeshPerm
@@ -2025,8 +2030,9 @@ CONTAINS
 
     ! In order to create parents we need a mapping from old to new bulk elements
     IF(CreateBC) THEN
-      ALLOCATE(BulkMap(Mesh % NumberOfBulkElements))
+      ALLOCATE(BulkMap(Mesh % NumberOfBulkElements),BulkCnt(Mesh % NumberOfBulkElements))
       BulkMap = 0
+      BulkCnt = 0
     END IF
     
     ! The 1st cycle just compute the number of elements.
@@ -2043,11 +2049,12 @@ CONTAINS
           CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )          
           !IF(.NOT. IsActive) CYCLE      
           IF(IsCut) THEN
-            IF(CreateBC) BulkMap(t) = nBulk+1
+            IF(CreateBC) BulkMap(t) = nBulk
 10          pElement => CutInterfaceBulk(Element,isCut,isMore,Sweep)        
             !IF(.NOT. IsCut) CYCLE
             IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
               nBulk = nBulk + 1
+              BulkCnt(t) = BulkCnt(t)+1
               IF(Sweep==1) CALL AddElementData(pElement,nBulk)
             END IF
             IF(IsMore) GOTO 10
@@ -2073,7 +2080,7 @@ CONTAINS
                   nBC = nBC + 1
                   IF(Sweep==1) THEN
                     IF(CreateBulk) THEN 
-                      CALL AddElementData(pElement,nBulk+nBC,InterfaceBC,BulkMap(t))
+                      CALL AddElementData(pElement,nBulk+nBC,InterfaceBC,BulkMap(t),BulkCnt(t))
                     ELSE
                       CALL AddElementData(pElement,nBulk+nBC,InterfaceBC)
                     END IF
@@ -2104,6 +2111,9 @@ CONTAINS
         CALL Info(Caller,'New mesh allocated for '//I2S(nBulk+nBc)//' elements', Level=10 )
       END IF
 
+        PRINT *,'Number of boundary elements:',nBulk,nBC
+
+      
     END DO
 
     IF(.NOT. AddMeshMode ) THEN
@@ -2316,13 +2326,17 @@ CONTAINS
     END SUBROUTINE InterpolateLevelsetVariables
 
 
-    ! Here we just add some data to the new mesh.
-    !--------------------------------------------
-    SUBROUTINE AddelementData(pElement,ElemInd,BCtag,NewBulkInd)
+    ! Here we just add some element data to the new mesh.
+    ! This can add both bulk and boundary elements. If both are set then
+    ! the parents of the boundary elements are found from the short list
+    ! of splitted elements. 
+    !----------------------------------------------------------------------
+    SUBROUTINE AddelementData(pElement,ElemInd,BCtag,NewBulkInd,NewBulkCnt)
       TYPE(Element_t), POINTER :: pElement
       INTEGER :: ElemInd
       INTEGER, OPTIONAL :: BCTag
       INTEGER, OPTIONAL :: NewBulkInd
+      INTEGER, OPTIONAL :: NewBulkCnt
       
       TYPE(Element_t), POINTER :: Enew
       INTEGER :: i,n,hits
@@ -2355,17 +2369,21 @@ CONTAINS
       ! We know for each original bulk element the 1st splitted bulk element.
       ! The parent should be that or some of the following ones. 
       IF(PRESENT(NewBulkInd)) THEN
-        DO k=NewBulkInd,NewBulkInd+10
+        DO k=NewBulkInd+1,NewBulkInd+NewBulkCnt
           hits = 0
           DO i=1,n
             IF(ANY(Enew % NodeIndexes(i) == NewMesh % Elements(k) % NodeIndexes)) hits = hits+1
           END DO
           IF(hits==n) THEN
-            Enew % BoundaryInfo % Left => NewMesh % Elements(k)
-            EXIT
+            IF( ASSOCIATED( Enew % BoundaryInfo % Left ) ) THEN
+              Enew % BoundaryInfo % Right => NewMesh % Elements(k)              
+              EXIT
+            ELSE
+              Enew % BoundaryInfo % Left => NewMesh % Elements(k)
+            END IF
           END IF
         END DO
-        IF(hits /= n) THEN
+        IF( .NOT. ASSOCIATED( Enew % BoundaryInfo % Left ) ) THEN
           CALL Fatal('AddElementData','Could not find parent for boundary element!')
         END IF
       END IF
@@ -2381,8 +2399,10 @@ CONTAINS
 
 
   ! Here we create a 1D mesh on the zero level-set and convent it to new location,
-  ! and compute new signed distance. 
-  !--------------------------------------------  
+  ! and compute new signed distance. Extrapolating field data at the same time when
+  ! when finding the shortest distance makes sense. This is meant mainly intended
+  ! for data that continues from the boundary. 
+  !-------------------------------------------------------------------------------  
   SUBROUTINE LevelSetUpdate(Solver,Mesh)
 
     TYPE(Solver_t) :: Solver
@@ -2834,9 +2854,10 @@ CONTAINS
 
     END SUBROUTINE CheckLSField
 
-    !strategy loop through all and mark elem/polyline intersections
+    ! strategy loop through all and mark elem/polyline intersections
     ! use dir to get whether inside
     ! remove all until next intersection
+    !-----------------------------------------------------------------
     SUBROUTINE GetElemIntersectLogical(DoesElemIntersect)
       !------------------------------------------------------------------------------
       !TYPE(Mesh_t), POINTER :: Mesh
@@ -4033,9 +4054,9 @@ CONTAINS
     END SUBROUTINE DeallocatePolyLines
 
 
-
     ! use old ls field to determine which direction to remove
     ! positive a1 is +ve compared to a2 on old ls field
+    !-------------------------------------------------------------
     FUNCTION GetPointLevelset(Point, val) RESULT(Found)
       !----------------------------------------
       REAL(KIND=dp) :: Point(3),val
