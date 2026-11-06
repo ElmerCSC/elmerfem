@@ -1132,15 +1132,32 @@ CONTAINS
 !> Here the source term is changed to 2 i beta Etil (see ElectricPortModel) and the
 !> boundary operator is augmented with the rank-one term -i beta (Etil - e_t) c(E),
 !> where c(E) = <E_T,Etil>/<e_t,Etil> is the modal amplitude given by the projection
-!> which uses the trace of the magnetic field. This couples all DOFs of the port, so
+!> which uses the trace of the magnetic field. This couples all DOFs of the port.
+!>
+!> By default ("Port Mode Projection Augmented = True") the modal amplitude of each
+!> port is introduced as an additional (complex) unknown c, so that the coupling
+!> stays sparse:
+!>
+!>         K E - Gv c         = f
+!>         -Hv^T E + Nrm c    = 0
+!>
+!> with Gv = <i beta (Etil - e_t), W>, Hv = <Etil, W> and Nrm = <e_t, Etil> (all
+!> weighted by the inverse permeability). The extra rows and columns are given as
+!> the AddMatrix of the system matrix, so the system is solved by
+!> SolveWithLinearRestriction. The amplitude equation is scaled to make its diagonal
+!> entry comparable with those of the port DOFs, which avoids excessive fill-in in
+!> direct solvers. The scaling does not affect c whose values may be obtained by
+!> giving "Export Lagrange Multiplier = True".
+!>
+!> Otherwise the rank-one term -Gv Hv^T / Nrm is written into the matrix itself. Then
 !> the sparsity pattern of the matrix is first extended (Assemble = .FALSE.) and the
-!> coupling is then added after the standard boundary assembly (Assemble = .TRUE.).
+!> coupling is added after the standard boundary assembly (Assemble = .TRUE.).
 !------------------------------------------------------------------------------
   SUBROUTINE PortModeProjection(Assemble)
 !------------------------------------------------------------------------------
     LOGICAL, INTENT(IN) :: Assemble
 !------------------------------------------------------------------------------
-    TYPE(Matrix_t), POINTER :: A
+    TYPE(Matrix_t), POINTER :: A, AM
     TYPE(Matrix_t), POINTER, SAVE :: ExtendedA => NULL()
     TYPE(Element_t), POINTER :: Element, Face, Parent
     TYPE(ValueList_t), POINTER :: BC
@@ -1149,16 +1166,21 @@ CONTAINS
     TYPE(ValueHandle_t), SAVE :: MuCoeff_h
     INTEGER, ALLOCATABLE :: PortKey(:), Keys(:), Loc(:), PortDofs(:), Indexes(:), ColInd(:), ColPos(:)
     INTEGER, SAVE :: ExtendedNnz = -1
-    INTEGER :: bc_id, nkeys, port, ndp, Active, t, i, j, k, ip_ind, m, n, nd, np, ndofs, p, q, r, s, c
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), WBasis(:,:), RotWBasis(:,:)
-    REAL(KIND=dp) :: DetJ, weight
+    INTEGER :: bc_id, nkeys, port, ndp, Active, t, i, j, k, ip_ind, m, n, nd, np, ndofs, p, q, r, s, c, &
+        n0, e
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), WBasis(:,:), RotWBasis(:,:), RowVals(:,:)
+    REAL(KIND=dp) :: DetJ, weight, scl
     COMPLEX(KIND=dp), ALLOCATABLE :: Gv(:), Hv(:)
     COMPLEX(KIND=dp) :: B, L(3), Et(3), Etil(3), mur, muinv, Nrm, val
-    LOGICAL :: Found, GotPort, stat
+    LOGICAL :: Found, GotPort, stat, Augmented
 !------------------------------------------------------------------------------
     A => Solver % Matrix
+    Augmented = ListGetLogical(SolverParams, 'Port Mode Projection Augmented', Found)
+    IF (.NOT. Found) Augmented = .TRUE.
 
     IF (.NOT. Assemble) THEN
+      ! With the additional amplitude unknowns the matrix structure need not be extended
+      IF (Augmented) RETURN
       ! The pattern is extended only once for each matrix
       IF (ASSOCIATED(ExtendedA, A) .AND. SIZE(A % Values) == ExtendedNnz) RETURN
     END IF
@@ -1182,11 +1204,22 @@ CONTAINS
 
     m = Mesh % MaxElementDOFs
     ALLOCATE(Loc(A % NumberOfRows/2), PortDofs(A % NumberOfRows/2), Indexes(m), &
-        ColInd(A % NumberOfRows), ColPos(A % NumberOfRows))
+        ColInd(A % NumberOfRows+2), ColPos(A % NumberOfRows))
     IF (Assemble) THEN
       ALLOCATE(Basis(m), dBasisdx(m,3), WBasis(m,3), RotWBasis(m,3), &
           Gv(A % NumberOfRows/2), Hv(A % NumberOfRows/2))
       CALL ListInitElementKeyword(MuCoeff_h, 'Material', 'Relative Reluctivity', InitIm=.TRUE.)
+      IF (Augmented) THEN
+        ! The additional matrix contains the rows and columns of the amplitude unknowns.
+        ! It is created anew at each assembly.
+        IF (ASSOCIATED(A % AddMatrix)) CALL FreeMatrix(A % AddMatrix)
+        n0 = A % NumberOfRows
+        AM => AllocateMatrix()
+        AM % FORMAT = MATRIX_LIST
+        ! Add the extreme entry first since otherwise the ListMatrix operations may be slow:
+        CALL List_AddToMatrixElement(AM % ListMatrix, n0 + 2*nkeys, n0 + 2*nkeys, 0.0_dp)
+        ALLOCATE(RowVals(A % NumberOfRows+2,0:1))
+      END IF
     ELSE
       CALL Info(Caller, 'Extending the matrix structure for coupling port DOFs', Level=6)
       CALL List_ToListMatrix(A)
@@ -1282,6 +1315,62 @@ CONTAINS
       END DO
       CALL SortI(2*ndp, ColInd, ColPos)
 
+      IF (Augmented) THEN
+        ! The unknowns of the amplitude (2 real DOFs) are numbered after the field DOFs.
+        e = n0 + 2*port - 1
+
+        ! The coupling -Gv(p) c in the rows of the field DOFs:
+        DO p=1,ndp
+          r = 2*PortDofs(p)-1
+          val = -Gv(p)
+          CALL List_AddToMatrixElement(AM % ListMatrix, r, e, REAL(val))
+          CALL List_AddToMatrixElement(AM % ListMatrix, r, e+1, -AIMAG(val))
+          CALL List_AddToMatrixElement(AM % ListMatrix, r+1, e, AIMAG(val))
+          CALL List_AddToMatrixElement(AM % ListMatrix, r+1, e+1, REAL(val))
+        END DO
+
+        ! The equation -Hv^T E + Nrm c = 0 for the amplitude. The equation is scaled
+        ! so that its diagonal entry is of the size of the diagonal entries of the field
+        ! DOFs on the port. Without the scaling the entries of the row are small compared
+        ! with those of the column and the direct solver (UMFPACK) may resort to pivoting
+        ! that causes a lot of fill-in. The columns are in increasing order so that each
+        ! row can be added at one go.
+        scl = 0.0_dp
+        DO p=1,ndp
+          r = 2*PortDofs(p)-1
+          IF (A % Diag(r) > 0) scl = MAX(scl, ABS(A % Values(A % Diag(r))))
+        END DO
+        IF (scl > 0.0_dp) THEN
+          scl = scl / ABS(Nrm)
+        ELSE
+          scl = 1.0_dp
+        END IF
+
+        DO c=1,2*ndp
+          q = (ColPos(c)+1)/2
+          val = -scl * Hv(q)
+          IF (MOD(ColPos(c),2) == 1) THEN
+            RowVals(c,0) = REAL(val)
+            RowVals(c,1) = AIMAG(val)
+          ELSE
+            RowVals(c,0) = -AIMAG(val)
+            RowVals(c,1) = REAL(val)
+          END IF
+        END DO
+        ColInd(2*ndp+1) = e
+        ColInd(2*ndp+2) = e+1
+        val = scl * Nrm
+        RowVals(2*ndp+1,0) = REAL(val)
+        RowVals(2*ndp+2,0) = -AIMAG(val)
+        RowVals(2*ndp+1,1) = AIMAG(val)
+        RowVals(2*ndp+2,1) = REAL(val)
+        DO s=0,1
+          CALL List_AddMatrixRow(AM % ListMatrix, e+s, 2*ndp+2, ColInd(1:2*ndp+2), &
+              RowVals(1:2*ndp+2,s), SortedInput=.TRUE.)
+        END DO
+        CYCLE
+      END IF
+
       IF (.NOT. Assemble) THEN
         ! Merge the sorted column list into the rows at once. Adding the entries one by
         ! one would traverse the linked list of the row each time, giving O(ndp^3) cost.
@@ -1325,6 +1414,12 @@ CONTAINS
         END DO
       END DO
     END DO
+
+    IF (Assemble .AND. Augmented) THEN
+      CALL List_ToCRSMatrix(AM)
+      A % AddMatrix => AM
+      CALL Info(Caller, 'Number of additional unknowns for the port amplitudes: '//I2S(2*nkeys), Level=6)
+    END IF
 
     IF (.NOT. Assemble) THEN
       CALL List_ToCRSMatrix(A)
