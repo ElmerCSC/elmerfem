@@ -1147,9 +1147,9 @@ CONTAINS
     TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueHandle_t), SAVE :: MuCoeff_h
-    INTEGER, ALLOCATABLE :: PortKey(:), Keys(:), Loc(:), PortDofs(:), Indexes(:)
+    INTEGER, ALLOCATABLE :: PortKey(:), Keys(:), Loc(:), PortDofs(:), Indexes(:), ColInd(:), ColPos(:)
     INTEGER, SAVE :: ExtendedNnz = -1
-    INTEGER :: bc_id, nkeys, port, ndp, Active, t, i, j, k, ip_ind, m, n, nd, np, ndofs, p, q, ri, rj
+    INTEGER :: bc_id, nkeys, port, ndp, Active, t, i, j, k, ip_ind, m, n, nd, np, ndofs, p, q, r, s, c
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), dBasisdx(:,:), WBasis(:,:), RotWBasis(:,:)
     REAL(KIND=dp) :: DetJ, weight
     COMPLEX(KIND=dp), ALLOCATABLE :: Gv(:), Hv(:)
@@ -1181,7 +1181,8 @@ CONTAINS
     IF (nkeys == 0) RETURN
 
     m = Mesh % MaxElementDOFs
-    ALLOCATE(Loc(A % NumberOfRows/2), PortDofs(A % NumberOfRows/2), Indexes(m))
+    ALLOCATE(Loc(A % NumberOfRows/2), PortDofs(A % NumberOfRows/2), Indexes(m), &
+        ColInd(A % NumberOfRows), ColPos(A % NumberOfRows))
     IF (Assemble) THEN
       ALLOCATE(Basis(m), dBasisdx(m,3), WBasis(m,3), RotWBasis(m,3), &
           Gv(A % NumberOfRows/2), Hv(A % NumberOfRows/2))
@@ -1270,23 +1271,57 @@ CONTAINS
         CALL Info(Caller, Message, Level=6)
       END IF
 
-      ! Add the coupling -Gv(p) Hv(q) / Nrm in terms of the real-valued 2x2 blocks:
+      ! The columns related to the port in increasing order. ColPos tells the
+      ! position in the unsorted list: 2*q-1 for the real and 2*q for the imaginary part
+      ! of the q:th port DOF.
+      DO q=1,ndp
+        ColInd(2*q-1) = 2*PortDofs(q)-1
+        ColPos(2*q-1) = 2*q-1
+        ColInd(2*q) = 2*PortDofs(q)
+        ColPos(2*q) = 2*q
+      END DO
+      CALL SortI(2*ndp, ColInd, ColPos)
+
+      IF (.NOT. Assemble) THEN
+        ! Merge the sorted column list into the rows at once. Adding the entries one by
+        ! one would traverse the linked list of the row each time, giving O(ndp^3) cost.
+        DO p=1,ndp
+          CALL List_AddMatrixIndexes(A % ListMatrix, 2*PortDofs(p)-1, 2*ndp, ColInd)
+          CALL List_AddMatrixIndexes(A % ListMatrix, 2*PortDofs(p), 2*ndp, ColInd)
+        END DO
+        CYCLE
+      END IF
+
+      ! Add the coupling -Gv(p) Hv(q) / Nrm in terms of the real-valued 2x2 blocks.
+      ! The (sorted) CRS rows are traversed simultaneously with the sorted column list.
       DO p=1,ndp
-        ri = 2*PortDofs(p)-1
-        DO q=1,ndp
-          rj = 2*PortDofs(q)-1
-          IF (Assemble) THEN
+        DO s=0,1
+          r = 2*PortDofs(p)-1+s
+          k = A % Rows(r)
+          DO c=1,2*ndp
+            DO WHILE (k < A % Rows(r+1)-1 .AND. A % Cols(k) < ColInd(c))
+              k = k + 1
+            END DO
+            IF (A % Cols(k) /= ColInd(c)) CALL Fatal(Caller, &
+                'Matrix structure does not contain the port coupling')
+            q = (ColPos(c)+1)/2
             val = -Gv(p) * Hv(q) / Nrm
-            CALL CRS_AddToMatrixElement(A, ri, rj, REAL(val))
-            CALL CRS_AddToMatrixElement(A, ri, rj+1, -AIMAG(val))
-            CALL CRS_AddToMatrixElement(A, ri+1, rj, AIMAG(val))
-            CALL CRS_AddToMatrixElement(A, ri+1, rj+1, REAL(val))
-          ELSE
-            CALL List_AddToMatrixElement(A % ListMatrix, ri, rj, 0.0_dp)
-            CALL List_AddToMatrixElement(A % ListMatrix, ri, rj+1, 0.0_dp)
-            CALL List_AddToMatrixElement(A % ListMatrix, ri+1, rj, 0.0_dp)
-            CALL List_AddToMatrixElement(A % ListMatrix, ri+1, rj+1, 0.0_dp)
-          END IF
+            IF (MOD(ColPos(c),2) == 1) THEN
+              ! The column of the real part
+              IF (s == 0) THEN
+                A % Values(k) = A % Values(k) + REAL(val)
+              ELSE
+                A % Values(k) = A % Values(k) + AIMAG(val)
+              END IF
+            ELSE
+              ! The column of the imaginary part
+              IF (s == 0) THEN
+                A % Values(k) = A % Values(k) - AIMAG(val)
+              ELSE
+                A % Values(k) = A % Values(k) + REAL(val)
+              END IF
+            END IF
+          END DO
         END DO
       END DO
     END DO
