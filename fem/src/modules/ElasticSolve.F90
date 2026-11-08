@@ -695,8 +695,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! version active is to have "UMAT Subroutine" as specified.
   !
   UseUMAT = ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine')
-  IF (UseUMAT .AND. TransientSimulation) THEN
-    CALL Fatal(Caller, 'UMAT version does not yet support transient simulation')
+ IF (UseUMAT .AND. TransientSimulation) THEN
+WRITE(*,*) '=================================='
+    write(*,*) 'UMAT NOT VALIDATED FOR TRANSIENTS'
+WRITE(*,*) '=================================='
+
   END IF
 
   PrevMaterial => NULL()
