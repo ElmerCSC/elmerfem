@@ -176,6 +176,8 @@ MODULE StressLocal
      ! and NeedPreStress was forced true immediately after, so the mechanism carried
      ! on with the lag stress alone.
      REAL(KIND=dp) :: VeLoad(6)
+     ! C : "Strain Load", which a Maxwell material relaxes with the stiffness.
+     REAL(KIND=dp) :: EigenStress(6), EigenTensor(3,3)
 
      INTEGER :: i,j,k,l,p,q,t,dim,NBasis
 
@@ -478,6 +480,7 @@ MODULE StressLocal
        END IF
 
        StressLoad = 0.0d0
+       StrainLoad = 0.0d0
        VeLoad = 0.0d0
        IF( NeedPreStress ) THEN
          DO i=1,6
@@ -543,7 +546,15 @@ MODULE StressLocal
                 SOL, Basis, dBasisdx, Nodes, dim, n, ntot, .FALSE. )
          END IF
 
+         ! The elastic strain is eps - alpha*dT - "Strain Load": LocalStress takes
+         ! off the thermal part, the strain load is taken off here. Its stress is
+         ! then relaxed by xPhi in the load, like C : eps in the stiffness.
+         EigenStress = MATMUL( C, StrainLoad )
+         CALL Vector62Tensor( EigenStress, EigenTensor, dim, CSymmetry )
+         ElasticStress = ElasticStress - EigenTensor
+
          xPhi = ViscoElasticLoad( ve_stress, t, ElasticStress, VeLoad )
+         StressLoad = StressLoad - (1 - xPhi) * EigenStress
          NeedPreStress = .TRUE.
        ELSE
          xPhi = 1
@@ -706,10 +717,12 @@ MODULE StressLocal
            END DO
          END IF
 
+         ! Relaxed by xPhi like the stiffness: the elastic strain is eps - alpha*dT,
+         ! and ElasticStress above already subtracts alpha*dT for the lag stress.
          IF ( NeedHeat ) THEN
            DO i=1,dim
              DO j=1,MERGE(3, dim, CSymmetry)
-               LoadAtIp(i) = LoadAtIp(i) + G(i,j) * HeatExpansion(j,j) * Temperature
+               LoadAtIp(i) = LoadAtIp(i) + xPhi * G(i,j) * HeatExpansion(j,j) * Temperature
              END DO
            END DO
          END IF

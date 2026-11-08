@@ -47,7 +47,6 @@ Solver 2
    Linear System Abort not Converged = False
    Linear System ILUT Tolerance=1e-8
    Linear system preconditioning = Circuit
-   BicgStabL Polynomial Degree = 2
    Steady State Convergence Tolerance = 1e-06
 End
 Solver 3
