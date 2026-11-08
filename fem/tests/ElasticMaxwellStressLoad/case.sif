@@ -10,6 +10,10 @@
 !
 ! Two directories rather than two solvers in one sif, because two Maxwell solvers
 ! would each export a "ve_stress" variable of the same name and share one lag stress.
+!
+! The reference values were re-pinned when "Strain Load" under Maxwell became
+! relaxed by xPhi like the stiffness, as an eigenstrain must be: see
+! ElasticMaxwellThermal, which checks that against an exact answer.
 
 Header
   Mesh DB "." "cube"
@@ -87,6 +91,6 @@ Boundary Condition 1
   Displacement 3 = Real 0.0
 End
 
-Solver 1 :: Reference Norm = Real 1.49794353E-02
-Solver 2 :: Reference Norm = Real 2.64105420E+01
+Solver 1 :: Reference Norm = Real 2.59557059E-02
+Solver 2 :: Reference Norm = Real 5.27065225E+01
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
