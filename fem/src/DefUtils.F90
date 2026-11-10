@@ -4051,19 +4051,7 @@ CONTAINS
 
      CALL Info('DefaultStart','Starting solver: '//&
         GetString(Params,'Equation'),Level=10)
-#if 0 
-     ! Code for splitting the mesh to be able to integrate accurately over discontinuous
-     ! fields defined by zero levelset.
-     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
-       pMatrix => Solver % Matrix
-       CALL CreateCutFEMPerm(Solver,.TRUE.)
-       Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
-       CALL FreeMatrix(pMatrix)
-       IF(.NOT. ListGetLogical( Params,'CutFEM Solver',Found ) ) THEN
-         CALL CreateCutFEMAddMesh(Solver)
-       END IF
-     END IF
-#endif
+
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -4337,34 +4325,12 @@ CONTAINS
        END IF
      END IF
 
-#if 0
-     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
-       Mesh => Solver % Mesh
-
-       ! We do not need the old meshes. When we reach a new timestep
-       ! they have already been saved.
-       IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
-         IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
-           CALL FreeMesh(Solver % Mesh % Next % Next )
-         END IF
-         CALL FreeMesh(Solver % Mesh % Next)
-       END IF
-
-       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
-       ! The Mesh % Next is saved normally in the VTU files etc.
-       CALL LevelSetUpdate(Solver,Solver % Mesh)
-
-       ! We do not need to create the actual CutFEM Mesh, but we might want to have it
-       ! for visualization purposes.
-       IF( ListGetLogical( Solver % Values,'CutFEM Mesh Save', Found ) )  THEN
-         ! This 2D mesh becomes Mesh % Next % Next
-         Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
-             .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable')
-       END IF
-
-       CALL CutFEMVariableFinalize(Solver)
+     ! SplitFEM: We may optionally extrapolate the variable after the solver is finished.
+     !----------------------------------------------------------------------------------
+     IF( Solver % SplitFEM ) THEN
+       CALL SplitFEMVariableExtrapolate(Solver)         
      END IF
-#endif
+     !----------------------------------------------------------------------------------
      
      IF( ListGetLogical( Params,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)

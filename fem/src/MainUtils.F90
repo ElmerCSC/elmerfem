@@ -78,8 +78,8 @@ MODULE MainUtils
 
 
   USE SplitFEMUtils, ONLY: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMAddMesh, &
-      SplitFEMSetOrigMesh, CreateSplitFEMPerm, CreateSplitFEMVariable, SplitFEMVariableRevert, &
-      LevelsetUpdate, SplitFEMVariableExtrapolate
+      SplitFEMSetOrigMesh, CreateSplitFEMPerm, CreateSplitFEMVariable, SplitFEMRevert, &
+      SplitFEMLevelsetUpdate, SplitFEMVariableExtrapolate
   
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
@@ -3009,10 +3009,10 @@ CONTAINS
     INTEGER :: i,j,k,l,n,ierr,istat,Visited=0, RKorder=0, nSolvers
     LOGICAL :: Found, Stat, AbsNorm, Scanning, Convergence, RungeKutta, MeActive, &
         NeedSol, CalculateDerivative, TestConvergence=.FALSE., TestDivergence, DivergenceExit, &
-        ExecSlot, CoupledAbort
+        ExecSlot, CoupledAbort, AnySplitFEM
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
-    TYPE(Mesh_t),   POINTER :: Mesh
+    TYPE(Mesh_t),   POINTER :: Mesh, sMesh
     CHARACTER(LEN=max_name_len) :: When
     TYPE(Variable_t), POINTER :: IterV, TimestepV
     REAL(KIND=dp), POINTER :: steadyIt,nonlnIt
@@ -3280,11 +3280,64 @@ CONTAINS
       END IF
 
       IF ( .NOT.TransientSimulation ) SteadyStateReached = ALL(DoneThis)
-      DEALLOCATE( DoneThis, AfterConverged )
+      DEALLOCATE( DoneThis, AfterConverged )      
     END IF
 !------------------------------------------------------------------------------
 
 
+    IF( ANY( Model % Solvers(1:nSolvers) % SplitFEM ) ) THEN
+      ! We do not need the old meshes. When we reach a new timestep
+      ! they have already been saved.
+      CALL Info('SolverActive','Interpolating SplitFEM data!',Level=10)
+
+#if 0
+      IF(ParEnv % PEs > 1) THEN
+        OrigComm = Solver % Matrix % Comm
+        Solver % Matrix % COmm = ELMER_COMM_WORLD
+        ParEnv % ActiveComm = Solver % Matrix % Comm
+        ALLOCATE(OrigActive(ParEnv % PEs))
+        OrigActive = ParEnv % Active
+        CALL ParallelActive(.TRUE.)
+      END IF
+#endif
+      
+      ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
+      ! The Mesh % Next is saved normally in the VTU files etc. 
+      CALL SplitFEMLevelSetUpdate(Solver,Solver % Mesh)
+
+      ! We do not need to create the actual SplitFEM Mesh, but we might want to have it
+      ! for visualization purposes. 
+      NULLIFY(sMesh)
+      IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) .OR. &
+          ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
+        ! This 2D mesh becomes Mesh % Next % Next
+        sMesh => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+            .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
+        IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) ) THEN         
+          Solver % Mesh % Next % Next => sMesh
+        END IF
+      END IF
+
+#if 0 
+      IF(ParEnv % PEs > 1) THEN
+        Solver % Matrix % Comm = OrigComm
+        ParEnv % ActiveComm = Solver % Matrix % Comm
+        ParEnv % Active = OrigActive
+      END IF
+#endif
+      
+      IF(ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
+        BLOCK
+          CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir
+          MeshDir = TRIM(Mesh % Name)//'-split'           
+          CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
+          CALL WriteMeshToDisk2(Model, sMesh, MeshDir)
+        END BLOCK
+      END IF
+
+    END IF
+      
+    
 !------------------------------------------------------------------------------
     IF( PRESENT( AfterTime ) ) THEN
       ExecSlot = AfterTime
@@ -3315,6 +3368,16 @@ CONTAINS
           CALL ParallelBarrier
         END IF
       END DO
+
+      ! SplitFEM: This takes place after all visualization etc. had been done.
+      ! We do not need the old meshes any more. Next timestep we should be able to
+      ! start fresh.
+      !----------------------------------------------------------------------------
+      IF( AnySplitFEM ) THEN
+        CALL SplitFEMRevert(Model)
+      END IF
+      !----------------------------------------------------------------------------
+
     END IF
 
     ParEnv_Common = ParEnv_Save
@@ -5279,7 +5342,7 @@ CONTAINS
      Parallel = Solver % Parallel
      !------------------------------------------------------------------------------
 
-     IF( ListGetLogical( Solver % Values,'SplitFEM',Found ) ) THEN
+     IF( Solver % SplitFEM ) THEN
        CALL Info('SingleSolver','Skipping some initializations done in SplitFEM already!',Level=20)
 
      ELSE IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
@@ -5675,7 +5738,7 @@ END BLOCK
      LOGICAL :: GotLoops, GlobalBubbles
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
-     TYPE(Mesh_t), POINTER :: Mesh, pMesh, sMesh
+     TYPE(Mesh_t), POINTER :: Mesh, pMesh
 
      SAVE TimeVar
 !------------------------------------------------------------------------------
@@ -5705,36 +5768,42 @@ END BLOCK
        END IF
      END IF
 
+     ! Here we create the SplitFEM structures when visiting the solver that is
+     ! marked to have the reponsibility. Other solvers create their own SplitFEM
+     ! variable and matrix.
+     !------------------------------------------------------------------------------
      IF(Solver % SplitFEM) THEN
        BLOCK 
          LOGICAL :: DoCreate
          TYPE(Matrix_t), POINTER :: pMatrix
 
-         Solver % SplitFEMActive = .TRUE.
-
          pMatrix => Solver % Matrix
          DoCreate = ListGetLogical(Params,'SplitFEM Create',Found )
 
-         IF (.NOT.ASSOCIATED(Solver % ActiveElements)) &
-            CALL SetActiveElementsTable( Model, Solver)    
-         IF(DoCreate) CALL CreateSplitFEMPerm(Model,Solver,.TRUE.)       
-
-         CALL CreateSplitFEMVariable(Solver)
-         Solver % Matrix => CreateSplitFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
-         IF(ASSOCIATED(pMatrix)) THEN
-           IF(ASSOCIATED(pMatrix % ParMatrix)) THEN ! prevents error on free parmatrix
-             pMatrix % ParMatrix % SplittedMatrix % InsideMatrix % Solver => pMatrix % Solver
+         IF(.NOT. Solver % SplitFEMActive ) THEN
+           IF(DoCreate ) THEN
+             CALL CreateSplitFEMPerm(Model,Solver,.TRUE.)                 
+             CALL CreateSplitFEMAddMesh(Solver) 
            END IF
-           CALL FreeMatrix(pMatrix)
+           
+           IF (.NOT.ASSOCIATED(Solver % ActiveElements)) &
+               CALL SetActiveElementsTable( Model, Solver)    
+           
+           CALL CreateSplitFEMVariable(Solver)           
+           Solver % Matrix => CreateSplitFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
+           IF(ASSOCIATED(pMatrix)) THEN
+             IF(ASSOCIATED(pMatrix % ParMatrix)) THEN ! prevents error on free parmatrix
+               pMatrix % ParMatrix % SplittedMatrix % InsideMatrix % Solver => pMatrix % Solver
+             END IF
+             CALL FreeMatrix(pMatrix)
+           END IF
+           Solver % SplitFEMActive = .TRUE.       
          END IF
            
-         IF(DoCreate) THEN
-           CALL CreateSplitFEMAddMesh(Solver) 
-         ELSE
-           CALL SplitFEMSetOrigMesh(Solver)
-         END IF
+         CALL SplitFEMSetOrigMesh(Solver)
        END BLOCK
      END IF
+     !------------------------------------------------------------------------------
 
      CALL SetCurrentMesh( Model, Solver % Mesh )
      
@@ -5961,75 +6030,7 @@ END BLOCK
      END IF
 
 
-     ! Set the original mesh back, to be on the safe side...
-     IF(Solver % SplitFEM) THEN
-       CALL SplitFEMSetOrigMesh(Solver)
-       CALL SplitFEMVariableExtrapolate(Solver)         
-     END IF
-     
-     ! We do not need the old meshes. When we reach a new timestep
-     ! they have already been saved.
-     IF(ListGetLogical(Params,'SplitFEM Interpolate',Found ) ) THEN
-       CALL Info('SolverActive','Interpolating SplitFEM data!',Level=10)
-
-       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
-       ! The Mesh % Next is saved normally in the VTU files etc. 
-
-       IF(ParEnv % PEs > 1) THEN
-          OrigComm = Solver % Matrix % Comm
-          Solver % Matrix % COmm = ELMER_COMM_WORLD
-          ParEnv % ActiveComm = Solver % Matrix % Comm
-          ALLOCATE(OrigActive(ParEnv % PEs))
-          OrigActive = ParEnv % Active
-          CALL ParallelActive(.TRUE.)
-       END IF
-
-       CALL LevelSetUpdate(Solver,Solver % Mesh)
-
-       ! We do not need to create the actual SplitFEM Mesh, but we might want to have it
-       ! for visualization purposes. 
-       NULLIFY(sMesh)
-       IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) .OR. &
-           ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
-         ! This 2D mesh becomes Mesh % Next % Next
-         sMesh => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
-             .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
-         IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) ) THEN         
-           Solver % Mesh % Next % Next => sMesh
-         END IF
-       END IF
-       IF(ParEnv % PEs > 1) THEN
-          Solver % Matrix % Comm = OrigComm
-          ParEnv % ActiveComm = Solver % Matrix % Comm
-          ParEnv % Active = OrigActive
-       END IF
-
-       IF(ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
-         BLOCK
-           CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir
-           MeshDir = TRIM(Mesh % Name)//'-split'           
-           CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
-           CALL WriteMeshToDisk2(Model, sMesh, MeshDir)
-         END BLOCK
-       END IF
-  
-       CALL Info('SolverActive','Reverting SplitFEM fields to normal!',Level=10)
-       CALL SplitFEMVariableRevert(Model,Solver % Mesh)
-     END IF
             
-     ! This takes place after all visualization etc. had been done.
-     ! We do not need the old meshes any more.
-     IF(ListGetLogical(Params,'SplitFEM Destroy',Found ) ) THEN
-       CALL Info('SolverActive','Destroing SplitFEM additional meshes!',Level=10)
-       Mesh => Solver % Mesh         
-       IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
-         IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
-           CALL FreeMesh(Solver % Mesh % Next % Next )
-         END IF
-         CALL FreeMesh(Solver % Mesh % Next)
-       END IF
-       Model % CutInterp => NULL()
-     END IF
      
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested

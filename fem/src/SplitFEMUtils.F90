@@ -60,7 +60,6 @@ MODULE SplitFemUtils
 
   PRIVATE
   
-  LOGICAL :: CutExtend, CutExtrapolate
   LOGICAL, ALLOCATABLE :: CutDof(:)
   INTEGER, POINTER :: ExtendPerm(:) => NULL(), CutPerm(:) => NULL(), PhiPerm(:) => NULL()
   REAL(KIND=dp), POINTER :: ExtendValues(:) => NULL(), PhiValues(:) => NULL()
@@ -79,9 +78,9 @@ MODULE SplitFemUtils
 
     
   PUBLIC :: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMPerm, CreateSplitFEMAddMesh, &
-      SplitFEMVariableExtrapolate, SplitFEMSetOrigMesh, SplitFEMSetAddMesh, LevelSetUpdate, &
+      SplitFEMVariableExtrapolate, SplitFEMSetOrigMesh, SplitFEMSetAddMesh, SplitFEMLevelSetUpdate, &
       CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck, CreateSplitFEMVariable, &
-      SplitFEMVariableRevert, SetSplitFEMBodies
+      SplitFEMRevert, SetSplitFEMBodies
 
   PUBLIC :: CutInterp
   
@@ -124,8 +123,6 @@ CONTAINS
     SplitFEMOrigMesh => Solver % Mesh 
     Solver % OrigActiveElements => Solver % ActiveElements
 
-    CutExtend = ListGetLogical( Params,'SplitFEM extend',Found )
-    CutExtrapolate = ListGetLogical( Params,'SplitFEM extrapolate',Found )
     UpdateOrigCoords = ListGetLogical( Params,'SplitFEM bodyfitted',Found )
 
     ! We always need mesh edges since the new dofs are created in intersections of levelset and edge. 
@@ -587,8 +584,6 @@ CONTAINS
     Params => Model % Simulation
 
     IF(Revert) THEN
-      PRINT *,'SplitFEMMaterialRevert'
-      
       ! Revert to original body id's.
       ! If we don't do this then ActiveElements is spoiled. 
       DO t=1,Mesh % NumberOfBulkElements        
@@ -1751,8 +1746,13 @@ CONTAINS
     REAL(KIND=dp) :: s, r, dval, norm, norm0
     REAL(KIND=dp), ALLOCATABLE :: NodeWeigth(:)
     REAL(KIND=dp), POINTER :: CutValues(:)
+    LOGICAL :: CutExtend, CutExtrapolate
     CHARACTER(*), PARAMETER :: Caller = 'SplitFEMVariableExtrapolate'
 
+    
+    CutExtend = ListGetLogical( Solver % Values,'SplitFEM extend',Found )
+    CutExtrapolate = ListGetLogical( Solver% Values,'SplitFEM extrapolate',Found )
+    
     Mesh => Solver % Mesh
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
@@ -1890,30 +1890,55 @@ CONTAINS
   END SUBROUTINE SplitFEMVariableExtrapolate
 
 
-  ! When we leave the splitted mesh we need to go back to the original mesh also.
-  !------------------------------------------------------------------------------
-  SUBROUTINE SplitFEMVariableRevert(Model,Mesh)
+
+  SUBROUTINE SplitFEMRevert(Model)
     TYPE(Model_t) :: Model
-    TYPE(Mesh_t) :: Mesh
-
+    
+    INTEGER :: k,l
     TYPE(Solver_t), POINTER :: Solver
-    TYPE(Element_t), POINTER :: Element
-    TYPE(Variable_t), POINTER :: Variable
-    INTEGER :: i,t 
-    LOGICAL :: Found
-
-    ! Revert to original body id's.
-    ! If we don't do this then ActiveElements is spoiled. 
-    DO t=1,Mesh % NumberOfBulkElements        
-      Element => Mesh % Elements(t)
-      IF(ALL(PhiPerm(Element % NodeIndexes)>0)) THEN
-        Element % BodyId = SplitFemBody
+    TYPE(Mesh_t), POINTER :: Mesh
+    
+    l = 0 ! Remember some solver with the primary mesh 
+    DO k=1,Model % NumberOfSolvers
+      Solver => Model % Solvers(k)          
+      IF( Solver % SplitFEM ) THEN
+        CALL SplitFEMVariableRevert(Model,Solver)
+        Solver % SplitFEMActive = .FALSE.
+        l = k
       END IF
     END DO
-        
-    DO i=1,Model % NumberOfSolvers
-      Solver => CurrentModel % Solvers(i) 
-      IF( .NOT. ListGetLogical( Solver % Values,'SplitFEM',Found ) ) CYCLE
+
+    CALL Info('SolverActive','Destroing SplitFEM additional meshes!',Level=10)
+    Solver => Model % Solvers(l)
+    Mesh => Solver % Mesh         
+
+    ! When we leave the splitted mesh we need to go back to the original mesh also.
+    !------------------------------------------------------------------------------
+    CALL SetSplitFEMBodies(Model,Mesh,Revert=.TRUE.)
+
+    IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
+      IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
+        CALL FreeMesh(Solver % Mesh % Next % Next )
+      END IF
+      CALL FreeMesh(Solver % Mesh % Next)
+    END IF
+    Model % CutInterp => NULL()
+
+  CONTAINS
+  
+
+    ! When we leave the splitted mesh we need to go back to the original mesh also.
+    !------------------------------------------------------------------------------
+    SUBROUTINE SplitFEMVariableRevert(Model,Solver)
+      TYPE(Model_t) :: Model
+      TYPE(Solver_t) :: Solver
+
+      TYPE(Element_t), POINTER :: Element
+      TYPE(Variable_t), POINTER :: Variable
+      INTEGER :: i,t 
+      LOGICAL :: Found
+
+      IF( .NOT. Solver % SplitFEM ) RETURN
 
       Variable => Solver % Variable
       CALL Info('SplitFEMVariableFinalize','Reverting cut field back to original: '&
@@ -1922,14 +1947,14 @@ CONTAINS
       IF(InfoActive(25)) THEN
         PRINT *,'Range SplitMesh:',MINVAL(Variable % Values),MAXVAL(Variable % Values)
       END IF
-      
+
       IF(Variable % TYPE /= Variable_on_splitfem) THEN
         CALL Fatal('SplitFEMVarioableRevert','Inconsistent variable type: '//I2S(Solver % Variable % Type))
       END IF
-      
+
       IF(ASSOCIATED(Variable % Values)) DEALLOCATE(Variable % Values)
       IF(ASSOCIATED(Variable % PrevValues)) DEALLOCATE(Variable % PrevValues)
-      
+
       Variable % Perm => Solver % OrigPerm
       Variable % Values => Solver % OrigValues
       Solver % OrigValues => NULL()
@@ -1938,21 +1963,19 @@ CONTAINS
         Solver % OrigPrevValues => NULL()
       END IF
       Variable % Type = Variable_on_nodes
-      
+
       Solver % ActiveElements => Solver % OrigActiveElements
       IF(ASSOCIATED(Solver % ActiveElements)) &
-        Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
-
-      Solver % SplitFEMActive = .FALSE.
+          Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
 
       IF(InfoActive(25)) THEN
         PRINT *,'Range OrigMesh:',MINVAL(Variable % Values),MAXVAL(Variable % Values)
       END IF
 
-    END DO
-      
-  END SUBROUTINE SplitFEMVariableRevert
+    END SUBROUTINE SplitFEMVariableRevert
 
+  END SUBROUTINE SplitFEMRevert
+    
 
 !------------------------------------------------------------------------------
 !> Split a mesh at zero levelset by adding new nodes at the interface.
@@ -1992,10 +2015,6 @@ CONTAINS
       RETURN
     END IF
 
-    IF(PRESENT(ProjectPrefix)) THEN
-      PRINT *,'***************** ProjectPre:',TRIM(ProjectPrefix),CreateBC,CreateBulk,AddMeshMode
-    END IF
-    
     IF( AddMeshMode ) THEN
       CALL Info( Caller, 'Creating mesh including splitted elements only!')
     ELSE IF(.NOT. CreateBulk ) THEN
@@ -2004,14 +2023,13 @@ CONTAINS
       CALL Info( Caller, 'Creating actual mesh splitted by zero levelset!')
     END IF
       
-
     CALL ResetTimer(Caller)
 
     ! Define the nodes to be included in the new mesh.
     !----------------------------------
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
-
+    
     IF(.NOT. ( CreateBulk .OR. AddMeshMode ) ) THEN
       ALLOCATE(MeshPerm(nn+ne))
       MeshPerm = 0    
@@ -2029,7 +2047,8 @@ CONTAINS
     ELSE
       MeshPerm => Perm      
     END IF
-
+    
+    
     NewMesh => AllocateMesh()    
     NewMesh % SingleMesh = Mesh % SingleMesh
     NewMesh % MaxNDofs = Mesh % MaxNDofs
@@ -2079,7 +2098,7 @@ CONTAINS
       BulkMap = 0
       BulkCnt = 0
     END IF
-    
+
     ! The 1st cycle just compute the number of elements.
     ! In between allocate the mesh elements.
     ! The 2nd cycle add the detected elements to the list.
@@ -2151,7 +2170,11 @@ CONTAINS
           PRINT *,'Old Element Counts:',Mesh % NumberOfBulkElements, Mesh % NumberOfBoundaryElements
           PRINT *,'New Element Counts:',nBulk, nBC
         END IF
-          
+
+        IF( ParEnv % PEs == 1 ) THEN
+          IF( nBulk + nBC == 0) CALL Fatal(Caller,'Zero elements in mesh!')
+        END IF
+        
         CALL AllocateVector( NewMesh % Elements, nBulk+nBC )
         CALL Info(Caller,'New mesh allocated for '//I2S(nBulk+nBc)//' elements', Level=10 )
       END IF
@@ -2160,14 +2183,14 @@ CONTAINS
     IF(.NOT. AddMeshMode ) THEN
       ! if add mesh mode we can just use oldparallel structures
       IF( ParEnv % PEs > 1 ) CALL SplitFEMParallelMesh()
-    
+
       ! If we create interface only then we have original numbering and may use 
       IF(PRESENT(ProjectPrefix)) THEN
         PRINT *,'DO LS Variables',TRIM(ProjectPrefix)
         CALL InterpolateLevelsetVariables()
       END IF
     END IF
-      
+    
     IF(.NOT. ( CreateBulk .OR. AddMeshMode) ) DEALLOCATE(MeshPerm)
 
     CALL CheckTimer(Caller,Delete=.TRUE.)     
@@ -2263,7 +2286,7 @@ CONTAINS
 
       DO iVar = -CurrentModel % NumberOfSolvers,100            
 
-        PRINT *,'InterpolateVariables:',iVar
+        !PRINT *,'InterpolateVariables:',iVar
 
         IF(iVar < 0) THEN
           ! We want to always interpolate the primary variables!
@@ -2448,7 +2471,7 @@ CONTAINS
   ! when finding the shortest distance makes sense. This is meant mainly intended
   ! for data that continues from the boundary. 
   !-------------------------------------------------------------------------------  
-  SUBROUTINE LevelSetUpdate(Solver,Mesh)
+  SUBROUTINE SplitFEMLevelsetUpdate(Solver,Mesh)
 
     TYPE(Solver_t) :: Solver
     TYPE(Mesh_t) :: Mesh
@@ -2484,19 +2507,10 @@ CONTAINS
     TYPE(Intersects_t),  ALLOCATABLE, TARGET, SAVE :: Intersects(:)
     
     
-    IsoMesh => Solver % Mesh % Next
-
-
-    
-    IF(ASSOCIATED(IsoMesh) ) THEN    
-      PRINT *,'Mesh sizes:',Solver % Mesh % NumberOfNodes, IsoMesh % NumberOfNodes
-      PRINT *,'IsoMesh:',TRIM(IsoMesh % Name)
-    ELSE
-      IsoMesh => CreateSplitFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
-          .TRUE.,.FALSE.,.FALSE.,CurrentModel % Simulation,'isoline variable')
-      IsoMesh % Name = TRIM(Mesh % Name)//'-isomesh'
-      Solver % Mesh % Next => IsoMesh
-    END IF      
+    IsoMesh => CreateSplitFEMMesh(Solver,Mesh,CutPerm,&
+        .TRUE.,.FALSE.,.FALSE.,CurrentModel % Simulation,'isoline variable')
+    IsoMesh % Name = TRIM(Mesh % Name)//'-isomesh'
+    Solver % Mesh % Next => IsoMesh
     
     pVar => VariableGet( Mesh % Variables,'timestep size', &
         ThisOnly = .TRUE., UnfoundFatal=.TRUE.)
@@ -4384,7 +4398,7 @@ CONTAINS
 
     END FUNCTION VecCross2D
 
-  END SUBROUTINE LevelSetUpdate
+  END SUBROUTINE SplitFEMLevelsetUpdate
   
 END MODULE SplitFemUtils
 
