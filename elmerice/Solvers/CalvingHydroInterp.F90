@@ -71,7 +71,8 @@
      TYPE(Variable_t), POINTER :: HydroVar=>NULL(),WorkVar=>NULL(),&
                                   InterpVar1=>NULL(),InterpVar2=>NULL(),&
                                   InterpVar3=>NULL(),InterpVar4=>NULL(),&
-                                  InterpVar5=>NULL(),WorkVar2=>NULL()
+                                  InterpVar5=>NULL(),WorkVar2=>NULL(),&
+                                  WorkVar3=>NULL()
      TYPE(Variable_t), TARGET :: InterpVar1Copy, InterpVar2Copy,&
                                  InterpVar3Copy, InterpVar4Copy, InterpVar5Copy
      TYPE(ValueList_t), POINTER :: Params, BC
@@ -346,7 +347,6 @@
     IF(ASSOCIATED(InterpVar4)) InterpVar4 => InterpVar4Copy
     IF(ASSOCIATED(InterpVar5)) InterpVar5 => InterpVar5Copy
     IF(FirstTime) THEN
-      FirstTime=.FALSE.
       WorkVar => VariableGet(HydroSolver % Mesh % Variables,&
                  'hydraulic potential', ThisOnly=.TRUE.)
       ALLOCATE(NewPerm1(SIZE(WorkVar % Perm)),NewValues1(SIZE(WorkVar % Values)))
@@ -414,12 +414,32 @@
       !END DO
     !END DO
     DO i=1, SIZE(WorkVar % Perm)
-      IF(WorkVar2 % Values(WorkVar2 % Perm(i)) .NE. 0.0) THEN
+      IF(WorkVar % Perm(i) > 0.0 .AND. WorkVar2 % Perm(i) > 0.0) THEN
         WorkVar % Values(WorkVar % Perm(i)) = WorkVar % Values(WorkVar % Perm(i))/WorkVar2 % Values(WorkVar2 % Perm(i))
-      ELSE
-        WorkVar % Values(WorkVar % Perm(i)) = 0.0
+      !ELSE
+        !WorkVar % Values(WorkVar % Perm(i)) = 0.0
       END IF
     END DO
+
+    !This zeroes the values of the variables on the hydromesh that are about to
+    !be interpolated, so that areas that are now ice-free don't get stuck with
+    !their old values and never updated
+    IF(FirstTime) THEN
+      FirstTime = .FALSE.
+    ELSE IF (.NOT. FirstTime) THEN
+      WorkVar3 => VariableGet(HydroSolver % Mesh % Variables, 'normalstress', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+      WorkVar3 % Values = 0.0_dp
+      WorkVar3 => VariableGet(HydroSolver % Mesh % Variables, 'velocity 1', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+      WorkVar3 % Values = 0.0_dp
+      WorkVar3 => VariableGet(HydroSolver % Mesh % Variables, 'velocity 2', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+      WorkVar3 % Values = 0.0_dp
+      WorkVar3 => VariableGet(HydroSolver % Mesh % Variables, 'groundedmask', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+      WorkVar3 % Values = -1.0_dp
+      !WorkVar3 => VariableGet(HydroSolver % Mesh % Variables, 'GM Check', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+      !WorkVar3 % Values = -1.0_dp
+      WorkVar3 => VariableGet(HydroSolver % Mesh % Variables, 'temp residual', ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+      WorkVar3 % Values = 0.0_dp
+    END IF
 
     CALL ParallelActive(.TRUE.)
     CALL InterpolateVarToVarReduced(Model % Mesh, HydroSolver % Mesh, 'temp residual',&
@@ -434,10 +454,65 @@
     !or 1, so need to round them to the nearest integer
     !Also, enforce grounded on upstream areas to deal with boundary
     !interpolation artefacts
+    !Probably, GMCheck and GroundedMask have the same artefacts, but can't be
+    !guaranteed, so best to clean them up separately
     IF(ASSOCIATED(InterpVar5)) THEN
       WorkVar => VariableGet(HydroSolver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
       DO i=1, SIZE(WorkVar % Values)
         WorkVar % Values(i) = ANINT(WorkVar % Values(i))
+      END DO
+      RefNode => ListGetIntegerArray(Params, 'Reference Node', Found)
+      IF(Found) THEN
+        Threshold = GetConstReal(Params, 'Threshold Distance', Found)
+        IF(.NOT. Found) Threshold = 10000.0
+
+        DO i=1, SIZE(WorkVar % Perm)
+          IF(WorkVar % Perm(i) > 0.0) THEN
+            Dist = (HydroSolver % Mesh % Nodes % x(WorkVar % Perm(i)) -&
+                  RefNode(1))**2
+            Dist = Dist + (HydroSolver % Mesh % Nodes % y(WorkVar % Perm(i)) -&
+                    RefNode(2))**2
+            Dist = SQRT(Dist)
+            IF(Dist > Threshold) WorkVar % Values(WorkVar % Perm(i)) = 1.0
+          END IF
+        END DO
+      END IF
+
+      Hit = .FALSE.
+      SideBC1 = 0
+      SideBC2 = 0
+      HitCount = 0
+      DO i=1, Model % NumberOfBCs
+        BC => Model % BCs(i) % Values
+        Hit = ListGetLogical(BC, "Side", Found)
+        IF(Hit) THEN
+          IF(HitCount == 0) THEN
+            SideBC1 = i
+          ELSEIF(HitCount == 1) THEN
+            SideBC2 = i
+          ELSE
+            CALL Info('CalvingHydroInterp', 'You appear to have more than two&
+                       lateral boundaries. Are you sure about this?')
+          END IF
+          Hit = .FALSE.
+          HitCount = HitCount+1
+          IF(HitCount == 2) EXIT
+        END IF
+      END DO
+
+      DO i=1, HydroSolver % Mesh % NumberOfBoundaryElements
+        Element => GetBoundaryElement(i, HydroSolver)
+        ElementBC = GetBCId(Element)
+        IF(ElementBC == SideBC1 .OR. ElementBC == SideBC2) THEN
+          n = GetElementNOFNodes(Element)
+          DO j=1,n
+            IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) == -1.0) THEN
+              WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) = 1.0
+            ELSE IF(WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) == 0.0) THEN
+              WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) = 1.0
+            END IF
+          END DO
+        END IF
       END DO
     END IF
     IF(ASSOCIATED(InterpVar4)) THEN
@@ -452,12 +527,14 @@
         IF(.NOT. Found) Threshold = 10000.0
 
         DO i=1, SIZE(WorkVar % Perm)
-          Dist = (HydroSolver % Mesh % Nodes % x(WorkVar % Perm(i)) -&
+          IF(WorkVar % Perm(i) > 0.0) THEN
+            Dist = (HydroSolver % Mesh % Nodes % x(WorkVar % Perm(i)) -&
                   RefNode(1))**2
-          Dist = Dist + (HydroSolver % Mesh % Nodes % y(WorkVar % Perm(i)) -&
-                  RefNode(2))**2
-          Dist = SQRT(Dist)
-          IF(Dist > Threshold) WorkVar % Values(WorkVar % Perm(i)) = 1.0
+            Dist = Dist + (HydroSolver % Mesh % Nodes % y(WorkVar % Perm(i)) -&
+                    RefNode(2))**2
+            Dist = SQRT(Dist)
+            IF(Dist > Threshold) WorkVar % Values(WorkVar % Perm(i)) = 1.0
+          END IF
         END DO
       END IF
 
@@ -578,12 +655,14 @@
     !forced to be ungrounded, so interpolation artefacts there have to be
     !cleared away. The main job is done by InterpVarToVar, but there are always
     !a few places where it messes up, which are corrected here.
+    WorkVar3 => VariableGet(HydroSolver % Mesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     DO i=1, HydroSolver % Mesh % NumberOfBulkElements
       Element => HydroSolver % Mesh % Elements(i)
       n = GetElementNOFNodes(Element)
       DO j=1, n
         IF(WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j))) == 0.0) THEN
           WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j))) = -1.0
+          WorkVar3 % Values(WorkVar3 % Perm(Element % NodeIndexes(j))) = -1.0
         END IF
         
       END DO
@@ -592,6 +671,22 @@
     !Temp residual needs to be conserved. Here, just integrate across all
     !elements and compare totals, then scale values on hydromesh uniformly to
     !bring in line with ice mesh
+    !This first section is due to SolveLinearSystem invalidating the
+    !temp variables on the hydro mesh. Not really
+    !sure why it does this, but this fix seems to work without any knock-on
+    !effects.
+    WorkVar2 => HydroSolver % Mesh % Variables
+    DO WHILE (ASSOCIATED(WorkVar2))
+      IF (TRIM(WorkVar2 % Name) == 'temp residual') THEN
+        IF (.NOT. WorkVar2 % Valid) THEN
+          WorkVar2 % Valid = .TRUE.
+          WorkVar2 % PrimaryMesh => HydroSolver % Mesh
+        END IF
+        EXIT
+      END IF
+      WorkVar2 => WorkVar2 % Next
+    END DO
+
     WorkVar => VariableGet(Model % Mesh % Variables, "temp residual", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
 
     IceTempResSum = 0.0_dp
@@ -605,6 +700,7 @@
     WorkVar2 => VariableGet(HydroSolver % Mesh % Variables, "HydroWeights", ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
     !IF(ParEnv % PEs > 1) CALL ParallelSumVector(HydroSolver % Matrix, WorkVar2 % Values)
     DO i=1,SIZE(WorkVar % Perm)
+      IF(WorkVar % Perm(i) > 0.0 .AND. WorkVar2 % Perm(i) > 0.0) THEN
       !Element => HydroSolver % Mesh % Elements(i)
       !n = GetElementNOFNodes(Element)
       !DO j=1, n
@@ -612,8 +708,9 @@
         !WorkVar % Values(WorkVar % Perm(Element % NodeIndexes(j)))*&
         !WorkVar2 % Values(WorkVar2 % Perm(Element % NodeIndexes(j)))
       !END DO
-      WorkVar % Values(WorkVar % Perm(i)) =&
-      WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+        WorkVar % Values(WorkVar % Perm(i)) =&
+        WorkVar % Values(WorkVar % Perm(i))*WorkVar2 % Values(WorkVar2 % Perm(i))
+      END IF
     END DO
     HydroTempResSum = 0.0_dp
     HydroTempResSum = SUM(WorkVar % Values)
@@ -627,8 +724,10 @@
       CALL MPI_Gather(IceTempResSum, 1, MPI_DOUBLE_PRECISION, ParITRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       CALL MPI_Gather(HydroTempResSum, 1, MPI_DOUBLE_PRECISION, ParHTRS, 1, MPI_DOUBLE_PRECISION, 0, ELMER_COMM_WORLD, ierr)
       IF(ParEnv % myPE == 0) THEN
-        IF(ANINT(SUM(ParITRS)) .NE. ANINT(SUM(ParHTRS))) THEN
+        IF(INT(ANINT(SUM(ParITRS))) .NE. INT(ANINT(SUM(ParHTRS)))) THEN
           ScaleFactor = SUM(ParITRS)/SUM(ParHTRS)
+        ELSE
+          ScaleFactor = 1.0
         END IF
       END IF
       CALL MPI_BARRIER(ELMER_COMM_WORLD, ierr)
@@ -637,7 +736,7 @@
         WorkVar % Values(i) = WorkVar % Values(i)*ScaleFactor
       END DO
     ELSE
-      IF(ANINT(IceTempResSum) .NE. ANINT(HydroTempResSum)) THEN
+      IF(INT(ANINT(IceTempResSum)) .NE. INT(ANINT(HydroTempResSum))) THEN
         ScaleFactor = IceTempResSum/HydroTempResSum
         DO i=1, SIZE(WorkVar % Values)
           WorkVar % Values(i) = WorkVar % Values(i)*ScaleFactor
@@ -652,7 +751,7 @@
     IF(ASSOCIATED(InterpVar5)) DEALLOCATE(InterpVar5Copy % Values, InterpVar5Copy % Perm)
     NULLIFY(InterpVar1, InterpVar2, InterpVar3, InterpVar4, InterpVar5,&
            WorkVar, HydroSolver, NVP, NPP, BC, Element, RefNode, WorkVar2,&
-           TempSolver)
+           TempSolver, WorkVar3)
 !-------------------------------------------------------------------------------
   CONTAINS
 !-------------------------------------------------------------------------------

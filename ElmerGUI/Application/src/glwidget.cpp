@@ -1955,21 +1955,19 @@ void GLWidget::drawBgImage()
   GLint viewport[4];
 
   if(!bgTexture) {
+    std::cout << "Bind texture " << bgImageFileName.toLocal8Bit().data() << "... ";
 #if WITH_QT5 || WITH_QT6
-    cout << "Bind texture " << string(bgImageFileName.toLatin1()) << "... ";
-	QOpenGLTexture texture(QImage(bgImageFileName).mirrored());
-	bgSizeX = texture.width();
+    QOpenGLTexture texture(QImage(bgImageFileName).mirrored());
+    bgSizeX = texture.width();
     bgSizeY = texture.height();
     bgTexture = texture.textureId();
-    cout << "done" << endl;
 #else
-    cout << "Bind texture " << string(bgImageFileName.toAscii()) << "... ";
     QPixmap pixmap(bgImageFileName);
     bgSizeX = pixmap.width();
     bgSizeY = pixmap.height();
     bgTexture = bindTexture(pixmap, GL_TEXTURE_2D);
-    cout << "done" << endl;
 #endif
+    std::cout << "done" << std::endl;
   }
   
   if(!bgTexture) {

@@ -13,6 +13,23 @@ IF(Mumps_LIBRARIES AND Mumps_INCLUDE_DIR)
    RETURN()
 ENDIF()
 
+# Try to find with CMake config file of upstream mumps-superbuild.
+FIND_PACKAGE(MUMPS CONFIG)
+
+IF(MUMPS_FOUND)
+  SET(Mumps_FOUND TRUE)
+  SET(Mumps_LIBRARIES ${MUMPS_LIBRARIES})
+  SET(Mumps_INCLUDE_DIR ${MUMPS_INCLUDE_DIRS})
+  IF(MUMPS_METIS_FOUND)
+    SET(Metis_FOUND TRUE)
+    SET(Metis_LIBRARIES ${METIS_LIBRARIES})
+    SET(Metis_INCLUDE_DIR ${METIS_INCLUDE_DIRS})
+  ENDIF()
+
+  RETURN()
+ENDIF()
+
+# Fall back to manual search
 SET(Mumps_FOUND FALSE)
 MESSAGE(STATUS "Finding Mumps")
 
@@ -93,31 +110,53 @@ IF(MPI_FOUND)
     IF(SCALAPACK_FOUND)
       LIST(APPEND Mumps_LIBRARIES ${SCALAPACK_LIBRARIES})
 
-      # Check for Metis
+      # Check for Metis.
+      #
+      # Use "nm -D" first: a stripped shared library has no static symbol
+      # table, so plain "nm" prints nothing at all and reports "no symbols" on
+      # stderr. Requiring stderr to be empty, as this test used to, therefore
+      # made the "not needed" branch unreachable for any shared library, and
+      # Metis and ParMetis were always declared mandatory. On Debian/Ubuntu
+      # that leaves parallel Mumps unconfigurable, even though the packaged
+      # Mumps is built against PT-Scotch and references neither.
       MESSAGE(STATUS "Checking if Metis library is needed by Mumps")
-      EXECUTE_PROCESS(COMMAND ${CMAKE_NM} ${MUMPS_D_LIB}
+      EXECUTE_PROCESS(COMMAND ${CMAKE_NM} -D ${MUMPS_D_LIB}
         OUTPUT_VARIABLE _nm_out ERROR_VARIABLE _nm_err)
+      IF("${_nm_out}" STREQUAL "")
+        # Static archive, or an object format with no dynamic symbol table.
+        EXECUTE_PROCESS(COMMAND ${CMAKE_NM} ${MUMPS_D_LIB}
+          OUTPUT_VARIABLE _nm_out ERROR_VARIABLE _nm_err)
+      ENDIF()
       STRING(FIND "${_nm_out}" "metis_nodend" _metis_pos)
-      IF("${_metis_pos}" STREQUAL "-1" AND "${_nm_err}" STREQUAL "")
+      IF("${_metis_pos}" STREQUAL "-1")
         MESSAGE(STATUS "Checking if Metis library is needed by Mumps -- no")
       ELSE()
         MESSAGE(STATUS "Checking if Metis library is needed by Mumps -- yes")
-        FIND_PACKAGE(Metis QUIET)
-        IF(Metis_FOUND)
-          LIST(APPEND Mumps_LIBRARIES ${Metis_LIBRARIES})
-          LIST(APPEND Mumps_INCLUDE_DIR ${Metis_INCLUDE_DIR})
+        IF(EXTERNAL_METIS)
+          FIND_PACKAGE(Metis QUIET)
+          IF(Metis_FOUND)
+            LIST(APPEND Mumps_LIBRARIES ${Metis_LIBRARIES})
+            LIST(APPEND Mumps_INCLUDE_DIR ${Metis_INCLUDE_DIR})
+          ELSE()
+            SET(MUMPS_FAILMSG "Metis not found, needed by Mumps.")
+          ENDIF()
         ELSE()
-          SET(MUMPS_FAILMSG "Metis not found, needed by Mumps.")
+          MESSAGE(STATUS "Using bundled Metis")
         ENDIF()
       ENDIF()
 
       # Check for ParMetis
       IF(NOT MUMPS_FAILMSG)
+        # See the Metis check above for why "nm -D" is used here.
         MESSAGE(STATUS "Checking if ParMetis library is needed by Mumps")
-        EXECUTE_PROCESS(COMMAND ${CMAKE_NM} ${MUMPS_COMMON_LIB}
+        EXECUTE_PROCESS(COMMAND ${CMAKE_NM} -D ${MUMPS_COMMON_LIB}
           OUTPUT_VARIABLE _nm_out ERROR_VARIABLE _nm_err)
+        IF("${_nm_out}" STREQUAL "")
+          EXECUTE_PROCESS(COMMAND ${CMAKE_NM} ${MUMPS_COMMON_LIB}
+            OUTPUT_VARIABLE _nm_out ERROR_VARIABLE _nm_err)
+        ENDIF()
         STRING(FIND "${_nm_out}" "ParMETIS_V3_NodeND" _parmetis_pos)
-        IF("${_parmetis_pos}" STREQUAL "-1" AND "${_nm_err}" STREQUAL "")
+        IF("${_parmetis_pos}" STREQUAL "-1")
           MESSAGE(STATUS "Checking if ParMetis library is needed by Mumps -- no")
         ELSE()
           MESSAGE(STATUS "Checking if ParMetis library is needed by Mumps -- yes")

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -45,10 +45,10 @@ MODULE MagnetoDynamicsUtils
    INTEGER :: JfixPhase
    REAL(KIND=dp), POINTER :: Jfixrhs(:)
    COMPLEX(KIND=dp), POINTER :: JfixRhsC(:)
-   INTEGER, POINTER :: JfixSurfacePerm(:) 
+   INTEGER, POINTER :: JfixSurfacePerm(:)
    REAL(KIND=dp), ALLOCATABLE, TARGET :: JfixSurfaceVec(:)
    COMPLEX(KIND=dp), ALLOCATABLE :: JfixSurfaceVecC(:)
-   
+
    COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
 
    INTERFACE SetDOFtoValue
@@ -79,7 +79,7 @@ CONTAINS
       n = A % NumberOfRows
       ALLOCATE(M % RHS(size(A % RHS)))
       ALLOCATE(M % Rows(size(A%rows)))
-      ALLOCATE(M % ConstrainedDof(size(M % Rows))) 
+      ALLOCATE(M % ConstrainedDof(size(M % Rows)))
       ALLOCATE(M % Diag(size(A % Diag)))
 
       M % RHS(:) = 0.0_dp
@@ -93,7 +93,7 @@ CONTAINS
       END DO
 
       DO n1 = 1,SIZE(M % diag)
-        M % Diag(n1) = A % Diag(n1) 
+        M % Diag(n1) = A % Diag(n1)
         IF (M % diag(n1) == 0) THEN
           WRITE (*,*) 'diag', n1, 'is zero'
         end if
@@ -117,7 +117,7 @@ CONTAINS
       IF(ASSOCIATED(A % InvPerm)) THEN
         CALL info("AddConstraintFromBulk", "Copying inverse perm.", level=3)
         ALLOCATE(M % InvPerm(size(A%Invperm)))
-        M % InvPerm = A % InvPerm 
+        M % InvPerm = A % InvPerm
       END IF
 
       M % FORMAT = A % FORMAT
@@ -178,7 +178,7 @@ CONTAINS
     LOGICAL :: Found, FirstTime = .TRUE.
     REAL(KIND=dp) :: Avacuum
 
-    SAVE FirstTime, Avacuum 
+    SAVE FirstTime, Avacuum
 !------------------------------------------------------------------------------
 
     IF ( FirstTime ) THEN
@@ -187,7 +187,7 @@ CONTAINS
       IF (.NOT. Found ) Avacuum = PI * 4.0d-7
       FirstTime = .FALSE.
     END IF
-  
+
     Acoef(1:n) = GetReal( Material, 'Relative Permeability', Found )
     IF ( Found ) THEN
       Acoef(1:n) = Avacuum * Acoef(1:n)
@@ -299,7 +299,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER, INTENT(IN) :: Material
     COMPLEX(KIND=dp), POINTER, INTENT(OUT) :: Acoef(:,:,:)
     INTEGER, INTENT(IN) :: n                                      ! An inactive variable
-    LOGICAL, INTENT(OUT) :: Found                                 
+    LOGICAL, INTENT(OUT) :: Found
 !-------------------------------------------------------------------------------
     LOGICAL :: Found_im
     REAL(KIND=dp), POINTER :: work(:,:,:) => NULL()
@@ -318,7 +318,7 @@ CONTAINS
       END IF
       FirstTime = .FALSE.
     END IF
-    
+
     IF (ASSOCIATED(Acoef)) DEALLOCATE(Acoef)
 
     CALL GetRealArray( Material, work, 'Reluctivity', Found )
@@ -340,7 +340,7 @@ CONTAINS
       CALL GetRealArray( Material, work, 'Relative Reluctivity im', Found_im )
       IF (Found_im) work = nu_vacuum * work
     END IF
-    
+
     IF (Found_im) THEN
       n1 = SIZE(work,1)
       n2 = SIZE(work,2)
@@ -366,11 +366,11 @@ CONTAINS
   !> adds ColOffset to column indices of (1,1) block.
   !> If CM % ConstrainedDOF(i) is true then the ith row is treted empty.
   !! @param ColOffset add to column index of that correspond to nodal dofs
-  !!                   by this amount 
+  !!                   by this amount
   !-------------------------------------------------------------------------------
   SUBROUTINE PackEdgeRows(CM, Model, ColOffset)
     !-------------------------------------------------------------------------------
-    TYPE(Matrix_t), INTENT(INOUT), POINTER :: CM 
+    TYPE(Matrix_t), INTENT(INOUT), POINTER :: CM
     TYPE(Model_t), INTENT(IN) :: Model
     INTEGER, OPTIONAL :: ColOffset
     !-------------------------------------------------------------------------------
@@ -399,7 +399,7 @@ CONTAINS
     numempty = 0
     ROW_LOOP: DO i = 1, CM % NumberOfRows
       ! If CM % ConstrainedDOF(i) is true, then this must be a row corresponding to
-      ! edge dof so it must be zero. 
+      ! edge dof so it must be zero.
       IF ( CM % ConstrainedDOF(i) ) THEN
         Emptyrow(i) = .TRUE.
       ELSE ! Otherwise the row might correspond with dirichlet scalar dof
@@ -459,7 +459,7 @@ CONTAINS
       DEALLOCATE(CM % InvPerm)
       CM % InvPerm => InvPerm
     END IF
-    IF(ASSOCIATED(CM % Perm)) THEN 
+    IF(ASSOCIATED(CM % Perm)) THEN
       DEALLOCATE(CM % Perm)
       CM % Perm => Perm
     END IF
@@ -533,7 +533,7 @@ CONTAINS
      TYPE(Solver_t):: Solver
      TYPE(Mesh_t) :: Mesh
      LOGICAL :: Done(:), TreeEdges(:)
-  
+
      INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), iperm(:)
      INTEGER :: i,j,k,l,n,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
 
@@ -582,7 +582,7 @@ CONTAINS
      TYPE(Solver_t):: Solver
      TYPE(Mesh_t) :: Mesh
      LOGICAL :: Done(:), TreeEdges(:)
-  
+
      INTEGER, ALLOCATABLE :: s_e(:,:), r_e(:), iperm(:)
      INTEGER :: i,j,k,l,n,ii(ParEnv % PEs), ierr, status(MPI_STATUS_SIZE)
 
@@ -598,13 +598,13 @@ CONTAINS
             IF ( k>ParEnv % myPE ) THEN
                k = k + 1
                ii(k) = ii(k) +1
-               s_e(ii(k),k) = Solver % Matrix % ParallelInfo % GlobalDOFs( & 
+               s_e(ii(k),k) = Solver % Matrix % ParallelInfo % GlobalDOFs( &
                     Solver % Variable % Perm(Mesh % NumberOfNodes+i) )
             END IF
           END DO
         END IF
       END DO
- 
+
       DO i=Parenv % mype+1,Parenv % PEs-1
         k = i+1
         CALL MPI_BSEND( ii(k),1,MPI_INTEGER,i,112,Solver % matrix % comm,ierr )
@@ -641,48 +641,48 @@ CONTAINS
   END SUBROUTINE SendDoneNodesAndEdges
   !-------------------------------------------------------------------------------
 
-  
+
   !-------------------------------------------------------------------------------
   ! Mark nodes that are on outer boundary using face elements and node parmutation.
   !-------------------------------------------------------------------------------
-  SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm,EnsureBC) 
+  SUBROUTINE MarkOuterNodes(Mesh,Perm,SurfaceNodes,SurfacePerm,EnsureBC)
 
     TYPE(Mesh_t), POINTER :: Mesh
     INTEGER, POINTER :: Perm(:),SurfacePerm(:)
     INTEGER :: SurfaceNodes
     LOGICAL :: EnsureBC
-    
+
     INTEGER :: snodes0, snodes, i,t,n,ActParents,ParParents
     TYPE(Element_t), POINTER :: Element, P1, P2, P
     LOGICAL, ALLOCATABLE :: BcNode(:)
-    
+
     CALL Info('MarkOuterNodes','Marking outer nodes on outer boundary',Level=8)
-    
+
     SurfaceNodes = 0
 
     IF( Mesh % NumberOfFaces == 0 ) THEN
       CALL Fatal('MarkOuterNodes','The faces are not created!')
     END IF
-    
+
     n = Mesh % NumberOfNodes
     IF(.NOT. ASSOCIATED( SurfacePerm ) ) THEN
       ALLOCATE( SurfacePerm( n ) )
     END IF
     SurfacePerm = 0
-    
-       
-    DO t=1, Mesh % NumberOfFaces 
-      
-      Element => Mesh % Faces(t)         
-      
+
+
+    DO t=1, Mesh % NumberOfFaces
+
+      Element => Mesh % Faces(t)
+
       IF( ParEnv % PEs > 1 ) THEN
         ! Don't set BCs on partition interfaces
         IF( Mesh % ParallelInfo % FaceInterface(t) ) CYCLE
       END IF
-      
+
       P1 => Element % BoundaryInfo % Left
       P2 => Element % BoundaryInfo % Right
-      
+
       ActParents = 0
       ParParents = 0
 
@@ -697,20 +697,20 @@ CONTAINS
       IF( ASSOCIATED( P2 ) ) THEN
         IF (ALL(Perm(P2 % NodeIndexes)>0)) THEN
           ActParents = ActParents + 1
-          IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1         
+          IF( P2 % PartIndex == ParEnv % MyPe ) ParParents = ParParents + 1
         ELSE
           NULLIFY( P2 )
         END IF
       END IF
 
       ! We have either none or both parents as active.
-      ! The BCs will be set only to outer boundaries of the domain. 
+      ! The BCs will be set only to outer boundaries of the domain.
       IF( ActParents /= 1 ) CYCLE
-      
+
       ! The one parent is not a true one!
-      ! This can happen when we have halo elements. 
+      ! This can happen when we have halo elements.
       IF( ParEnv % PEs > 0 .AND. ParParents == 0 ) CYCLE
-      
+
       SurfacePerm(Element % NodeIndexes) = 1
     END DO
 
@@ -719,13 +719,13 @@ CONTAINS
       BcNode = .FALSE.
 
       DO t=Mesh % NumberOfBulkElements +1, &
-          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements      
-        Element => Mesh % Elements(t)         
+          Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        Element => Mesh % Elements(t)
         BcNode(Element % NodeIndexes) = .TRUE.
       END DO
 
       snodes0 = COUNT( SurfacePerm > 0 )
-      snodes0 = ParallelReduction(snodes0) 
+      snodes0 = ParallelReduction(snodes0)
 
       !DO i=1,n
       !  IF( SurfacePerm(i) > 0 .AND. .NOT. BcNode(i) ) THEN
@@ -734,9 +734,9 @@ CONTAINS
       !END DO
 
       WHERE( .NOT. BcNode ) SurfacePerm = 0
-      DEALLOCATE( BcNode ) 
+      DEALLOCATE( BcNode )
     END IF
-      
+
     ! Create numbering for the surface nodes
     snodes = 0
     DO i=1,n
@@ -744,9 +744,9 @@ CONTAINS
         snodes = snodes + 1
         SurfacePerm(i) = snodes
       END IF
-    END DO     
-    
-    snodes = ParallelReduction(snodes) 
+    END DO
+
+    snodes = ParallelReduction(snodes)
     CALL Info('MarkOuterNodes','Total number of surface nodes: '//I2S(snodes),Level=6)
 
     IF( EnsureBC ) THEN
@@ -757,7 +757,7 @@ CONTAINS
     END IF
 
     SurfaceNodes = snodes
-    
+
   END SUBROUTINE MarkOuterNodes
 
 !------------------------------------------------------------------------------
@@ -787,7 +787,7 @@ CONTAINS
       CALL Info('WhitneyAVSolver','Gauge tree already created',Level=15)
       RETURN
     END IF
-      
+
     ALLOCATE(TreeEdges(Mesh % NumberOfEdges))
     TreeEdges = .FALSE.
 
@@ -813,7 +813,7 @@ CONTAINS
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.( ListCheckPresent(BC, 'Mortar BC') .OR. ListCheckPresent( BC, &
                  TRIM(Solver % Variable % Name)//' {e}'))) CYCLE
- 
+
       Done(Element % NodeIndexes) = .TRUE.
     END DO
 
@@ -838,7 +838,7 @@ CONTAINS
       END IF
     END IF
 
-    ! 
+    !
     ! Skip Dirichlet BCs in terms of B:
     ! ---------------------------------
     DO i=1,FluxCount
@@ -848,7 +848,7 @@ CONTAINS
       Done(Edge % NodeIndexes)=.TRUE.
     END DO
 
-    ! 
+    !
     ! already set:
     ! ------------
 
@@ -922,7 +922,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE GaugeTree
 !------------------------------------------------------------------------------
@@ -988,7 +988,7 @@ CONTAINS
       END IF
     END DO
 
-    ! 
+    !
     ! Skip Dirichlet BCs in terms of A:
     ! ---------------------------------
     DO i=1,Mesh % NumberOfBoundaryElements
@@ -1006,7 +1006,7 @@ CONTAINS
       IF (.NOT.ASSOCIATED(BC)) CYCLE
       IF (.NOT.ListCheckPresent( BC, &
            TRIM(Solver % Variable % Name)//' {e}')) CYCLE
- 
+
       j=1; k=GetBoundaryEdgeIndex(Boundary,j)
       DO WHILE(k>0)
         Edge => Mesh % Edges(k)

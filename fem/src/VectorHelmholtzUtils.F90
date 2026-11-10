@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,27 +13,28 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
 
 !------------------------------------------------------------------------------
- MODULE VectorHelmholtzUtils 
+ MODULE VectorHelmholtzUtils
 !------------------------------------------------------------------------------
    USE Types
    USE Lists
    USE ElementUtils, ONLY : SetParentBasis
    USE ElementDescription
-   USE ParallelUtils
+   USE SParIterComm
+
    IMPLICIT NONE
 
-   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
-   
+   COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
+
  CONTAINS
 
 
@@ -66,6 +67,9 @@
     INTEGER, POINTER :: Indexes(:)
     REAL(KIND=dp) :: s,detJ,Width,Area,Length,RadInner, RadOuter,CenterArray(3,1),Scale
     REAL(KIND=dp), ALLOCATABLE :: Basis(:), LumpVec(:)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp) :: buffer(7)
+#endif
     TYPE(ValueList_t), POINTER :: BC, BC0
     CHARACTER(:), ALLOCATABLE :: PortType
     LOGICAL :: Found, stat
@@ -77,9 +81,9 @@
 
     CALL Info(Caller,'Defining geometric port parameters',Level=8)
 
-    n = Mesh % MaxElementNodes    
-    t0 = Mesh % NumberOfBulkElements       
-    
+    n = Mesh % MaxElementNodes
+    t0 = Mesh % NumberOfBulkElements
+
     ! Check the number of ports and add "port type index" keyword.
     DO bc_id = 1,Model % NumberOfBCs
       BC => Model % BCs(bc_id) % Values
@@ -89,7 +93,7 @@
 
       PortType = ListGetString( BC,'port type',Found)
 
-      IF(.NOT. (Found .OR. ListCheckPresent(BC,'port impedance'))) CYCLE            
+      IF(.NOT. (Found .OR. ListCheckPresent(BC,'port impedance'))) CYCLE
 
       SELECT CASE(PortType)
       CASE('rectangular')
@@ -111,21 +115,21 @@
         CALL Info(Caller,'Port Type "Port Type" defaulted to "rectangular"',Level=4)
         PortTypeInd = 1
       END SELECT
-      
+
       CALL Info(Caller,'Defining parameters for port on BC: '//I2S(bc_id),Level=8)
       CALL ListAddInteger( BC,'Port Type Index',PortTypeInd)
 
       IF(.NOT. ALLOCATED(Basis) ) THEN
         ALLOCATE(Basis(n), ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n), LumpVec(7) )
       END IF
-      
+
       LumpVec(1:3) = HUGE(s)
       LumpVec(4:6) = -HUGE(s)
       LumpVec(7) = 0.0_dp
 
-      
+
       DO t=1, Mesh % NumberOfBoundaryElements
-        Element => Mesh % Elements( t0 + t )               
+        Element => Mesh % Elements( t0 + t )
         IF( Element % BoundaryInfo % Constraint /= Model % BCs(bc_id) % Tag ) CYCLE
 
         Indexes => Element % NodeIndexes
@@ -146,41 +150,55 @@
         LumpVec(4) = MAX(LumpVec(4),MAXVAL(ElementNodes % x(1:n)))
         LumpVec(5) = MAX(LumpVec(5),MAXVAL(ElementNodes % y(1:n)))
         LumpVec(6) = MAX(LumpVec(6),MAXVAL(ElementNodes % z(1:n)))
-        
+
         ! Integrate over the area.
         IP = GaussPoints( Element, PReferenceElement = .FALSE.)
-        DO j=1,IP % n        
+        DO j=1,IP % n
           stat = ElementInfo( Element, ElementNodes, IP % U(j), IP % V(j), IP % W(j), detJ, Basis )
           S = DetJ * IP % s(j)
           LumpVec(7) = LumpVec(7) + s
         END DO
       END DO
-      
+
       ! Do parallel communication, if needed.
       IF( ParEnv % PEs > 1 ) THEN
+        ! The three reductions take disjoint slices, so one copy serves them all.
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        buffer = LumpVec(1:7)
+        CALL MPI_ALLREDUCE( buffer(1:3), LumpVec(1:3), 3, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(1:3), 3, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_MIN, ELMER_COMM_WORLD, ierr )
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        CALL MPI_ALLREDUCE( buffer(4:6), LumpVec(4:6), 3, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(4:6), 3, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr )
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+        CALL MPI_ALLREDUCE( buffer(7:7), LumpVec(7:7), 1, &
+#else
         CALL MPI_ALLREDUCE( MPI_IN_PLACE, LumpVec(7:7), 1, &
+#endif
             MPI_DOUBLE_PRECISION, MPI_SUM, ELMER_COMM_WORLD, ierr )
       END IF
 
-      ! Area is used in all port models. 
+      ! Area is used in all port models.
       Area = LumpVec(7)
-      
+
       SELECT CASE(PortTypeInd)
       CASE(1,3)
-        ! The mode "3" is just for postprocessing, it is not used to set the values. 
+        ! The mode "3" is just for postprocessing, it is not used to set the values.
         PortDir = ABS( ListGetInteger( BC,'Port Direction',Found) )
         IF(.NOT. Found) PortDir = 3
-                
-        Length = LumpVec(3+PortDir) - LumpVec(PortDir)        
+
+        Length = LumpVec(3+PortDir) - LumpVec(PortDir)
         IF(Length > EPSILON(Length) ) THEN
           Width = Area / Length
           Scale = Width / Length
           !PRINT *,'area:',area, length, width, scale
-                    
+
           CALL ListAddConstReal( BC,'Port Length',Length)
           CALL ListAddConstReal( BC,'Port Scale',Scale)
           IF(InfoActive(8)) THEN
@@ -190,27 +208,27 @@
           CALL Info(Caller,'Could not define port parameters with zero length!',Level=4)
         END IF
 
-          
+
       CASE(2)
         RadOuter = 0.0_dp
         DO i=1,3
           RadOuter = MAX(RadOuter,(LumpVec(3+i)-LumpVec(i))/2)
           CenterArray(i,1) = (LumpVec(3+i)+LumpVec(i))/2
         END DO
-        RadInner = SQRT(RadOuter**2-Area/PI)        
+        RadInner = SQRT(RadOuter**2-Area/PI)
         Length = (RadInner+RadOuter)/2
         Scale = 2*PI/LOG(RadOuter/RadInner)
 
         ! PRINT *,'area:',area, radinner, radouter
-        
-        CALL ListAddConstReal( BC,'Port Length',Length) 
+
+        CALL ListAddConstReal( BC,'Port Length',Length)
         CALL ListAddConstReal( BC,'Port Scale',Scale)
         CALL ListAddConstRealArray( BC,'Port Center',3,1,CenterArray)
         IF(InfoActive(8)) THEN
           PRINT *,'Setting coaxial port parameters:',Length,Scale,' and center ',CenterArray
         END IF
       END SELECT
-          
+
     END DO
 
     IF(ALLOCATED(Basis)) THEN
@@ -220,7 +238,7 @@
   END SUBROUTINE DefinePortParameters
 !------------------------------------------------------------------------------
 
-   
+
 !------------------------------------------------------------------------------
   SUBROUTINE ElectricPortModel(Phase,Solver,Element,GotPort,&
       B,L,Basis,dBasisdx,WBasis)
@@ -245,17 +263,17 @@
      TYPE(ValueHandle_t), SAVE :: EigenInd_h, PortTypeIndex_h, PortZ_h, PortLength_h, PortScale_h, &
          PortDirection_h, PortCenter_h, PortBeta_h, PortPassive_h, MuCoeff_h, EpsCoeff_h
      TYPE(Element_t), POINTER :: Parent
-     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)   
+     COMPLEX(KIND=dp), PARAMETER :: im = (0._dp,1._dp)
      CHARACTER(:), ALLOCATABLE :: str
      CHARACTER(*), PARAMETER :: Caller = 'VectorHelmholtzUtils'
-     
-     
+
+
      SAVE Omega, mu0inv, PortTypeIndex, EigenInd, Re_Eigenf, Im_Eigenf, UseV, EigenSolver, EigenVar, &
          PortBeta, PortZ, PortScale, PortDirection, PortLength, PortCenter, PortPassive, &
          DofInds, ParentBasis, m,  n, nd, ndofs, np, eps0, rob0, Parent, PotVar
-          
-     
-     SELECT CASE ( Phase ) 
+
+
+     SELECT CASE ( Phase )
      CASE( 1 )  ! Initialize Handles
 
        CALL ListInitElementKeyword( PortTypeIndex_h,'Boundary Condition','Port Type Index')
@@ -264,13 +282,13 @@
        CALL ListInitElementKeyword( PortScale_h,'Boundary Condition','Port Scale')
        CALL ListInitElementKeyword( PortDirection_h,'Boundary Condition','Port Direction',DefIValue=3)
        CALL ListInitElementKeyword( PortCenter_h,'Boundary Condition','Port Center',InitVec3D=.TRUE.)
-       CALL ListInitElementKeyword( PortBeta_h,'Boundary Condition','Port Beta',InitIm=.TRUE.) 
+       CALL ListInitElementKeyword( PortBeta_h,'Boundary Condition','Port Beta',InitIm=.TRUE.)
        CALL ListInitElementKeyword( PortPassive_h,'Boundary Condition','Port Passive')
        CALL ListInitElementKeyword( EigenInd_h,'Boundary Condition','Eigenfunction Index')
 
-       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)      
-       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)      
-       
+       CALL ListInitElementKeyword( MuCoeff_h,'Material','Relative Reluctivity',InitIm=.TRUE.)
+       CALL ListInitElementKeyword( EpsCoeff_h,'Material','Relative Permittivity',InitIm=.TRUE.)
+
        Omega = ListGetAngularFrequency( Solver % Values )
 
        Found = .FALSE.
@@ -279,7 +297,7 @@
          IF(mu0inv/=0) mu0inv=1/mu0inv
        END IF
        IF(.NOT. Found ) mu0inv = 1.0_dp / ( PI * 4.0d-7 )
-       
+
        Found = .FALSE.
        IF( ASSOCIATED( CurrentModel % Constants ) ) THEN
          eps0 = ListGetConstReal ( CurrentModel % Constants, 'Permittivity of Vacuum', Found )
@@ -287,18 +305,18 @@
        IF(.NOT. Found ) eps0 = 8.854187817d-12
 
        rob0 = Omega * SQRT( eps0 / mu0inv )
-       
+
        n = Solver % Mesh % MaxElementDOFs
        IF(.NOT. ALLOCATED(DofInds)) THEN
          ALLOCATE(DofInds(n),ParentBasis(n))
          DofInds = 0
          ParentBasis = 0.0_dp
        END IF
-       
+
        ! If we have eigenfunction BC's then this has been set.
-       m = ListGetInteger(Solver % Values, 'Eigensolver Index', Found)     
+       m = ListGetInteger(Solver % Values, 'Eigensolver Index', Found)
        IF(m > 0) THEN
-         Eigensolver => CurrentModel % Solvers(m)              
+         Eigensolver => CurrentModel % Solvers(m)
          IF(.NOT. ALLOCATED(Re_eigenf) ) THEN
            ALLOCATE(Re_Eigenf(n), Im_Eigenf(n))
          END IF
@@ -306,29 +324,29 @@
          UseV = ListGetLogical(Eigensolver % Values, 'Use Potential', Found)
        ELSE
          UseV = .FALSE.
-       END IF       
+       END IF
 
        str = ListGetString( Solver % Values,'tem potential name',Found)
        IF(.NOT. Found) str = 'potential'
        PotVar => VariableGet( Solver % Mesh % Variables, str, ThisOnly=.TRUE.)
 
-       
+
      CASE( 2 )  ! Visit new element
 
-       
+
        PortTypeIndex = ListGetElementInteger(PortTypeIndex_h, Element, GotPort)
        IF(.NOT. GotPort) RETURN
-       
-       PortZ = ListGetElementComplex( PortZ_h, Element = Element )     
+
+       PortZ = ListGetElementComplex( PortZ_h, Element = Element )
        PortScale = ListGetElementReal( PortScale_h, Element = Element )
 
-       
+
        IF( PortTypeIndex == 1 ) THEN       ! rectangular
          PortDirection = ListGetElementInteger( PortDirection_h, Element )
          PortLength = ListGetElementReal( PortLength_h, Element = Element )
        ELSE IF( PortTypeIndex == 2 ) THEN  ! coaxial
          PortCenter = ListGetElementReal( PortCenter_h, Element = Element )
-         CALL Fatal(Caller,'Unfinished port type: '//I2S(PortTypeIndex))        
+         CALL Fatal(Caller,'Unfinished port type: '//I2S(PortTypeIndex))
        ELSE IF( PortTypeIndex == 3 ) THEN  ! eigenmode
          PortBeta = ListGetElementReal( PortBeta_h, Element = Element )
          EigenInd = MAX(1,ListGetElementInteger(EigenInd_h, Element, Found))
@@ -336,12 +354,12 @@
          n = Element % Type % NumberOfNodes
          ndofs = MAXVAL(EigenSolver % Def_Dofs(Element % TYPE % ElementCode / 100,:,1))
          np = n * ndofs
-         
+
          m = mGetElementDOFs( DofInds, Element, USolver = EigenSolver )
          nd = m - np
-         
+
          Re_eigenf(1:m) = REAL( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )
-         Im_eigenf(1:m) = AIMAG( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )         
+         Im_eigenf(1:m) = AIMAG( EigenVar % EigenVectors(EigenInd,EigenVar % Perm(DofInds(1:m))) )
        ELSE IF( PortTypeIndex == 4 ) THEN
          Parent => Element % BoundaryInfo % Left
          IF(.NOT. ASSOCIATED(Parent)) THEN
@@ -351,19 +369,19 @@
            CALL Fatal(Caller,'Port model "potential" requires parent element!')
          END IF
          n = Element % Type % NumberOfNodes
-       ELSE IF( PortTypeIndex == 5 ) THEN  
+       ELSE IF( PortTypeIndex == 5 ) THEN
          PortBeta = ListGetElementReal( PortBeta_h, Element = Element, Found = Found )
          IF(.NOT. Found) CALL Fatal(Caller,'"Port Beta" not found for port type "beta"')
-       ELSE         
-         CALL Fatal(Caller,'Uncoded port type: '//I2S(PortTypeIndex))        
+       ELSE
+         CALL Fatal(Caller,'Uncoded port type: '//I2S(PortTypeIndex))
        END IF
        PortPassive = ListGetElementLogical( PortPassive_h, Element = Element )
 
-       
+
      CASE( 3 )  ! Visit new integration point
-       
+
        IF( PortTypeIndex == 1 ) THEN
-         B = im * ( omega / mu0inv ) / (PortScale * PortZ ) 
+         B = im * ( omega / mu0inv ) / (PortScale * PortZ )
          IF(PRESENT(L)) THEN
            L(ABS(PortDirection)) = SIGN(1,PortDirection) / ( PortLength * SQRT(PortScale) )
          END IF
@@ -371,7 +389,7 @@
          B = im * PortBeta
          IF( PRESENT(L)) THEN
            DO p=1,nd
-             L(:) = L(:) + CMPLX(Re_Eigenf(np+p) * WBasis(p,:), Im_Eigenf(np+p) * WBasis(p,:), kind=dp) 
+             L(:) = L(:) + CMPLX(Re_Eigenf(np+p) * WBasis(p,:), Im_Eigenf(np+p) * WBasis(p,:), kind=dp)
            END DO
 
            IF (UseV) THEN
@@ -394,8 +412,8 @@
            mur = ListGetElementComplex( MuCoeff_h, ParentBasis, Parent, Found )
          END IF
          IF(.NOT. Found ) mur = 1.0_dp
-         
-         B = -im * rob0 * SQRT( epsr / mur )          
+
+         B = -im * rob0 * SQRT( epsr / mur )
          IF(PRESENT(L)) THEN
            DO i=1,3
              L(i) = SUM(dBasisdx(1:n,i) * PotVar % Values(PotVar % Perm(Element % NodeIndexes(1:n))))
@@ -410,15 +428,15 @@
        END IF
 
        IF( PRESENT(L)) THEN
-         L = 2.0_dp * B * L 
-         IF( PortPassive) L = 0.0_dp              
+         L = 2.0_dp * B * L
+         IF( PortPassive) L = 0.0_dp
        END IF
-         
+
      END SELECT
 
 
    END SUBROUTINE ElectricPortModel
-  
-   
+
+
  END MODULE VectorHelmholtzUtils
-   
+

@@ -53,6 +53,14 @@ Solver 1
 
   Linear System Solver = $ if( ~fem ) { "Direct" } else { "Iterative" }
   Linear System Iterative Method = "BiCGStab"
+
+! The reference norms below are the serial ones, and the default norm is
+! summed over each partition's own rows, so shared nodes are counted once per
+! owner and the reported value drifts with the partition count -- 1.3e-3 from
+! serial at np=2 and 2.1e-3 at np=4, purely in the reporting, with the
+! solution itself correct. This makes the norm partition independent so the
+! same references hold for every task count.
+  Nonlinear System Consistent Norm = Logical True
   Linear System Max Iterations = 300
   Linear System Convergence Tolerance = 1.0e-08
   Linear System Abort Not Converged = True
@@ -93,5 +101,20 @@ Boundary Condition 2
 End
 
 Solver 1 :: Reference Norm = Real 0.128318191837E-01
+RUN
+
+! Second pass exercises complex CG. The Helmholtz operator is complex
+! SYMMETRIC but not Hermitian, so CG is only valid with the unconjugated
+! bilinear form x^T y; with the conjugating (Hermitian) dot product it has no
+! self-adjoint operator to work with.
+!
+! The angular frequency is changed so that this is a genuine cold start: the
+! reload keeps Pressure from the previous pass, and at the same frequency that
+! is already the converged solution, which any solver would "confirm" in one
+! iteration. The reference norm below was cross-checked by solving the same
+! frequency with BiCGStab from a cold start.
+Simulation :: Angular Frequency = Real 20000
+Solver 1 :: Linear System Iterative Method = String "CG"
+Solver 1 :: Reference Norm = Real 0.990092197E-02
 RUN
 

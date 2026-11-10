@@ -36,6 +36,9 @@ Solver 1
   Equation = Heat Equation
   Procedure = "HeatSolve" "HeatSolver"
   Variable = Temperature
+
+  Exec Solver = Never
+
   Stabilize = True
   Nonlinear System Max Iterations = 1
   Nonlinear System Convergence Tolerance = 1.0e-6
@@ -51,7 +54,10 @@ End
 Solver 2
   Equation = Navier-Stokes
   Stabilize = True
-  Nonlinear System Max Iterations = 1
+
+  Nonlinear Pre Solvers = 1
+
+  Nonlinear System Max Iterations = 10
   Nonlinear System Convergence Tolerance = 1.0e-6
   Nonlinear System Newton After Iterations = 20
   Nonlinear System Newton After Tolerance = 1.0e-3

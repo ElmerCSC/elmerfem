@@ -1,0 +1,151 @@
+! Komega twin of Step_ke_vec, on the same mesh, with Solver 1 using the
+! vectorized/threaded Komega.F90 (Procedure "Komega" "KOmega") instead of
+! KESolver, and Solver 2 (Navier-Stokes) using IncompressibleNS. Walls use
+! "Noslip Wall BC" (KOmega's own near-wall treatment via OmegaWall, see
+! Komega.F90) rather than KESolver's "Wall Law", since KOmega has no wall-
+! function BC of its own.
+$ bndry_layer = 0.05
+
+Header
+  Mesh DB "." "Step_ke"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+
+  Simulation Type = Steady
+
+  Steady State Max Iterations  = 100
+  Output Intervals = 100
+
+  Post File = "Step_small_vec.vtu"
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Body 2
+  Name  = "Flow1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = 0
+  Velocity 2 = 0
+
+  Kinetic energy = 0.003
+  Kinetic Dissipation = 0.4
+End
+
+
+Solver 1
+  Equation = komega
+
+  Procedure = "Komega" "KOmega"
+  Variable = "KE[Kinetic energy:1 Kinetic Dissipation:1]"
+
+  Element = "p:1 b:3"
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+Solver 2
+  Equation = "NS-Vec"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+
+  Element = "p:1 b:3"
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-2
+  Nonlinear System Relaxation Factor = 0.7
+
+  Linear System Solver = Iterative
+  Linear System Max Iterations = 1000
+  Linear System Iterative Method = BiCGStabL
+  Linear System Preconditioning = ILU
+  Linear System Convergence Tolerance = 1.0e-8
+
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+
+Equation 1 :: Active Solvers(2) = 1 2
+
+
+Material 1
+  Viscosity = $1/19000.0
+  Density = 1
+  Viscosity Model = k-omega
+End
+
+
+Boundary Condition 1
+  Name
+    String "Inflow"
+
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Coordinate 2
+      Real
+        1.0000 $ bndry_layer^2
+        1.1250 0.4375
+        1.2500 0.7500
+        1.3750 0.9375
+        1.5000 1.0000
+        1.6250 0.9375
+        1.7500 0.7500
+        1.8750 0.4375
+        2.0000 $ bndry_layer^2
+      End
+
+   Velocity 2 = 0
+
+   Kinetic energy = Real 0.003
+   Kinetic Dissipation = Real 0.4
+End
+
+
+Boundary Condition 2
+  Target Boundaries(3) = 2 4 5
+  Name = "Walls x"
+
+  Velocity 2 = 0
+  Noslip Wall BC = Logical True
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  Name =  "Walls y"
+
+  Velocity 1 = 0
+  Noslip Wall BC = Logical True
+End
+
+
+Solver 2 :: Reference Norm = Real 0.20658348
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
+RUN

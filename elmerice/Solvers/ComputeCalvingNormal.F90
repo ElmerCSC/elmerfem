@@ -107,7 +107,7 @@ SUBROUTINE ComputeCalvingNormalSolver( Model, Solver, dt, TransientSimulation )
      Nvector = 0.0_dp !wipe out previous
   ELSE
      PRINT *,'FATAL: Unable to set pointer to the current solution'
-     STOP
+     ERROR STOP
   END IF
 
 

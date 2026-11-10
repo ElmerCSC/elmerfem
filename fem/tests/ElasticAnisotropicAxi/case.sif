@@ -1,0 +1,123 @@
+! Anisotropic elasticity under axial symmetry through ElasticSolve -- the capability
+! its own assembly refused outright until the axis ordering was reconciled, and the
+! first coverage of any kind for an anisotropic axisymmetric elasticity problem.
+!
+! WHAT WAS ACTUALLY WRONG. ElasticSolve's three assembly routines ordered the tensor
+! components (r, phi, z) with the hoop at index 2, while its postprocessor, the UMAT
+! interface's (rr, zz, theta-theta, rz), StressSolve and a matrix valued "Youngs
+! Modulus" all order them (r, z, phi) with the hoop at index 3. An isotropic law
+! cannot see the difference -- the trace and the identity are blind to which axis is
+! which -- so no test could ever have caught it, and none did. For an anisotropic C
+! it is exactly C(2,2) against C(3,3). The assemblies were moved to (r, z, phi), and
+! the permutation adapter that had been anticipated for the elasticity matrix turned
+! out not to be needed at all: aligning the conventions WAS the whole of the work.
+!
+! THE REFERENCE VALUE IS STRESSSOLVE'S, so a single-solver run carries a
+! cross-solver assertion and cannot drift into agreeing with itself. Field by field
+! the two agree to 1e-15 on this problem, the displacement control included, which
+! is what proves the ordering in the STIFFNESS and not merely in the output.
+!
+! THE MATERIAL IS DELIBERATELY HOOP-DISTINCT, and that is the point of the test
+! rather than a detail of it. C(3,3) = 2400 against C(2,2) = 1346.154, so the axial
+! and hoop directions are not interchangeable and the test can see which index the
+! assembly used. Measured: exchanging those two entries -- precisely what the old
+! ordering did -- moves "Stress_yy" by 78%, the displacement by 12%, and every
+! stress component by at least 7%. A material symmetric in 2 and 3 would pass this
+! test with either convention, which is why the earlier anisotropic tests, built on
+! an isotropic base, could not be extended to cover it.
+!
+! Stress_yy is the checked norm because it is the most sensitive of the candidates
+! at that 78%, and because under axial symmetry Elmer's slot 2 is the AXIAL
+! component: the hoop is Stress_zz. The mesh is the square of the sibling tests
+! shifted clear of the axis -- a negative radius is not something an axisymmetric
+! assembly can integrate -- and the boundary numbering is therefore theirs.
+!
+! Small strain on purpose, so the kinematics reduce to StressSolve's and the
+! comparison is of the constitutive path and the component ordering alone.
+
+Header
+  Mesh DB "." "squareax"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Axi Symmetric
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = 1.0
+  ! Elmer's Voigt order with engineering shear, which under axial symmetry is
+  ! (rr, zz, hoop, rz, z-hoop, r-hoop). An isotropic base (E = 1e3, nu = 0.3) as in
+  ! the sibling tests, plus two departures from it that this test needs: C(3,3)
+  ! raised to 2400 so the hoop is distinguishable from the axial direction, and
+  ! C(3,4) = C(4,3) = 200 coupling the hoop to the r-z shear, which is a term no
+  ! isotropic material has.
+  Youngs Modulus(6,6) = Real \
+    1346.154  576.923  576.923    0.000    0.000    0.000 \
+     576.923 1346.154  576.923    0.000    0.000    0.000 \
+     576.923  576.923 2400.000  200.000    0.000    0.000 \
+       0.000    0.000  200.000  384.615    0.000    0.000 \
+       0.000    0.000    0.000    0.000  384.615    0.000 \
+       0.000    0.000    0.000    0.000    0.000  384.615
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+
+  Large Deflection = False
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  ! Slot 2 of Elmer's layout, which under axial symmetry is the AXIAL stress. The
+  ! hoop is Stress_zz, reported below but not checked: it moves only 7% under the
+  ! ordering swap this test exists to detect, against 78% here.
+  Variable 1 = String "Stress_yy"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_zz"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Displacement 1 = Real 1.0e-3
+  Displacement 2 = Real 2.0e-3
+End
+
+Solver 2 :: Reference Norm = Real 5.14940478E+01
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

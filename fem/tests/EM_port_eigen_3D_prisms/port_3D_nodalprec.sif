@@ -5,6 +5,7 @@
 !
 ! The original author: M.M. 
 !
+! In transition: probably not working anymore...
 
 Check Keywords "Warn"
 
@@ -19,7 +20,7 @@ Simulation
   Coordinate System = "Cartesian 3D"
   Simulation Type = Steady State
   Steady State Max Iterations = 1
-  Max Output Level = 5
+  Max Output Level = 7
 End
 
 Constants
@@ -62,43 +63,35 @@ Material 2
 End
 
 Equation 1
-  Active Solvers(2) = 1 2
+  Active Solvers(1) = 1 
 End
 
 Equation 2
-  Active Solvers(4) = 3 4 7 8
+  Active Solvers(4) = 2 3 6 7 
 End
 
 Solver 1
   Equation = "Port mode"
   Procedure = "EMPort" "EMPortSolver"
 
-  Variable Output = False
-
   Angular Frequency = $wref
   Use Piola Transform = True
-  Steady State Convergence Tolerance = 1e-09
 
   Linear System Solver = "Direct"
-  Linear System Direct Method = Umfpack
+  Linear System Direct Method = Umfpack ! use mumps if available
 
-!  Linear System Scaling = Logical True
-!  Linear System Symmetric = Logical True
-!  Linear System Solver = string "Iterative"
-!  Linear System Convergence Tolerance = real 1e-8
-!  Linear System Iterative Method = BiCGStabl
-!  BiCGStabl Polynomial Degree = 2
-!  Linear System Residual Output = integer 1
-!  Linear System Max Iterations = integer 2000
-!  Linear System Preconditioning = ILU2
-!  Linear System Residual Output = 50
-
-  Eigen System Shift = -1.0
-  Eigen System Shift Im = Real 0
+!  Eigen System Shift = -1.0
+!  Eigen System Shift Im = Real 0
   Eigen Analysis = True
   Eigen System Values = 30
-  Eigen System Convergence Tolerance = Real 1.0e-10
-  Eigen System Compute Residuals = True
+  Eigen System Convergence Tolerance = Real 1.0e-8
+!  Eigen System Compute Residuals = True
+
+! defaulted these
+!  Eigen System Sorting = string "smallest real part"
+!  Eigen System Normalize To Unity = True
+!  Mode Index = Integer 1
+
 
 !  Eigen System Select = smallest real part
 !  Eigen System Select = largest real part
@@ -108,25 +101,14 @@ Solver 1
 !  Eigen System Select = largest magnitude
 !  Eigen System Lanczos Vectors = 180
 !  Eigen System Max Iterations = 1
+
+  Calculate Nodal Field = Logical True
+  post: linear system solver = direct
+  post: linear system direct method = umfpack
 End
+
 
 Solver 2
-  Equation = "postprocess"
-  Procedure = "EMPort" "EMPortSolver_post"
-  Variable = postfield[EF2D Re:3 EF2D Im:3]
-  Variable DOFs = 6
-
-  Mode Index = Integer 7
-  
-  Linear System Solver = Iterative
-  Linear System Convergence Tolerance = real 1e-8
-  Linear System Iterative Method = CG
-  Linear System Residual Output = integer 10
-  Linear System Max Iterations = integer 2000
-  Linear System Preconditioning = ILU0
-End
-
-Solver 3
   Equation = "VectorHelmholtz"
   Use Piola Transform = Logical True
   Procedure = "VectorHelmholtz" "VectorHelmholtzSolver"
@@ -136,8 +118,7 @@ Solver 3
   ! Command to seek for a lower-dimensional eigenfunction
   ! so that BCs based on it can be constructed:
   !
-  Eigenfunction Source = Logical True
-  Variable = EF[EF re:1 EF im:1]
+  Variable = E[E re:1 E im:1]
 
   Linear System Symmetric = False
   Linear System Scaling = True
@@ -155,26 +136,23 @@ Solver 3
 ! Needed for auxiliary space preconditioning
   Exported Variable 1 = -dofs 2 e res
   Exported Variable 2 = -dofs 2 e update
-  Prec Solvers(1) = Integer 8
-  Additive Prec Solvers(1) = Integer 7	
+  Prec Solvers(2) = Integer 7 6
+
   Preconditioning Residual = String "e res"
   Preconditioning Update = String "e update"
-  Additive Preconditioning = Logical True
-  Additive Pre-Smoothing = Logical False
+  Additive Smoother = Logical False
 
   MG Smoother = csgs
 !  MG Pre Smoothing Iterations = 7
   MG Post Smoothing Iterations = 3
   MG Smoother Relaxation Factor = Real 1.0
 
-  Steady State Convergence Tolerance = 1e-9
-
 !  Calculate Loads = Logical True
 !  Calculate Energy Inner Product = Logical True
 
 End
 
-Solver 4
+Solver 3
   Equation = "calcfields"
 
   Procedure = "VectorHelmholtz" "VectorHelmholtzCalcFields"
@@ -183,9 +161,7 @@ Solver 4
   Calculate Magnetic Field Strength = Logical False
   Calculate Magnetic Flux Density = Logical False
   Calculate Poynting vector = Logical False
-  !Calculate Div of Poynting Vector = Logical True
   Calculate Electric field = Logical True
-  !Calculate Energy Functional = Logical True
 
   Steady State Convergence Tolerance = 1
   Linear System Solver = "Iterative"
@@ -196,35 +172,30 @@ Solver 4
   Linear System Convergence Tolerance = 1.0e-9
 End
 
-Solver 5
+Solver 4
 !  Exec Solver = never
   Equation = "result output"
   Procedure = "ResultOutputSolve" "ResultOutputSolver"
-  Output File Name = eigenvalues
+  Output File Name = case
   Vtu Format = Logical True
   Save Geometry IDs = True
   Ascii Output = True
 
-  Vector Field 1 = EF2D Re
-  Vector Field 2 = EF2D Im
-  Vector Field 3 = Electric Field Re
-  Vector Field 4 = Electric Field Im  
-
   Eigen Analysis = False
 End
 
-Solver 6
+Solver 5
   Equation = "SaveScalars"
 !  Filename = f.dat
 
   Procedure = "SaveData" "SaveScalars"
   Save EigenValues = True
 
-! Compare the norm of the 7th eigenvalue
-  Show Norm Index = 7 
+! Compare the 1st eigenvalue when sorted from smallest (negative real)
+  Show Norm Index = 1 
 End
 
-Solver 7
+Solver 6
   exec solver = never
 
   Equation = "VectorHelmholtzNodal"
@@ -256,7 +227,7 @@ Solver 7
   Skip Compute Nonlinear Change = True
 End
 
-Solver 8
+Solver 7
 ! used as slave solver only  
   exec solver = never
 

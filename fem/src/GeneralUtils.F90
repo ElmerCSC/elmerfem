@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -69,6 +69,8 @@ INTERFACE ComponentName
 END INTERFACE
 
     REAL(KIND=dp), PRIVATE :: AdvanceTime1, AdvanceTime2
+
+    PRIVATE :: i2s_ndigits
 
 CONTAINS
 
@@ -152,76 +154,122 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Converts integer to string. Handy when writing output with integer data.
 !------------------------------------------------------------------------------
+  ! Number of characters I2S needs to represent IVAL (including a '-' sign).
+  ! PURE so it can appear in the length spec of I2S's automatic-length result.
+  PURE FUNCTION i2s_ndigits(ival) RESULT(n)
+!------------------------------------------------------------------------------
+    INTEGER, INTENT(in) :: ival
+    INTEGER :: n, v
+!------------------------------------------------------------------------------
+    n = 1
+    IF (ival < 0) n = 2          ! sign takes one extra character
+    v = ABS(ival)
+    DO WHILE (v >= 10)
+      n = n + 1
+      v = v / 10
+    END DO
+  END FUNCTION i2s_ndigits
+
   PURE FUNCTION i2s(ival) RESULT(s)
 !------------------------------------------------------------------------------
     INTEGER, INTENT(in) :: ival
-    CHARACTER(:), ALLOCATABLE :: s
+    ! NB: the result is an automatic-length CHARACTER, deliberately NOT
+    ! CHARACTER(:),ALLOCATABLE. gfortran (>=15.2) miscompiles a concatenation
+    ! whose operand is a deferred-length ALLOCATABLE function result when it is
+    ! evaluated inside an OpenMP region: the temporary is intermittently given
+    ! the wrong length, causing a heap-buffer-overflow (root cause of the
+    ! radiation2d_spectral / HeatSolveVec intermittent CI crashes). A
+    ! non-allocatable result avoids that path entirely, is standard F90 (more
+    ! portable), and is cheaper (no per-call heap allocation).
+    CHARACTER(LEN=i2s_ndigits(ival)) :: s
 !------------------------------------------------------------------------------
-    INTEGER :: i,j,n,t,v,len
-    INTEGER(8) :: m
+    INTEGER :: i, v
     CHARACTER, PARAMETER :: DIGITS(0:9)=['0','1','2','3','4','5','6','7','8','9']
 !------------------------------------------------------------------------------
-
-     IF(ival>=0) THEN
-       v = ival
-       IF (v<10) THEN
-         ALLOCATE(CHARACTER(1)::s)
-         s = DIGITS(v)
-       ELSE IF (ival<100) THEN
-         i = v/10
-         ALLOCATE(CHARACTER(2)::s)
-         s = DIGITS(i)//DIGITS(v-10*i)
-       ELSE
-         n=3
-         m=100
-         DO WHILE(10*m<=v)
-           n=n+1
-           m=m*10
-         END DO
-
-         ALLOCATE(CHARACTER(n)::s)
-         DO i=1,n
-           t = v / m
-           s(i:i) = DIGITS(t)
-           v = v - t*m
-           m = m / 10
-         END DO
-       END IF
-     ELSE
-       v = -ival
-       IF (v<10) THEN
-        ALLOCATE(CHARACTER(2)::s)
-         s = '-'//DIGITS(v)
-       ELSE IF (v<100) THEN
-         ALLOCATE(CHARACTER(3)::s)
-         i = v/10
-         s = '-'//DIGITS(i)//DIGITS(v-10*i)
-       ELSE
-         n=3
-         m=100
-         DO WHILE(10*m<=v)
-           n=n+1
-           m=m*10
-         END DO
-
-         ALLOCATE(CHARACTER(n+1)::s)
-         s(1:1) = '-'
-         DO i=2,n+1
-           t = v / m
-           s(i:i) = DIGITS(t)
-           v = v - t*m
-           m = m / 10
-         END DO
-       END IF
-     END IF
+    v = ABS(ival)
+    IF (ival < 0) s(1:1) = '-'
+    ! Fill least-significant digit first, right to left.
+    DO i = LEN(s), MERGE(2,1,ival<0), -1
+      s(i:i) = DIGITS(MOD(v,10))
+      v = v / 10
+    END DO
 !------------------------------------------------------------------------------
   END FUNCTION i2s
 !------------------------------------------------------------------------------
 
 
+!------------------------------------------------------------------------------
+!> Return a COMPLEX pointer view into a REAL array that stores a complex field
+!> in the standard Elmer interleaved form, x(2i-1)=Re, x(2i)=Im. Nothing is
+!> copied: the result aliases the argument, so writes through it are seen by the
+!> caller. Optionally map only the first n complex entries.
+!>
+!> The dummy is deliberately declared TARGET but *without* the CONTIGUOUS
+!> attribute. With CONTIGUOUS the compiler is free to pass a packed copy of a
+!> strided actual argument, and the view would then silently alias a temporary
+!> that dies on return. Without it an assumed-shape dummy is always passed by
+!> descriptor, so the view aliases the real thing -- and the actual requirement,
+!> that the entries occupy consecutive memory, is checked here at runtime.
+!> Note that the CONTIG macro is set at configuration time and expands to
+!> nothing unless the build enables it, so declarations alone guarantee nothing.
+!------------------------------------------------------------------------------
+  FUNCTION ComplexValues( x, n ) RESULT ( cx )
+!------------------------------------------------------------------------------
+    USE, INTRINSIC :: ISO_C_BINDING, ONLY : C_LOC, C_F_POINTER
+    REAL(KIND=dp), TARGET :: x(:)      !< real array holding (Re,Im) pairs
+    INTEGER, OPTIONAL :: n             !< number of complex entries to map
+    COMPLEX(KIND=dp), POINTER :: cx(:) !< complex view aliasing x
+!------------------------------------------------------------------------------
+    INTEGER :: m
+!------------------------------------------------------------------------------
+    m = SIZE(x) / 2
+    IF( PRESENT(n) ) m = n
+
+    cx => NULL()
+    IF( m <= 0 ) RETURN
+
+    IF( 2*m > SIZE(x) ) THEN
+      CALL Fatal('ComplexValues','Real array of size '//i2s(SIZE(x))// &
+          ' cannot host '//i2s(m)//' complex entries')
+    END IF
+
+    IF( .NOT. IS_CONTIGUOUS(x) ) THEN
+      CALL Fatal('ComplexValues','Cannot alias a non-contiguous real array as complex')
+    END IF
+
+    CALL C_F_POINTER( C_LOC(x(1)), cx, [m] )
+!------------------------------------------------------------------------------
+  END FUNCTION ComplexValues
+!------------------------------------------------------------------------------
+
 
 !------------------------------------------------------------------------------
-!> Converts string of length n to an integer number. 
+!> Complex view of the values of a field variable that is really complex, i.e.
+!> stored as consecutive (Re,Im) pairs. Returns NULL if there is nothing to
+!> view. See ComplexValues() for the contiguity requirement.
+!------------------------------------------------------------------------------
+  FUNCTION ComplexVariableValues( Var ) RESULT ( cx )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    COMPLEX(KIND=dp), POINTER :: cx(:)
+!------------------------------------------------------------------------------
+    cx => NULL()
+    IF( .NOT. ASSOCIATED( Var % Values ) ) RETURN
+    IF( SIZE( Var % Values ) == 0 ) RETURN
+
+    IF( MODULO( Var % DOFs, 2 ) /= 0 ) THEN
+      CALL Fatal('ComplexVariableValues','Variable "'//TRIM(Var % Name)// &
+          '" has an odd number of dofs and cannot be complex: '//i2s(Var % DOFs))
+    END IF
+
+    cx => ComplexValues( Var % Values )
+!------------------------------------------------------------------------------
+  END FUNCTION ComplexVariableValues
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Converts string of length n to an integer number.
 !------------------------------------------------------------------------------
   PURE FUNCTION s2i(str,n) RESULT(ival)
 !------------------------------------------------------------------------------
@@ -230,13 +278,13 @@ CONTAINS
     CHARACTER(LEN=n), INTENT(IN) :: str
 !------------------------------------------------------------------------------
     LOGICAL :: neg
-    INTEGER :: j,k    
+    INTEGER :: j,k
     INTEGER, PARAMETER :: ic0 = ICHAR('0')
-    
+
     neg = str(1:1)=='-'
     k=1
     IF ( neg ) k=2
-    
+
     ival = 0
     DO j=k,n
       ival = 10*ival + ICHAR(str(j:j)) - ic0
@@ -244,12 +292,12 @@ CONTAINS
     IF(neg) ival=-ival
   END FUNCTION s2i
 !------------------------------------------------------------------------------
-  
+
 
 !------------------------------------------------------------------------------
 !> Converts a string into a number of integer numbers
-!> It is assumed that the integers may also be separated by 
-!> the given separator. 
+!> It is assumed that the integers may also be separated by
+!> the given separator.
 !------------------------------------------------------------------------------
   FUNCTION str2ints(str,ints,sep) RESULT(n)
 !------------------------------------------------------------------------------
@@ -306,16 +354,77 @@ CONTAINS
       t1 = RealTime()
       IF(t1-t0 > t) EXIT
     END DO
-    
+
   END SUBROUTINE WaitSec
-    
+
 !------------------------------------------------------------------------------
-  SUBROUTINE SystemCommand( cmd ) 
+  SUBROUTINE SystemCommand( cmd, Status )
 !------------------------------------------------------------------------------
     CHARACTER(LEN=*) :: cmd
-    CALL SystemC( TRIM(cmd) // CHAR(0) )
+    !> Nonzero if the command could not be run, or ran and exited nonzero.
+    !> Absent means the caller does not care, which is the historical behaviour.
+    INTEGER, OPTIONAL, INTENT(OUT) :: Status
+    CALL SystemC( TRIM(cmd) // CHAR(0), Status )
 !------------------------------------------------------------------------------
   END SUBROUTINE SystemCommand
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Return the directory holding the running executable, without a trailing
+!> separator, or an empty string if it cannot be determined.  Companion
+!> binaries -- ViewFactors, Radiators -- sit beside the solver both in a build
+!> tree and in an install tree, so this is how to name the one belonging to
+!> this build rather than whichever the PATH happens to offer.
+!------------------------------------------------------------------------------
+  FUNCTION ExecutableDirectory() RESULT( ExeDir )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=MAX_PATH_LEN) :: ExeDir
+    INTEGER :: n
+
+    ExeDir = ' '
+    n = 0
+    CALL GetExeDir( ExeDir, n )
+    IF ( n <= 0 .OR. n > LEN(ExeDir) ) THEN
+      ExeDir = ' '
+    ELSE
+      ExeDir = ExeDir(1:n)
+    END IF
+!------------------------------------------------------------------------------
+  END FUNCTION ExecutableDirectory
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Name a companion binary for a system call, as an absolute path next to the
+!> running executable when that can be determined, and as a bare name -- left
+!> for the PATH to resolve, as before -- when it cannot.  The absolute form is
+!> what keeps a solver from handing its work to some other Elmer's binary that
+!> merely happens to sit earlier in the PATH.  Quoted, so an install path with
+!> a space in it survives the shell.
+!------------------------------------------------------------------------------
+  FUNCTION SpawnCommand( Name ) RESULT( Cmd )
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=*) :: Name
+    CHARACTER(:), ALLOCATABLE :: Cmd
+    CHARACTER(LEN=MAX_PATH_LEN) :: ExeDir
+    CHARACTER(LEN=1) :: Sep
+
+    ExeDir = ExecutableDirectory()
+
+    IF ( LEN_TRIM(ExeDir) == 0 ) THEN
+      Cmd = TRIM(Name)
+      RETURN
+    END IF
+
+    ! Join with whatever separator the directory itself came back with, so a
+    ! Windows path stays all backslashes and cmd.exe recognizes it as a path.
+    Sep = '/'
+    IF ( INDEX(ExeDir,'\') > 0 ) Sep = '\'
+
+    Cmd = '"' // TRIM(ExeDir) // Sep // TRIM(Name) // '"'
+!------------------------------------------------------------------------------
+  END FUNCTION SpawnCommand
 !------------------------------------------------------------------------------
 
 
@@ -343,7 +452,11 @@ CONTAINS
     LOGICAL :: L
     CHARACTER(*), INTENT(IN) :: file
 !------------------------------------------------------------------------------
-    L = INDEX(file,':')>0 .OR. file(1:1)=='/' .OR. file(1:1)==Backslash
+    IF ( LEN(file) == 0 ) THEN
+      L = .FALSE.
+    ELSE
+      L = INDEX(file,':')>0 .OR. file(1:1)=='/' .OR. file(1:1)==Backslash
+    END IF
 !------------------------------------------------------------------------------
   END FUNCTION FileNameQualified
 !------------------------------------------------------------------------------
@@ -378,7 +491,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Sort an array of integer values. 
+!> Sort an array of integer values.
 !------------------------------------------------------------------------------
    PURE SUBROUTINE Sort( n,a )
 !------------------------------------------------------------------------------
@@ -390,7 +503,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( n <= 1 ) RETURN
- 
+
       l = n / 2 + 1
       ir = n
       DO WHILE( .TRUE. )
@@ -441,7 +554,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( n <= 1 ) RETURN
- 
+
       l = n / 2 + 1
       ir = n
       DO WHILE( .TRUE. )
@@ -500,7 +613,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( n <= 1 ) RETURN
- 
+
       l = n / 2 + 1
       ir = n
       DO WHILE( .TRUE. )
@@ -560,7 +673,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( n <= 1 ) RETURN
- 
+
       l = n / 2 + 1
       ir = n
       DO WHILE( .TRUE. )
@@ -620,7 +733,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( n <= 1 ) RETURN
- 
+
       l = n / 2 + 1
       ir = n
       DO WHILE( .TRUE. )
@@ -680,7 +793,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
       IF ( n <= 1 ) RETURN
- 
+
       l = n / 2 + 1
       ir = n
       DO WHILE( .TRUE. )
@@ -725,7 +838,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Search an integer value in an ordered array. 
+!> Search an integer value in an ordered array.
 !------------------------------------------------------------------------------
    PURE FUNCTION SearchI( N,Array,Val ) RESULT ( Idx )
 !------------------------------------------------------------------------------
@@ -734,7 +847,7 @@ CONTAINS
     INTEGER :: Lower, Upper,Lou,Idx
 !------------------------------------------------------------------------------
 
-    Idx = 0 
+    Idx = 0
     Upper = N
     Lower = 1
 
@@ -762,7 +875,7 @@ CONTAINS
         EXIT
       END IF
     END DO
-    
+
     RETURN
 
 !------------------------------------------------------------------------------
@@ -772,7 +885,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Search a real value in an ordered array. 
+!> Search a real value in an ordered array.
 !------------------------------------------------------------------------------
   PURE FUNCTION SearchR( N,Array,Val ) RESULT ( Idx )
 !------------------------------------------------------------------------------
@@ -811,7 +924,7 @@ CONTAINS
         EXIT
       END IF
     END DO
-    
+
     RETURN
 
 !------------------------------------------------------------------------------
@@ -828,7 +941,7 @@ CONTAINS
     INTEGER :: i,j,k,k0,k1,l,iostat
     CHARACTER(LEN=1024) :: name, TmpName
 !------------------------------------------------------------------------------
-    
+
     i = 1
     name = FileName
     DO WHILE( name(i:i) == ' ' .OR. name(i:i)=='"')
@@ -837,7 +950,7 @@ CONTAINS
     j = LEN_TRIM(name)
     IF ( name(j:j) == '"' ) j=j-1
     name = TRIM(name(i:j))
-    
+
     IF ( INDEX(name,':') == 0 .AND. name(1:1) /= '/' .AND. &
         name(1:1) /= Backslash ) THEN
        k0 = 1
@@ -849,7 +962,7 @@ CONTAINS
        DO WHILE( k1 >= k0 )
          DO k = k1-1,k0,-1
            IF ( IncludePath(k:k) /= ' ' .AND. IncludePath(k:k)/='"' ) EXIT
-         END DO 
+         END DO
          IF ( IncludePath(k:k) == '"' ) k=k-1
          IF ( k >= k0 ) THEN
            WRITE( tmpName,'(a,a,a)' ) IncludePath(k0:k), '/', TRIM(name)
@@ -872,14 +985,14 @@ CONTAINS
 20     CONTINUE
        OPEN( Unit, FILE=TRIM(name), STATUS='OLD',IOSTAT=iostat )
     ELSE
-      OPEN( Unit, FILE=TRIM(name), STATUS='OLD',IOSTAT=iostat )      
+      OPEN( Unit, FILE=TRIM(name), STATUS='OLD',IOSTAT=iostat )
     END IF
 
     IF( iostat /= 0 ) THEN
       CALL Fatal('OpenIncludeFile','Cannot open include file: '//TRIM(Name))
     END IF
 
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE OpenIncludeFile
 !------------------------------------------------------------------------------
@@ -889,7 +1002,7 @@ CONTAINS
 !>  Read a (logical) line from FORTRAN device Unit and remove leading, trailing,
 !>  and multiple blanks between words. Also convert uppercase characters to
 !>  lowercase.The logical line can continue the several physical lines by adding
-!>  the backslash (\) mark at the end of a physical line. 
+!>  the backslash (\) mark at the end of a physical line.
 !------------------------------------------------------------------------------
    FUNCTION ReadAndTrim( Unit,str,echo,literal,noeval ) RESULT(l)
 !------------------------------------------------------------------------------
@@ -899,9 +1012,9 @@ CONTAINS
      LOGICAL, OPTIONAL :: literal
      LOGICAL, OPTIONAL :: noeval
      LOGICAL :: l                          !< Success of the read operation
-!------------------------------------------------------------------------------     
+!------------------------------------------------------------------------------
      INTEGER, PARAMETER :: IncludeUnitBase = 28, MAXLEN = 163840, ilen = 12
-     
+
      CHARACTER(LEN=:), ALLOCATABLE :: temp
      CHARACTER(LEN=ilen) :: tmpstr
      CHARACTER(LEN=MAX_PATH_LEN) :: IncludePath = ' '
@@ -917,7 +1030,7 @@ CONTAINS
      CHARACTER(LEN=MAXLEN) :: tmatcstr, tcmdstr
 
      SAVE ReadStr, ValueStarts, Prefix, OpenSection, IncludeUnit, IncludePath
-!------------------------------------------------------------------------------     
+!------------------------------------------------------------------------------
 
      IF ( PRESENT(literal) ) literal=.FALSE.
      l = .TRUE.
@@ -927,7 +1040,7 @@ CONTAINS
      IF( PRESENT( NoEval ) ) THEN
        DoEval = .NOT. NoEval
      END IF
-     
+
      IF(.NOT.ALLOCATED(str)) ALLOCATE(CHARACTER(512)::str)
      outlen = LEN(str)
 
@@ -976,14 +1089,14 @@ CONTAINS
 
         IF ( SEQL(tmpstr, 'include ') ) THEN
           IncludeUnit = IncludeUnit-1
-          
+
           CALL Info('OpenIncludeFile','Trying to include file: '//TRIM(readstr(9:)),Level=10)
-          
+
           inlen = LEN_TRIM(readstr)
 
           i = INDEX( readstr(1:inlen), '$' )
           IF ( i>0 .AND. i<inlen ) THEN
-            CALL TrimMatcExpression() 
+            CALL TrimMatcExpression()
             CALL Info('ReadAndTrim','Include file after MATC trimming: '&
                 //TRIM(readstr(9:)),Level=6)
           END IF
@@ -998,9 +1111,9 @@ CONTAINS
             CALL Fatal('ReadAndTrim','LUA not included, cannot continue')
 #endif
           END IF
-          
+
           CALL OpenIncludeFile( IncludeUnit, TRIM(readstr(9:)), IncludePath )
-          
+
           READ( IncludeUnit,'(A)',IOSTAT=ios ) readstr
           IF ( ios /= 0 ) THEN
             CLOSE(IncludeUnit)
@@ -1058,7 +1171,7 @@ CONTAINS
        i = i + 1
      END DO
 
-     i = INDEX( readstr(1:inlen), '#' )     
+     i = INDEX( readstr(1:inlen), '#' )
      IF ( i>0 .AND. i<inlen .AND. DoEval ) THEN
 #ifdef HAVE_LUA
        CALL TrimLuaExpression()
@@ -1066,12 +1179,12 @@ CONTAINS
        CALL Fatal('ReadAndTrim','LUA not included, cannot continue')
 #endif
      END IF
-    
+
      i = INDEX( readstr(1:inlen), '$' )
      IF ( i>0 .AND. i<inlen .AND. DoEval ) THEN
-       CALL TrimMatcExpression() 
+       CALL TrimMatcExpression()
      END IF
-     
+
      IF ( PRESENT( Echo ) ) THEN
         IF ( Echo .AND. inlen > 0 ) WRITE( 6, '(a)' ) readstr(1:inlen)
      END IF
@@ -1099,7 +1212,7 @@ CONTAINS
         IF ( .NOT.InsideQuotes ) THEN
            IF ( readstr(i:i) == '!' .OR. readstr(i:i) == '#' .OR. &
                 readstr(i:i) == '=' .OR. readstr(i:i) == '(' .OR. &
-                readstr(i:i) == ';' .OR. readstr(i:i+1) == '::' ) EXIT 
+                readstr(i:i) == ';' .OR. readstr(i:i+1) == '::' ) EXIT
            IF (ICHAR( readstr(i:i))<32.AND.ICHAR(readstr(i:i))/=Tab) EXIT
         END IF
 
@@ -1113,7 +1226,7 @@ CONTAINS
           IF ( .NOT.InsideQuotes ) THEN
              IF ( readstr(i:i) == ' ' .OR. readstr(i:i) == '=' .OR. &
                   readstr(i:i) == ';' .OR. readstr(i:i) == '(' .OR. &
-                  readstr(i:i+1) == '::' ) EXIT 
+                  readstr(i:i+1) == '::' ) EXIT
              IF ( ICHAR( readstr(i:i))<32 ) EXIT
           END IF
 
@@ -1173,10 +1286,10 @@ CONTAINS
 10   CONTINUE
      l = .FALSE.
 !------------------------------------------------------------------------------
-     
+
    CONTAINS
 
-     SUBROUTINE TrimMatcExpression() 
+     SUBROUTINE TrimMatcExpression()
 
        i = INDEX( readstr(1:inlen), '$' )
        IF ( i>0 .AND. i<inlen ) THEN
@@ -1220,9 +1333,9 @@ CONTAINS
          inlen = m-1
          readstr(inlen+1:) = ' '
        END IF
-       
+
      END SUBROUTINE TrimMatcExpression
-       
+
 #ifdef HAVE_LUA
      SUBROUTINE TrimLuaExpression()
 
@@ -1230,17 +1343,6 @@ CONTAINS
        character(kind=c_char, len=:), pointer :: lua_result
        integer :: result_len
        logical :: closed_region, first_bang
-
-        BLOCK
-          INTERFACE
-            SUBROUTINE setlocale(category,locale) BIND(c,name="setlocale")
-              USE iso_c_binding
-              integer(c_int), value :: category
-              character(kind=c_char), dimension(*) :: locale
-            END SUBROUTINE  setlocale
-          END INTERFACE
-          CALL setlocale(0,"en_US.UTF-8"//CHAR(0))
-        END BLOCK
 
        closed_region = .false.
        first_bang = .true.
@@ -1258,7 +1360,7 @@ CONTAINS
            tninlen = ninlen
            tcmdstr = copystr(i+1:inlen)
 
-           IF(tcmdstr(tninlen:tninlen) == '#') then 
+           IF(tcmdstr(tninlen:tninlen) == '#') then
              closed_region = .TRUE.
            ELSE
              closed_region = .FALSE.
@@ -1331,6 +1433,13 @@ CONTAINS
 !------------------------------------------------------------------------------
     CHARACTER(:), ALLOCATABLE :: str
 !------------------------------------------------------------------------------
+
+    ! If the dofs has just one component, no use trying to find components.
+    IF(Var % dofs == 1 ) THEN
+      str = TRIM(Var % Name)
+      RETURN
+    END IF
+
     IF ( Var % Name(1:Var % NameLen) == 'flow solution' ) THEN
       str='flow solution'
       IF ( .NOT. PRESENT(Component) ) RETURN
@@ -1393,7 +1502,7 @@ END FUNCTION ComponentNameVar
 
 
 !------------------------------------------------------------------------------
-!> Solves a tridiagonal linear system. 
+!> Solves a tridiagonal linear system.
 !------------------------------------------------------------------------------
     PURE SUBROUTINE SolveTriDiag( n, y, h, r )
 !------------------------------------------------------------------------------
@@ -1429,9 +1538,9 @@ END FUNCTION ComponentNameVar
       REAL(KIND=dp), INTENT(in) :: x(:)
       INTEGER, INTENT(in) :: n
       LOGICAL :: Monotone
-      
+
       INTEGER :: i
-      
+
       Monotone = .TRUE.
       DO i=1,n-1
         IF( x(i+1) <= x(i) ) THEN
@@ -1440,8 +1549,8 @@ END FUNCTION ComponentNameVar
           CALL WARN('CheckMonotone', Message)
           EXIT
         END IF
-      END DO           
-      
+      END DO
+
     END FUNCTION CheckMonotone
 
 !------------------------------------------------------------------------------
@@ -1488,7 +1597,7 @@ END FUNCTION ComponentNameVar
             r(i) = 0._dp;
             CYCLE
           END IF
- 
+
           tau = SQRT(alpha**2 + beta**2)
           IF(tau > 3) THEN
             tau = 3._dp / tau
@@ -1572,7 +1681,7 @@ END FUNCTION ComponentNameVar
           IF  ( tval(i) <= t .AND. tval(i+1)>t ) EXIT
 
           IF ( tval(i) >  t ) THEN
-            n1 = i-1 
+            n1 = i-1
           ELSE
             n0 = i+1
           END IF
@@ -1580,7 +1689,7 @@ END FUNCTION ComponentNameVar
         END DO
       END IF
       IF(i>n-1) i=n-1
-      
+
 !------------------------------------------------------------------------------
    END FUNCTION SearchInterval
 !------------------------------------------------------------------------------
@@ -1610,7 +1719,7 @@ END FUNCTION ComponentNameVar
          IF  ( tval(i) <= t .AND. tval(i+1)>t ) EXIT
 
          IF ( tval(i) >  t ) THEN
-           n1 = i-1 
+           n1 = i-1
          ELSE
            n0 = i+1
          END IF
@@ -1640,7 +1749,7 @@ END FUNCTION ComponentNameVar
      n = SIZE(TValues)
 
      ! This is a misuse of the interpolation in case of standard dependency
-     ! of type y=a*x.  
+     ! of type y=a*x.
      IF( n == 1 ) THEN
        F = FValues(1) * T
        RETURN
@@ -1672,7 +1781,7 @@ END FUNCTION ComponentNameVar
      REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
      REAL(KIND=dp) :: F(m)
 !------------------------------------------------------------------------------
-     INTEGER :: i,j,n 
+     INTEGER :: i,j,n
      LOGICAL :: Cubic
      REAL(KIND=dp) :: q
 !------------------------------------------------------------------------------
@@ -1680,14 +1789,14 @@ END FUNCTION ComponentNameVar
      n = SIZE(TValues)
 
      ! This is a misuse of the interpolation in case of standard dependency
-     ! of type y=a*x.  
+     ! of type y=a*x.
      IF( n == 1 ) THEN
        F(1:m) = FValues(1:m,1) * T
        RETURN
      END IF
 
      i = SearchInterval( Tvalues, t )
-     
+
      Cubic = .FALSE.
      IF( PRESENT(CubicCoeff) ) THEN
        Cubic = ( T>=Tvalues(1) .AND. T<=Tvalues(n) .AND. ASSOCIATED(CubicCoeff) )
@@ -1706,7 +1815,7 @@ END FUNCTION ComponentNameVar
    END FUNCTION InterpolateCurves
 !------------------------------------------------------------------------------
 
-   
+
 
 !------------------------------------------------------------------------------
 !> Derivate a curve given by linear table or splines.
@@ -1807,7 +1916,7 @@ END FUNCTION ComponentNameVar
      REAL(KIND=dp), OPTIONAL, INTENT(in) :: T0, T1
      REAL(KIND=dp), OPTIONAL, INTENT(in) :: Cumulative(:)
      REAL(KIND=dp), OPTIONAL, POINTER, INTENT(in) :: CubicCoeff(:)
-     LOGICAL, OPTIONAL :: Found 
+     LOGICAL, OPTIONAL :: Found
 !------------------------------------------------------------------------------
      INTEGER :: i,n,i0,i1
      LOGICAL :: Cubic
@@ -1816,7 +1925,7 @@ END FUNCTION ComponentNameVar
 
      sumf = 0.0_dp
      IF(PRESENT(Found)) Found = .FALSE.
-     
+
      n = SIZE(TValues)
      IF(n<2) RETURN
 
@@ -1824,7 +1933,7 @@ END FUNCTION ComponentNameVar
        CALL Warn('IntegrateCurve','TValues and Fvalues should be of same size!')
        RETURN
      END IF
-             
+
      tt0 = TValues(1)
      IF(PRESENT(t0)) tt0=t0
 
@@ -1835,7 +1944,7 @@ END FUNCTION ComponentNameVar
 
      IF(PRESENT(Found)) Found = .TRUE.
 
-     
+
      ! t0 < first, t1 <= first
      IF(tt1<=Tvalues(1)) THEN
        t(1) = Tvalues(1)
@@ -1870,7 +1979,7 @@ END FUNCTION ComponentNameVar
        RETURN
      END IF
 
-     ! first interval outside 
+     ! first interval outside
      IF(tt0<Tvalues(1)) THEN
        t(1) = Tvalues(1)
        t(2) = Tvalues(2)
@@ -1886,7 +1995,7 @@ END FUNCTION ComponentNameVar
        tt0 = Tvalues(1)
      END IF
 
-     ! last interval outside 
+     ! last interval outside
      IF(tt1>Tvalues(n)) THEN
        t(1) = Tvalues(n-1)
        t(2) = Tvalues(n)
@@ -1938,7 +2047,7 @@ END FUNCTION ComponentNameVar
          d = y(1)
          sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
        END IF
-       i0 = i0 + 1 
+       i0 = i0 + 1
        tt0 = Tvalues(i0)
        IF(tt0 >= tt1) RETURN
      END IF
@@ -1974,7 +2083,7 @@ END FUNCTION ComponentNameVar
          d = y(1)
          sumf = sumf + h * ( (c*s1 + d)*s1 - (c*s0 + d)*s0 )
        END IF
-       i1 = i1 - 1 
+       i1 = i1 - 1
        tt1 = Tvalues(i1+1)
        IF(tt0 >= tt1) RETURN
      END IF
@@ -2026,7 +2135,7 @@ END FUNCTION ComponentNameVar
 
 
 !------------------------------------------------------------------------------
-   SUBROUTINE ClearMatrix( Matrix ) 
+   SUBROUTINE ClearMatrix( Matrix )
 #if defined(ELMER_HAVE_MPI_MODULE)
       USE mpi
 #endif
@@ -2048,7 +2157,7 @@ END FUNCTION ComponentNameVar
       NULLIFY( Matrix % Cols )
       NULLIFY( Matrix % Rows )
       NULLIFY( Matrix % Diag )
- 
+
       NULLIFY( Matrix % RHS )
       NULLIFY( Matrix % Force )
       NULLIFY( Matrix % RHS_im )
@@ -2091,7 +2200,7 @@ END FUNCTION ComponentNameVar
 
       Matrix % Cholesky  = .FALSE.
       Matrix % Lumped    = .FALSE.
-      Matrix % Ordered   = .FALSE. 
+      Matrix % Ordered   = .FALSE.
       Matrix % COMPLEX   = .FALSE.
       Matrix % Symmetric = .FALSE.
       Matrix % SolveCount   = 0
@@ -2099,7 +2208,7 @@ END FUNCTION ComponentNameVar
       Matrix % Ndeg = -1
       Matrix % ProjectorBC = 0
       Matrix % ProjectorType = PROJECTOR_TYPE_DEFAULT
-      
+
       Matrix % Solver => NULL()
 
       Matrix % DGMatrix = .FALSE.
@@ -2432,12 +2541,12 @@ END FUNCTION ComponentNameVar
   FUNCTION NextFreeFilename(Filename0,Suffix0,LastExisting) RESULT (Filename)
 
     CHARACTER(LEN=*) :: Filename0
-    CHARACTER(LEN=*), OPTIONAL :: Suffix0 
+    CHARACTER(LEN=*), OPTIONAL :: Suffix0
     LOGICAL, OPTIONAL :: LastExisting
     CHARACTER(:), ALLOCATABLE :: Filename,Prefix,Suffix,PrevFilename
     LOGICAL :: FileIs
     INTEGER :: No, ind, len
-    
+
     ind = INDEX( FileName0,'.',.TRUE. )
     len = LEN_TRIM(Filename0)
     IF(ind > 0) THEN
@@ -2451,7 +2560,7 @@ END FUNCTION ComponentNameVar
         Suffix = '.dat'
       END IF
     END IF
-    
+
     DO No = 1,9999
       IF( No > 0 ) PrevFilename = Filename
       FileName = TRIM(Prefix)//I2S(No)//TRIM(Suffix)
@@ -2477,21 +2586,21 @@ END FUNCTION ComponentNameVar
   FUNCTION AddFilenameParSuffix(Filename0,Suffix0,Parallel,MyPe,NumWidth,PeMax,PeSeparator) RESULT (Filename)
 
     CHARACTER(LEN=*) :: Filename0
-    CHARACTER(LEN=*), OPTIONAL :: Suffix0 
+    CHARACTER(LEN=*), OPTIONAL :: Suffix0
     CHARACTER(LEN=*), OPTIONAL :: PeSeparator
     LOGICAL :: Parallel
     INTEGER :: MyPe
     INTEGER, OPTIONAL :: NumWidth
     INTEGER, OPTIONAL :: PeMax
     CHARACTER(LEN=MAX_NAME_LEN) :: Filename
- !------------------------------------------------------------------------------   
+ !------------------------------------------------------------------------------
     CHARACTER(LEN=MAX_NAME_LEN) :: OutStyle
     CHARACTER(:), ALLOCATABLE ::  Prefix, Suffix
     INTEGER :: No, ind, len, NumW, NoLim
 
     ind = INDEX( FileName0,'.',.TRUE. )
     len = LEN_TRIM(Filename0)
-    
+
     ! If the only dot is the first one it only related to the current working directory.
     IF(ind > 1) THEN
       Prefix = Filename0(1:ind-1)
@@ -2504,10 +2613,10 @@ END FUNCTION ComponentNameVar
         Suffix = '.dat'
       END IF
     END IF
-    
+
     IF( Parallel ) THEN
       No = MyPe + 1
-   
+
       IF( PRESENT(NumWidth) ) THEN
         NumW = NumWidth
       ELSE IF( PRESENT( PeMax ) ) THEN
@@ -2520,7 +2629,7 @@ END FUNCTION ComponentNameVar
       IF( PRESENT( PeSeparator ) ) THEN
         Prefix = TRIM(Prefix)//TRIM(PeSeparator)
       END IF
-              
+
       IF( No >= NoLim ) THEN
         FileName = TRIM(Prefix)//I2S(No)//TRIM(Suffix)
       ELSE
@@ -2537,7 +2646,7 @@ END FUNCTION ComponentNameVar
 
 
   ! This takes union of two integer vectors
-  ! and returns the number of common values. 
+  ! and returns the number of common values.
   !---------------------------------------------
   FUNCTION CountSameIntegers(v1,v2,vsame) RESULT ( n )
     INTEGER, POINTER :: v1(:), v2(:)
@@ -2549,7 +2658,7 @@ END FUNCTION ComponentNameVar
     n = 0
     IF(.NOT. ASSOCIATED(v1)) RETURN
     IF(.NOT. ASSOCIATED(v2)) RETURN
-    
+
     DO i1=1,SIZE(v1)
       DO i2=1,SIZE(v2)
         IF( v1(i1) == v2(i2) ) n = n+1
@@ -2557,14 +2666,14 @@ END FUNCTION ComponentNameVar
     END DO
 
     IF(n==0) RETURN
-    
+
     IF( PRESENT(vsame) ) THEN
       IF(.NOT. ASSOCIATED(vsame) ) THEN
         ALLOCATE(vsame(n) )
       END IF
       vsame = 0
       n = 0
-      
+
       DO i1=1,SIZE(v1)
         DO i2=1,SIZE(v2)
           IF( v1(i1) == v2(i2) ) THEN
@@ -2573,55 +2682,55 @@ END FUNCTION ComponentNameVar
           END IF
         END DO
       END DO
-    END IF    
-          
+    END IF
+
   END FUNCTION CountSameIntegers
 
 
-  
+
   !---------------------------------------------------------<
-  !> Returns values from a normal distribution to be used in 
+  !> Returns values from a normal distribution to be used in
   !> thermal velocity distribution, for example.
   !---------------------------------------------------------
-  FUNCTION NormalRandom() RESULT ( normalrand ) 
-    
+  FUNCTION NormalRandom() RESULT ( normalrand )
+
     REAL(KIND=dp) :: normalrand,mean
     INTEGER :: flag = 0
-    REAL(KIND=dp) :: fac,gsave,rsq,r1,r2 
-    
-    SAVE flag,gsave 
-    
-    IF (flag == 0) THEN 
-      rsq=2.0_dp 
-      
-      DO WHILE(rsq >= 1.0_dp .OR. rsq == 0.0_dp ) 
+    REAL(KIND=dp) :: fac,gsave,rsq,r1,r2
+
+    SAVE flag,gsave
+
+    IF (flag == 0) THEN
+      rsq=2.0_dp
+
+      DO WHILE(rsq >= 1.0_dp .OR. rsq == 0.0_dp )
         CALL RANDOM_NUMBER(r1)
         CALL RANDOM_NUMBER(r2)
         r1 = 2.0_dp * r1 - 1.0_dp
         r2 = 2.0_dp * r2 - 1.0_dp
-        rsq = r1*r1 + r2*r2 
+        rsq = r1*r1 + r2*r2
       ENDDO
-      
-      fac = SQRT(-2.0_dp * LOG(rsq) / rsq) 
-      gsave = r1 * fac 
-      normalrand = r2 * fac 
-      flag = 1 
-    ELSE 
-      normalrand = gsave 
-      flag = 0 
+
+      fac = SQRT(-2.0_dp * LOG(rsq) / rsq)
+      gsave = r1 * fac
+      normalrand = r2 * fac
+      flag = 1
+    ELSE
+      normalrand = gsave
+      flag = 0
     ENDIF
-    
+
   END FUNCTION NormalRandom
 
 
   !---------------------------------------------------------
   !> Returns values from a even distribution [0,1]
   !---------------------------------------------------------
-  FUNCTION EvenRandom() RESULT ( rand )     
+  FUNCTION EvenRandom() RESULT ( rand )
     REAL(KIND=dp) :: rand
     CALL RANDOM_NUMBER(rand)
   END FUNCTION EvenRandom
-   
+
 
   !-----------------------------------------------------
   ! Convert to effective BH-curve for harmonic analysis
@@ -2657,7 +2766,7 @@ END FUNCTION ComponentNameVar
 
       y = 0._dp
       DO i=2,n
-        x0=xp(i-1); x1=xp(i) 
+        x0=xp(i-1); x1=xp(i)
         IF((x >= x0) .AND. (x <= x1)) THEN
           y0=yp(i-1); y1=yp(i)
           t=(x-x0)/(x1-x0);
@@ -2677,16 +2786,16 @@ END MODULE GeneralUtils
 
 
 !---------------------------------------------------------
-!> Module mainly for writing xml based vtk files. 
-!> The idea is that same routines save both the ascii 
-!> and binary format. 
+!> Module mainly for writing xml based vtk files.
+!> The idea is that same routines save both the ascii
+!> and binary format.
 !---------------------------------------------------------
 MODULE AscBinOutputUtils
-  
+
   USE Types
   USE Messages
   IMPLICIT NONE
-  
+
   LOGICAL, PRIVATE :: AsciiOutput, SinglePrec, CalcSum = .FALSE.
   INTEGER, PRIVATE :: VtuUnit = 0, BufferSize = 0
   REAL, POINTER, PRIVATE :: FVals(:)
@@ -2694,11 +2803,11 @@ MODULE AscBinOutputUtils
   INTEGER, POINTER, PRIVATE :: IVals(:)
   INTEGER, PRIVATE :: INoVals, NoVals
   REAL(KIND=dp) :: RSum = 0.0_dp, Isum = 0.0_dp
-  INTEGER :: Rcount = 0, Icount = 0, Scount = 0, Ssum = 0 
-  
+  INTEGER :: Rcount = 0, Icount = 0, Scount = 0, Ssum = 0
+
   SAVE :: AsciiOutput, SinglePrec, VtuUnit,  BufferSize, &
       FVals, DVals, IVals, CalcSum, Rsum, Isum, Ssum, RCount, Icount, Scount
-  
+
 
 
 CONTAINS
@@ -2707,10 +2816,10 @@ CONTAINS
   ! Initialize the buffer for writing, choose mode etc.
   !-----------------------------------------------------------------
   SUBROUTINE AscBinWriteInit( IsAscii, IsSingle, UnitNo, BufSize )
-    
+
     LOGICAL :: IsAscii, IsSingle
     INTEGER :: UnitNo, BufSize
-    
+
     AsciiOutput =  IsAscii
     SinglePrec = IsSingle
     VtuUnit = UnitNo
@@ -2735,15 +2844,15 @@ CONTAINS
     IF(.NOT. AsciiOutput ) THEN
       WRITE(Message,'(A,I0)')  'Size of buffer is: ',BufferSize
       CALL Info('AscBinWriteInit',Message,Level=10)
-      
-      ALLOCATE( Ivals( BufferSize ) ) 
+
+      ALLOCATE( Ivals( BufferSize ) )
       IF( SinglePrec ) THEN
-        ALLOCATE( FVals( BufferSize ) ) 
+        ALLOCATE( FVals( BufferSize ) )
       ELSE
-        ALLOCATE( Dvals( BufferSize ) ) 
+        ALLOCATE( Dvals( BufferSize ) )
       END IF
-      
-      INoVals = 0 
+
+      INoVals = 0
       NoVals = 0
     END IF
 
@@ -2761,13 +2870,13 @@ CONTAINS
     IF( SinglePrec ) THEN
       DEALLOCATE( FVals )
     ELSE
-      DEALLOCATE( DVals ) 
+      DEALLOCATE( DVals )
     END IF
-    DEALLOCATE( IVals ) 
+    DEALLOCATE( IVals )
 
     BufferSize = 0
     VtuUnit = 0
-    
+
   END SUBROUTINE AscBinWriteFree
 
 
@@ -2776,28 +2885,28 @@ CONTAINS
   ! of output strategies.
   !-------------------------------------------------------------------------
   SUBROUTINE AscBinStrWrite( Str )
-    
-    CHARACTER(LEN=1024) :: Str 
+
+    CHARACTER(LEN=1024) :: Str
     INTEGER, PARAMETER :: VtuUnit = 58
-    
+
     WRITE( VtuUnit ) TRIM(Str)
     IF( CalcSum ) THEN
       Scount = Scount + 1
-      Ssum = Ssum + len_trim( Str ) 
+      Ssum = Ssum + len_trim( Str )
     END IF
-    
+
   END SUBROUTINE AscBinStrWrite
-  
+
 
   ! Write a binary value, either in single or double precision
   !------------------------------------------------------------------------
   SUBROUTINE AscBinRealWrite( val, EmptyBuffer )
-    
+
     INTEGER, PARAMETER :: VtuUnit = 58
     REAL(KIND=dp) :: val
     LOGICAL, OPTIONAL :: EmptyBuffer
     LOGICAL :: Empty
-    CHARACTER(LEN=1024) :: Str 
+    CHARACTER(LEN=1024) :: Str
 
     IF( VtuUnit == 0 ) THEN
       CALL Fatal('AscBinRealWrite','Buffer not initialized for writing')
@@ -2815,11 +2924,11 @@ CONTAINS
       IF( ABS( val ) <= TINY ( val ) ) THEN
         WRITE(Str,'(A)') " 0.0"
       ELSE IF( SinglePrec ) THEN
-        WRITE( Str,'(ES12.3E3)') val       
+        WRITE( Str,'(ES12.3E3)') val
       ELSE
         WRITE( Str,'(ES16.7E3)') val
       END IF
-      WRITE( VtuUnit ) TRIM(Str)        
+      WRITE( VtuUnit ) TRIM(Str)
       IF( CalcSum ) THEN
         Rcount = Rcount + 1
         Rsum = Rsum + val
@@ -2834,9 +2943,9 @@ CONTAINS
       ELSE IF( SinglePrec ) THEN
         WRITE( VtuUnit ) Fvals(1:NoVals)
       ELSE
-        WRITE( VtuUnit ) DVals(1:NoVals) 
+        WRITE( VtuUnit ) DVals(1:NoVals)
       END IF
-      
+
       IF( CalcSum ) THEN
         Rcount = Rcount + NoVals
         IF( SinglePrec ) THEN
@@ -2845,11 +2954,11 @@ CONTAINS
           Rsum = SUM( DVals(1:NoVals) )
         END IF
       END IF
-      
+
       NoVals = 0
-      IF( Empty ) RETURN 
+      IF( Empty ) RETURN
     END IF
-    
+
     ! Save values in the buffer (either single or double prec.)
     NoVals = NoVals + 1
     IF( SinglePrec ) THEN
@@ -2862,15 +2971,15 @@ CONTAINS
   END SUBROUTINE AscBinRealWrite
 
 
-  ! Write an integer value 
+  ! Write an integer value
   !-------------------------------------------------
   SUBROUTINE AscBinIntegerWrite( ival, EmptyBuffer )
-    
+
     INTEGER, PARAMETER :: VtuUnit = 58
     INTEGER :: ival
     LOGICAL, OPTIONAL :: EmptyBuffer
     LOGICAL :: Empty
-    CHARACTER(LEN=1024) :: Str 
+    CHARACTER(LEN=1024) :: Str
 
     IF( VtuUnit == 0 ) THEN
       CALL Fatal('AscBinIntegerWrite','Buffer not initialized for writing')
@@ -2893,7 +3002,7 @@ CONTAINS
     IF( Empty .OR. INoVals == BufferSize ) THEN
       IF( INoVals == 0 ) THEN
         RETURN
-      ELSE 
+      ELSE
         WRITE( VtuUnit ) Ivals(1:INoVals)
         IF( CalcSum ) THEN
           Icount = Icount + 1
@@ -2901,16 +3010,16 @@ CONTAINS
         END IF
       END IF
       INoVals = 0
-      IF( Empty ) RETURN 
+      IF( Empty ) RETURN
     END IF
 
     INoVals = INoVals + 1
     Ivals(INoVals) = ival
-        
+
   END SUBROUTINE AscBinIntegerWrite
 
-  
-  SUBROUTINE AscBinInitNorm(CalcNorm) 
+
+  SUBROUTINE AscBinInitNorm(CalcNorm)
     LOGICAL :: CalcNorm
 
     CalcSum = CalcNorm
@@ -2920,24 +3029,24 @@ CONTAINS
     Rcount = 0
     Icount = 0
     Scount = 0
-    
+
   END SUBROUTINE AscBinInitNorm
 
-  
-  FUNCTION AscBinCompareNorm(RefResults,ExtResults) RESULT ( RelativeNorm ) 
+
+  FUNCTION AscBinCompareNorm(RefResults,ExtResults) RESULT ( RelativeNorm )
     REAL(KIND=dp), DIMENSION(*) :: RefResults
     REAL(KIND=dp), DIMENSION(*), OPTIONAL :: ExtResults
     REAL(KIND=dp) :: RelativeNorm
     REAL(KIND=dp), POINTER :: ThisResults(:)
     REAL(KIND=dp) :: c
-    INTEGER :: i, n 
-    
+    INTEGER :: i, n
+
     n = 6 !SIZE(RefResults)
-    ALLOCATE(ThisResults(n))      
+    ALLOCATE(ThisResults(n))
 
     IF( PRESENT( ExtResults ) ) THEN
       ThisResults(1:n) = ExtResults(1:n)
-    ELSE     
+    ELSE
       ThisResults(1) = scount
       ThisResults(2) = icount
       ThisResults(3) = rcount
@@ -2945,7 +3054,7 @@ CONTAINS
       ThisResults(5) = isum ! we use real for isum since it could be huge too!
       ThisResults(6) = rsum
     END IF
-      
+
     PRINT *,'Checksums for file output:'
     PRINT *,'RefResults:',RefResults(1:n)
     PRINT *,'ThisResults:',ThisResults(1:n)
@@ -2964,10 +3073,10 @@ CONTAINS
       RelativeNorm = RelativeNorm + c
     END DO
     RelativeNorm = RelativeNorm / n
-    
+
   END FUNCTION AscBinCompareNorm
-   
-  
+
+
 END MODULE AscBinOutputUtils
 
 

@@ -69,7 +69,7 @@ Solver 1
   Linear System Residual Output = 50
   Linear System Max Iterations = 1000
   Linear System Iterative Method = BiCGStabl
-  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Convergence Tolerance = 1.0e-10
   BicgStabl Polynomial Degree = 4
 End
 
@@ -226,10 +226,10 @@ Boundary Condition 6
 End
 
 
-Solver 1 :: Reference Norm = 4.62227582E-06
+Solver 1 :: Reference Norm = 4.62227580E-06
 Solver 3 :: Reference Norm = 1.0
-Solver 4 :: Reference Norm = 1.57939283E+03
+Solver 4 :: Reference Norm = 1.57926786E+03
 Solver 4 :: Reference Norm Tolerance = 1e-4
-Solver 5 :: Reference Norm = 1.51593518E-06
+Solver 5 :: Reference Norm = 1.51582277E-06
 Solver 5 :: Reference Norm Tolerance = 1e-4
 

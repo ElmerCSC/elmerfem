@@ -1,0 +1,8 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( radiator3d.sif radiator3d.sif COPYONLY)
+
+file(COPY box.grd box_rad.grd ELMERSOLVER_STARTINFO  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(radiator3d_radiosity_twomesh NPROCS 1 2 4 8 LABELS radiator radiosity)

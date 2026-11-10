@@ -1,0 +1,130 @@
+! Model lumping through ElasticSolve, by six pure forces and moments -- the
+! "Fix Displacement = False" method. The sibling beam-springs is the same beam,
+! the same lumping boundary and the same reference norm through StressSolve.
+!
+! WHY THIS DIRECTORY EXISTS. Model lumping was extracted out of StressSolve into
+! its own module, ModelLumping.F90, as SHARED code -- so that both solvers could
+! call it -- and then only StressSolve ever did. Four call sites there, none here,
+! and "Model Lumping = Logical True" was silently inert in ElasticSolve: the six
+! load cases never happened, nothing loaded the body, and the displacement norm
+! came back as exactly 0.0 against a reference of 2.9e-2. Wiring an already shared
+! module into its second caller, which is all this was, is the cheapest item the
+! retirement survey found.
+!
+! WHAT THE TEST ACTUALLY PROVES is stronger than its norm. The product of the
+! feature is the lumped 6x6 spring matrix in kmat.dat, and the two solvers agree on
+! it to ALL NINE printed digits of every physically meaningful entry -- 1.03978080,
+! 100.399049, 34.9290787, 5.60042068, and the +-5.23230714 / +-5.21760327 couplings.
+! What differs is confined to the entries that are numerically zero, at 1e-12
+! against a diagonal of order 1 to 100, which is the round-off of the linear solve.
+!
+! THIS BRANCH exercises ModelLumpingLoads, which builds each case as a pure force
+! or a pure moment over the boundary and OVERWRITES whatever surface load was read
+! there. The sibling ElasticModelLumpingFixdisp covers the other branch, where each
+! case is a prescribed displacement instead and a different routine imposes it.
+!
+! Two things the driver has to get right, neither of them visible here:
+! the six cases ride the nonlinear iteration counter, so both bounds are forced to
+! six and no convergence test may stop early; and the reactions are recovered from
+! BulkValues times the solution, so "Constant Bulk System" is added to the keyword
+! list rather than assumed -- it is what makes DefaultFinishBulkAssembly save them.
+!
+! Small deflection, as the lumped stiffness is a linear concept and the six cases
+! are load cases rather than Newton steps.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam3d"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+! Max Output Level = 5
+
+  Coordinate System = "Cartesian 3D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+! Output File = "beam3d.dat"
+! Post File = "beam3d.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+
+  Stress Analysis = True
+  Calculate Stresses = Logical False
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Large Deflection = False
+  Variable = -dofs 3 "Displacement"
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+
+  Constant Bulk System = Logical True
+  Linear System Refactorize = Logical False
+
+  Model Lumping = Logical True
+  Model Lumping Filename = String "kmat.dat"
+
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = 1.0
+  Nonlinear System Min Iterations = Integer 6
+  Nonlinear System Max Iterations = Integer 6
+  Time Derivative Order = 2
+
+  Fix Displacement = Logical False
+End
+
+
+Material 1
+  Name = "Material1"
+
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+  Density = 0.0
+End
+
+Boundary Condition 1
+  Name = "wall_end"
+  Target Boundaries(1) = 5
+
+! The beam is fixed at the one end
+  Displacement 1 = 0
+  Displacement 2 = 0
+  Displacement 3 = 0
+End
+
+Boundary Condition 2
+  Name = "free_end"
+  Target Boundaries(1) = 6
+
+! The force is permutated in three steps through the main directions.
+  Model Lumping Boundary = Logical True
+End
+
+
+
+Solver 1 :: Reference Norm = Real 0.28897176E-01
+RUN

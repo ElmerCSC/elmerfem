@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,22 +28,22 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12 Jun 2003
 ! *
 ! ******************************************************************************/
 
-!> \defgroup ElmerLib Elmer library  
+!> \defgroup ElmerLib Elmer library
 !> \{
-!> \defgroup DefUtils Default API 
+!> \defgroup DefUtils Default API
 !> \{
 
 !--------------------------------------------------------------------------------
 !>  Module containing utility subroutines with default values for various
 !>  system subroutine arguments. For user defined solvers and subroutines
 !> this module should provide all the needed functionality for typical finite
-!> element procedures.  
+!> element procedures.
 !--------------------------------------------------------------------------------
 MODULE DefUtils
 
@@ -54,9 +54,15 @@ MODULE DefUtils
    USE ElementUtils
    USE SolverBasics
    USE SolveCore
-   USE ContactUtils
+   USE MatrixAssembly !, ONLY : CopyBulkMatrix, UseLocalMatrixStorage, &
+       ! restorebulkmatrix, flipperiodiclocalforce, flipperiodiclocalmatrix, &
+       ! uselocalmatrixcopy, GetLocalMatrixStorage
+   !   USE BandMatrix   ! Some routines from modules need this
+   USE ParallelUtils, ONLY : ParallelActive
+   USE ContactUtils, ONLY : DetermineContact, MergeSlaveSolvers
    USE BoundaryConditionUtils
-   USE ProjectorUtils
+   USE ProjectorUtils, ONLY : GenerateAddMatrix, GenerateConstraintMatrix, &
+       GenerateProjectors, GenerateRobinProjectors
    USE SplitFEMUtils
 
    IMPLICIT NONE
@@ -64,8 +70,8 @@ MODULE DefUtils
    INTERFACE DefaultUpdateEquations
      MODULE PROCEDURE DefaultUpdateEquationsR, DefaultUpdateEquationsC, &
          DefaultUpdateEquationsDiagC
-   END INTERFACE 
-   
+   END INTERFACE
+
    INTERFACE DefaultUpdatePrec
      MODULE PROCEDURE DefaultUpdatePrecR, DefaultUpdatePrecC
    END INTERFACE
@@ -110,13 +116,18 @@ MODULE DefUtils
      MODULE PROCEDURE GetScalarLocalConsmode, GetVectorLocalConsmode
    END INTERFACE
 
-   INTEGER, ALLOCATABLE, TARGET, PRIVATE :: IndexStore(:), VecIndexStore(:)
-   REAL(KIND=dp), ALLOCATABLE, TARGET, PRIVATE  :: ValueStore(:)
-   !$OMP THREADPRIVATE(IndexStore, VecIndexStore, ValueStore)
+   ! Per-thread scratch storage — NOT THREADPRIVATE; indexed by omp_get_thread_num()+1.
+   ! Avoids the GCC/emutls bug: ALLOCATABLE THREADPRIVATE vars are shared on Windows.
+   TYPE, PRIVATE :: DefUtils_Store_t
+     INTEGER, ALLOCATABLE :: istore(:)
+     INTEGER, ALLOCATABLE :: vistore(:)
+     REAL(KIND=dp), ALLOCATABLE :: vstore(:)
+   END TYPE DefUtils_Store_t
+   TYPE(DefUtils_Store_t), ALLOCATABLE, PRIVATE, TARGET, SAVE :: Stores(:)
 
    TYPE(Element_t), POINTER :: CurrentElementThread => NULL()
    !$OMP THREADPRIVATE(CurrentElementThread)
-   
+
    ! TODO: Get actual values for these from mesh
    INTEGER, PARAMETER, PRIVATE :: ISTORE_MAX_SIZE = 1024
    INTEGER, PARAMETER, PRIVATE :: VSTORE_MAX_SIZE = 1024
@@ -131,10 +142,10 @@ CONTAINS
 
    FUNCTION GetSifName(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
-     LOGICAL, OPTIONAL :: Found     
+     LOGICAL, OPTIONAL :: Found
      ch = GetString(CurrentModel % Simulation,'Solver Input File',Found)
    END FUNCTION GetSifName
-    
+
    FUNCTION GetRevision(Found) RESULT(ch)
      CHARACTER(LEN=:), ALLOCATABLE :: ch
      LOGICAL, OPTIONAL :: Found
@@ -170,50 +181,80 @@ CONTAINS
      IF(PRESENT(Found)) Found = .FALSE.
 #endif
    END FUNCTION GetCompilationDate
-  
+
+  SUBROUTINE EnsureStores()
+    INTEGER :: nthr
+    ! The "IF (.NOT. ALLOCATED(Stores))" fast-path read used to happen BEFORE
+    ! entering the critical section below. That is an unsynchronized
+    ! double-checked-locking read: a thread can observe Stores as allocated,
+    ! from another thread's write, before that allocation's contents are
+    ! actually visible to it (especially under -O3 reordering). Some element
+    ! loops (e.g. HeatSolveVec's boundary assembly) have no serial "warm-up"
+    ! element before the parallel region starts, so every thread can reach
+    ! this function's very first call at once, keeping the race window
+    ! reliably open. Always taking the critical section is the safe fix
+    ! (see the analogous fix to Ip2DgFieldInElementInit in
+    ! InterpolateMeshToMesh.F90, confirmed by test to resolve a ~14% crash
+    ! rate in IpVariable4); the cost is negligible next to the per-element
+    ! work GetIndexStore/GetPermIndexStore callers already do.
+    !$OMP CRITICAL
+    IF (.NOT. ALLOCATED(Stores)) THEN
+      nthr = 1
+      !$ nthr = OMP_GET_MAX_THREADS()
+      ALLOCATE(Stores(nthr))
+    END IF
+    !$OMP END CRITICAL
+  END SUBROUTINE EnsureStores
+
   FUNCTION GetIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
+    INTEGER :: tid, istat
 
-    IF ( .NOT. ALLOCATED(IndexStore) ) THEN
-        ALLOCATE( IndexStore(ISTORE_MAX_SIZE), STAT=istat )
-        IndexStore = 0
-        IF ( Istat /= 0 ) CALL Fatal( 'GetIndexStore', &
-                'Memory allocation error.' )
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%istore)) THEN
+      ALLOCATE(Stores(tid)%istore(ISTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%istore = 0
+      IF (istat /= 0) CALL Fatal('GetIndexStore', 'Memory allocation error.')
     END IF
-    ind => IndexStore
+    ind => Stores(tid)%istore
   END FUNCTION GetIndexStore
 
   FUNCTION GetPermIndexStore() RESULT(ind)
     IMPLICIT NONE
     INTEGER, POINTER CONTIG :: ind(:)
-    INTEGER :: istat
-     
-    IF ( .NOT. ALLOCATED(VecIndexStore) ) THEN
-      ALLOCATE( VecIndexStore(ISTORE_MAX_SIZE), STAT=istat )
-      VecIndexStore = 0
-      IF ( istat /= 0 ) CALL Fatal( 'GetPermIndexStore', &
-              'Memory allocation error.' )
+    INTEGER :: tid, istat
+
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%vistore)) THEN
+      ALLOCATE(Stores(tid)%vistore(ISTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%vistore = 0
+      IF (istat /= 0) CALL Fatal('GetPermIndexStore', 'Memory allocation error.')
     END IF
-    ind => VecIndexStore
+    ind => Stores(tid)%vistore
   END FUNCTION GetPermIndexStore
 
   FUNCTION GetValueStore(n) RESULT(val)
     IMPLICIT NONE
     REAL(KIND=dp), POINTER CONTIG :: val(:)
-    INTEGER :: n, istat
+    INTEGER :: tid, n, istat
 
-    IF ( .NOT.ALLOCATED(ValueStore) ) THEN
-      ALLOCATE( ValueStore(VSTORE_MAX_SIZE), STAT=istat )
-      ValueStore = REAL(0, dp)
-      IF ( Istat /= 0 ) CALL Fatal( 'GetValueStore', &
-              'Memory allocation error.' )
+    CALL EnsureStores()
+    tid = 1
+    !$ tid = OMP_GET_THREAD_NUM() + 1
+    IF (.NOT. ALLOCATED(Stores(tid)%vstore)) THEN
+      ALLOCATE(Stores(tid)%vstore(VSTORE_MAX_SIZE), STAT=istat)
+      Stores(tid)%vstore = REAL(0, dp)
+      IF (istat /= 0) CALL Fatal('GetValueStore', 'Memory allocation error.')
     END IF
     IF (n > VSTORE_MAX_SIZE) THEN
-      CALL Fatal( 'GetValueStore', 'Not enough memory allocated for store.' )
+      CALL Fatal('GetValueStore', 'Not enough memory allocated for store.')
     END IF
-    val => ValueStore(1:n)
+    val => Stores(tid)%vstore(1:n)
   END FUNCTION GetValueStore
 
 !> Returns handle to the active solver
@@ -222,9 +263,9 @@ CONTAINS
      Solver => CurrentModel % Solver
   END FUNCTION GetSolver
 
-!> Returns handle to the active matrix 
+!> Returns handle to the active matrix
   FUNCTION GetMatrix( USolver ) RESULT( Matrix )
-     TYPE(Matrix_t), POINTER :: Matrix 
+     TYPE(Matrix_t), POINTER :: Matrix
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
 
      IF ( PRESENT( USolver ) ) THEN
@@ -236,7 +277,7 @@ CONTAINS
 
 !> Returns handle to the active mesh
   FUNCTION GetMesh( USolver ) RESULT( Mesh )
-     TYPE(Mesh_t), POINTER :: Mesh 
+     TYPE(Mesh_t), POINTER :: Mesh
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
 
      IF ( PRESENT( USolver ) ) THEN
@@ -267,7 +308,7 @@ CONTAINS
     END IF
   END FUNCTION GetCurrentElement
 
-!> Sets handle to the active element of the current thread. 
+!> Sets handle to the active element of the current thread.
 !> Old handle is given as a return value as what would be returned
 !> by a call to GetCurrentElement
   FUNCTION SetCurrentElement(Element) RESULT(OldElement)
@@ -294,7 +335,7 @@ CONTAINS
     TYPE(Element_t), OPTIONAL :: Element
     INTEGER :: Indx
     TYPE(Element_t), POINTER :: CurrElement
-    
+
     CurrElement => GetCurrentElement(Element)
     Indx = CurrElement % ElementIndex
   END FUNCTION GetElementIndex
@@ -306,7 +347,7 @@ CONTAINS
     INTEGER :: i, n
     TYPE(Element_t) :: Element
     Logical :: FOUND
-    
+
     DO i=1, SIZE(Element%NodeIndexes)
       IF (n == Element%NodeIndexes(i)) THEN
         FOUND=.TRUE.
@@ -315,7 +356,7 @@ CONTAINS
     END DO
   END SUBROUTINE GetElementNodeIndex
 
-  FUNCTION GetIPIndex( LocalIp, USolver, Element, IpVar ) RESULT ( GlobalIp ) 
+  FUNCTION GetIPIndex( LocalIp, USolver, Element, IpVar ) RESULT ( GlobalIp )
     INTEGER :: LocalIp, GlobalIp
 
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
@@ -326,22 +367,22 @@ CONTAINS
     TYPE(Element_t), POINTER :: CurrElement
     INTEGER :: n, m
     INTEGER, POINTER :: IpPerm(:)
-    
+
     IF ( PRESENT( USolver ) ) THEN
       Solver => USolver
     ELSE
-      Solver => CurrentModel % Solver 
+      Solver => CurrentModel % Solver
     END IF
-    
+
     CurrElement => GetCurrentElement(Element)
     n = CurrElement % ElementIndex
     GlobalIp = 0
-    
+
     IF( PRESENT( IpVar ) ) THEN
       IF( IpVar % TYPE /= Variable_on_gauss_points ) THEN
         CALL Fatal('GetIpIndex','Variable is not of type gauss points!')
       END IF
-      
+
       IpPerm => IpVar % Perm
       m = IpPerm(n+1) - IpPerm(n)
 
@@ -352,35 +393,35 @@ CONTAINS
         CALL Fatal('GetIpIndex','Cannot access index of gaussian point!')
       END IF
 
-      IpPerm => Solver % IpTable % IpOffset 
+      IpPerm => Solver % IpTable % IpOffset
       m = IpPerm(n+1) - IpPerm(n)
     END IF
 
     ! There are not sufficient number of gauss points in the permutation table to have a
-    ! local index this big. 
-    IF( m < LocalIp ) THEN      
+    ! local index this big.
+    IF( m < LocalIp ) THEN
       CALL Warn('GetIpIndex','Inconsistent number of IP points!')
       RETURN
     END IF
-    
+
     GlobalIp = IpPerm(n) + LocalIp
 
   END FUNCTION GetIPIndex
 
-  
-  
-  FUNCTION GetIPCount( USolver, IpVar ) RESULT ( IpCount ) 
+
+
+  FUNCTION GetIPCount( USolver, IpVar ) RESULT ( IpCount )
     INTEGER :: IpCount
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
     TYPE(Variable_t), OPTIONAL, POINTER :: IpVar
-    
+
     TYPE(Solver_t), POINTER :: Solver
-    INTEGER, POINTER :: IpPerm 
+    INTEGER, POINTER :: IpPerm
 
     IF ( PRESENT( USolver ) ) THEN
       Solver => USolver
     ELSE
-      Solver => CurrentModel % Solver 
+      Solver => CurrentModel % Solver
     END IF
 
     IF( PRESENT( IpVar ) ) THEN
@@ -388,16 +429,16 @@ CONTAINS
         CALL Fatal('GetIpCount','Variable is not of type gauss points!')
       END IF
       IpCount = SIZE( IpVar % Values ) / IpVar % Dofs
-    ELSE    
+    ELSE
       IF( .NOT. ASSOCIATED( Solver % IpTable ) ) THEN
         CALL Fatal('GetIpCount','Gauss point table not initialized')
-      END IF    
-      IpCount = Solver % IpTable % IpCount 
+      END IF
+      IpCount = Solver % IpTable % IpCount
     END IF
-      
+
   END FUNCTION GetIPCount
 
-  
+
 !> Returns the number of active elements for the current solver
   FUNCTION GetNOFActive( USolver ) RESULT(n)
      INTEGER :: n
@@ -407,7 +448,7 @@ CONTAINS
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
-       Solver => CurrentModel % Solver 
+       Solver => CurrentModel % Solver
      END IF
 
      IF( ASSOCIATED( Solver % ColourIndexList ) ) THEN
@@ -434,7 +475,7 @@ CONTAINS
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
-       Solver => CurrentModel % Solver 
+       Solver => CurrentModel % Solver
      END IF
 
      IF( ASSOCIATED( Solver % BoundaryColourIndexList ) ) THEN
@@ -471,7 +512,7 @@ CONTAINS
      st = v % Values(1)
   END FUNCTION GetPeriodicTime
 
-!> Returns the current timestep  
+!> Returns the current timestep
   FUNCTION GetTimeStep() RESULT(st)
      INTEGER :: st
      TYPE(Variable_t), POINTER :: v
@@ -491,7 +532,7 @@ CONTAINS
      st = NINT(v % Values(1))
   END FUNCTION GetTimestepInterval
 
-!> Returns the current timestep size  
+!> Returns the current timestep size
   FUNCTION GetTimestepSize() RESULT(st)
      REAL(KIND=dp) :: st
      TYPE(Variable_t), POINTER :: v
@@ -500,8 +541,8 @@ CONTAINS
      v => VariableGet( v, 'timestep size')
      st = v % Values(1)
   END FUNCTION GetTimestepSize
- 
-!> Returns the angular frequency  
+
+!> Returns the angular frequency
   FUNCTION GetAngularFrequency(ValueList,Found, UElement) RESULT(w)
     REAL(KIND=dp) :: w
     TYPE(ValueList_t), POINTER, OPTIONAL :: ValueList
@@ -531,11 +572,11 @@ CONTAINS
      st = NINT(v % Values(1))
   END FUNCTION GetNonlinIter
 
-!> Returns the number of boundary elements  
+!> Returns the number of boundary elements
   FUNCTION GetNOFBoundaryElements( UMesh ) RESULT(n)
     INTEGER :: n
     TYPE(Mesh_t), OPTIONAL :: UMesh
-  
+
     IF ( PRESENT( UMesh ) ) THEN
        n = UMesh % NumberOfBoundaryElements
     ELSE
@@ -561,13 +602,13 @@ CONTAINS
      INTEGER :: i, j, k, n, lr
      INTEGER, POINTER :: Indexes(:)
      LOGICAL :: Found0
-     
+
      IF ( PRESENT(USolver) ) THEN
        Solver => USolver
      ELSE
        Solver => CurrentModel % Solver
      END IF
-       
+
      x = 0.0_dp
      IF(PRESENT(Found)) Found = .FALSE.
 
@@ -592,7 +633,7 @@ CONTAINS
 
      Element => GetCurrentElement(UElement)
      Found0 = .FALSE.
-     
+
      ! Some variables do not really follow the numbering
      ! nodes + faces + edges etc. of the standard solver.
      ! For example, if we want to request DG values from a variable
@@ -610,7 +651,7 @@ CONTAINS
        RETURN
      ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
        n = Element % TYPE % NumberOfNodes
-       Indexes => Element % DGIndexes       
+       Indexes => Element % DGIndexes
        IF(ASSOCIATED( Indexes ) ) THEN
          DO i=1,n
            j = Variable % Perm(Indexes(i))
@@ -627,7 +668,7 @@ CONTAINS
              Parent => Element % BoundaryInfo % Right
            END IF
            IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
-           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                                     
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE
            DO i=1,n
              DO j=1,Parent % TYPE % NumberOfNodes
                IF( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
@@ -727,11 +768,11 @@ CONTAINS
          END IF
        END DO
      END IF
-     
-     IF(PRESENT(Found)) Found = Found0 
-     
+
+     IF(PRESENT(Found)) Found = Found0
+
    END SUBROUTINE GetScalarLocalSolution
-   
+
 
 
 !> Returns a vector field in the nodes of the element
@@ -743,7 +784,7 @@ CONTAINS
      TYPE(Variable_t), OPTIONAL, TARGET :: UVariable
      INTEGER, OPTIONAL :: tStep
      LOGICAL, OPTIONAL :: Found
-     
+
      TYPE(Variable_t), POINTER :: Variable
      TYPE(Solver_t)  , POINTER :: Solver
      TYPE(Element_t),  POINTER :: Element, Parent
@@ -752,13 +793,13 @@ CONTAINS
      INTEGER, POINTER :: Indexes(:)
      REAL(KIND=dp), POINTER ::  Values(:)
      LOGICAL :: Found0
-     
+
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
      x = 0.0d0
      IF(PRESENT(Found)) Found = .FALSE.
-     
+
      IF(.NOT. PRESENT(UVariable)) THEN
        Variable => Solver % Variable
      ELSE
@@ -779,11 +820,11 @@ CONTAINS
          END IF
        END IF
      END IF
-     
+
      Element => GetCurrentElement(UElement)
      Found0 = .FALSE.
 
-       
+
      ! If variable is defined on gauss points return that instead
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
        ASSOCIATE(dofs => variable % dofs)
@@ -819,7 +860,7 @@ CONTAINS
            END DO
          END ASSOCIATE
          IF(PRESENT(Found)) Found = Found0
-         RETURN         
+         RETURN
        ELSE IF ( ASSOCIATED( Element % BoundaryInfo ) ) THEN
          DO lr=1,2
            IF(lr==1) THEN
@@ -828,7 +869,7 @@ CONTAINS
              Parent => Element % BoundaryInfo % Right
            END IF
            IF(.NOT. ASSOCIATED( Parent ) ) CYCLE
-           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE                          
+           IF( ANY( Variable % Perm( Parent % DGIndexes ) == 0) ) CYCLE
 
            ASSOCIATE(dofs => variable % dofs)
              DO i=1,n
@@ -852,52 +893,52 @@ CONTAINS
        IF(PRESENT(Found)) Found = Found0
        RETURN       
      ELSE IF( Solver % SplitFEMActive ) THEN
-        ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
-        
-        n = Element % TYPE % NumberOfNodes
-        Indexes => Element % NodeIndexes
+       ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
 
-        BLOCK
-          INTEGER :: nn,j1,j2,dofs
-          REAL(KIND=dp) :: r
-          nn = SIZE(Variable % Perm)
-          dofs = Variable % Dofs
-          
-          DO i=1,n
-            j = Indexes(i)
-            Found0 = .FALSE.
-            IF ( j>0 .AND. j<=nn ) THEN
-              ! This is an original node,
-              ! or enriched one associated with edge assuming splitfem field
-              j = Variable % Perm(j)
-              IF ( j>0 ) THEN
-                Found0 = .TRUE.
-                DO k=1,dofs
-                  x(k,i) = Values(dofs*(j-1)+k)
-                END DO
-              END IF
-            END IF
-            IF(.NOT. Found0) THEN
-              ! This is an additional node of the fictious domain method. 
-              ! When we know where the isoline cuts the edge we can use linear interpolation
-              ! on the edge to get the value at the intersetion on-the-fly.
-              r = CurrentModel % CutInterp(j-nn)
-              j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
-              j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
-              IF(j1 > 0 .AND. j2 > 0) THEN
-                Found0 = .TRUE.
-                DO k=1,dofs
-                  x(k,i) = r*Variable % Values(dofs*(j1-1)+k) + &
-                      (1-r)*Variable % Values(dofs*(j2-1)+k)
-                END DO
-              END IF
-            END IF
-          END DO
-        END BLOCK
-        RETURN
+       n = Element % TYPE % NumberOfNodes
+       Indexes => Element % NodeIndexes
+
+       BLOCK
+         INTEGER :: nn,j1,j2,dofs
+         REAL(KIND=dp) :: r
+         nn = SIZE(Variable % Perm)
+         dofs = Variable % Dofs
+
+         DO i=1,n
+           j = Indexes(i)
+           Found0 = .FALSE.
+           IF ( j>0 .AND. j<=nn ) THEN
+             ! This is an original node,
+             ! or enriched one associated with edge assuming splitfem field
+             j = Variable % Perm(j)
+             IF ( j>0 ) THEN
+               Found0 = .TRUE.
+               DO k=1,dofs
+                 x(k,i) = Values(dofs*(j-1)+k)
+               END DO
+             END IF
+           END IF
+           IF(.NOT. Found0) THEN
+             ! This is an additional node of the fictious domain method. 
+             ! When we know where the isoline cuts the edge we can use linear interpolation
+             ! on the edge to get the value at the intersetion on-the-fly.
+             r = CurrentModel % CutInterp(j-nn)
+             j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
+             j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
+             IF(j1 > 0 .AND. j2 > 0) THEN
+               Found0 = .TRUE.
+               DO k=1,dofs
+                 x(k,i) = r*Variable % Values(dofs*(j1-1)+k) + &
+                     (1-r)*Variable % Values(dofs*(j2-1)+k)
+               END DO
+             END IF
+           END IF
+         END DO
+       END BLOCK
+       RETURN
      END IF
 
-     
+
      Indexes => GetIndexStore()
      IF ( ASSOCIATED(Variable % Solver ) ) THEN
        n = GetElementDOFs( Indexes, Element, Variable % Solver )
@@ -905,7 +946,7 @@ CONTAINS
        n = GetElementDOFs( Indexes, Element, Solver )
      END IF
      n = MIN( n, SIZE(x,2) )
-     
+
      DO i=1,Variable % DOFs
        IF ( ASSOCIATED( Variable % Perm ) ) THEN
          IF( Variable % PeriodicFlipActive ) THEN
@@ -920,7 +961,7 @@ CONTAINS
                END IF
              END IF
            END DO
-         ELSE           
+         ELSE
            DO j=1,n
              k = Indexes(j)
              IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
@@ -943,7 +984,7 @@ CONTAINS
        END IF
      END DO
      IF( PRESENT(Found)) Found = Found0
-     
+
   END SUBROUTINE GetVectorLocalSolution
 
 
@@ -974,7 +1015,7 @@ CONTAINS
 
      IF ( .NOT. ASSOCIATED( Variable ) ) RETURN
      IF ( .NOT. ASSOCIATED( Variable % EigenValues ) ) RETURN
-     
+
      NofEigenModes = SIZE( Variable % EigenValues, 1)
   END FUNCTION GetNofEigenModes
 
@@ -1032,7 +1073,7 @@ CONTAINS
          j = Indexes(i)
          IF ( j>0 .AND. j<= SIZE(Variable % Perm)) THEN
            j = Variable % Perm(j)
-           IF ( j>0 ) THEN 
+           IF ( j>0 ) THEN
              IF ( IsComplex ) THEN
                x(i) = AIMAG(Values(j))
              ELSE
@@ -1068,7 +1109,7 @@ CONTAINS
 
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
-     
+
      IsComplex = .FALSE.
      IF( PRESENT( ComplexPart) ) IsComplex = ComplexPart
 
@@ -1263,7 +1304,7 @@ CONTAINS
               END IF
             END IF
           END DO
-        ELSE           
+        ELSE
           DO j=1,n
             k = Indexes(j)
             IF ( k>0 .AND. k<=SIZE(Variable % Perm) ) THEN
@@ -1287,7 +1328,7 @@ CONTAINS
   END SUBROUTINE GetVectorLocalConsmode
 
 
-  
+
 
   FUNCTION DefaultVariableGet( Name, ThisOnly, USolver ) RESULT ( Var )
 
@@ -1303,9 +1344,9 @@ CONTAINS
     ELSE
       Variables => CurrentModel % Solver % Mesh % Variables
     END IF
-    
+
     Var => VariableGet( Variables, Name, ThisOnly )
-    
+
   END FUNCTION DefaultVariableGet
 
 
@@ -1314,7 +1355,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultVariableAdd( Name, DOFs, Perm, Values,&
       Output,Secondary,VariableType,Global,InitValue,USolver,Var )
-    
+
     CHARACTER(LEN=*) :: Name
     INTEGER, OPTIONAL :: DOFs
     REAL(KIND=dp), OPTIONAL, POINTER :: Values(:)
@@ -1323,18 +1364,18 @@ CONTAINS
     LOGICAL, OPTIONAL :: Secondary
     INTEGER, OPTIONAL :: VariableType
     LOGICAL, OPTIONAL :: Global
-    REAL(KIND=dp), OPTIONAL :: InitValue   
+    REAL(KIND=dp), OPTIONAL :: InitValue
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
     TYPE(Variable_t), OPTIONAL, POINTER :: Var
     !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Variables
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER :: Solver
-    
+
     IF( PRESENT( USolver ) ) THEN
       Solver => USolver
     ELSE
-      Solver => CurrentModel % Solver 
+      Solver => CurrentModel % Solver
     END IF
     Mesh => Solver % Mesh
     Variables => Mesh % Variables
@@ -1361,6 +1402,55 @@ CONTAINS
   END FUNCTION GetString
 
 
+!> Returns a string by its name, for use inside OpenMP parallel regions.
+!>
+!> The value lists themselves are only read here, and ListGetString and ListFind
+!> under it are perfectly happy with several threads at once. What is not, is
+!> gfortran's implementation of the ALLOCATABLE deferred-length CHARACTER result
+!> that GetString above returns (checked up to gfortran 15.2): the hidden length
+!> that goes with such a result is emitted as FILE SCOPE STATIC storage -- the
+!> 'slen.NNN' symbols in .bss -- and is therefore shared by every thread. A
+!> statement such as
+!>
+!>   CoilType = GetString( CompParams, 'Coil Type', Found )
+!>
+!> compiles into "zero the static slen, call, let the callee write the true
+!> length through that pointer, reload the static, copy that many characters
+!> out", and there are two such statics on the way, one in the caller and one in
+!> GetString itself. Let a second thread reach the zeroing between the write and
+!> the reload of the first, and the first copies nothing: the caller is handed
+!> Found = .TRUE. together with an empty string, while the value list it read is
+!> of course untouched and yields the right answer when read again a moment
+!> later. That was the source of the intermittent
+!>
+!>   ERROR:: MagnetoDynamics2D: Non existent Coil Type Chosen 1
+!>
+!> in circuits2D_transient_london, roughly 7 runs out of 30 at six threads and
+!> none at all out of 350 at one thread. Neither the RECURSIVE attribute nor
+!> -frecursive nor -fno-automatic persuades gfortran to put slen on the stack.
+!>
+!> Bracketing the assignment in the caller with !$OMP CRITICAL does cure it, and
+!> the calls in MagnetoDynamics2D used to do exactly that, but it leaves the
+!> obligation with every call site. This routine takes it over. Being a
+!> SUBROUTINE with a fixed length result is the whole point: the caller does a
+!> plain CALL and so gets no hidden length temporary of its own, and the single
+!> one left, belonging to the assignment below, is covered by the CRITICAL.
+!>
+!> The CRITICAL must stay UNNAMED. A named variant deterministically SIGSEGVs
+!> several MPI tests on the Windows MSYS2/UCRT MinGW gomp runtime; see the
+!> identical notes in GaussPointsAdapt and UseLocalMatrixStorage.
+  SUBROUTINE GetStringThreadSafe( List, Name, CValue, Found )
+     TYPE(ValueList_t), POINTER :: List
+     CHARACTER(LEN=*) :: Name
+     CHARACTER(LEN=*) :: CValue
+     LOGICAL, OPTIONAL :: Found
+
+     !$OMP CRITICAL
+     CValue = ListGetString(List, Name, Found)
+     !$OMP END CRITICAL
+  END SUBROUTINE GetStringThreadSafe
+
+
 !> Returns an integer by its name if found in the list structure
   FUNCTION GetInteger( List, Name, Found ) RESULT(i)
      TYPE(ValueList_t), POINTER :: List
@@ -1385,6 +1475,38 @@ CONTAINS
   END FUNCTION GetLogical
 
 
+!> Resolves whether SUPG/equal-order stabilization (as opposed to a
+!> residual-free bubble) has been requested, from the two keywords a solver
+!> would otherwise resolve by hand: "Stabilize" (a plain boolean) and
+!> "Stabilization Method" (one of "none", "bubbles" or "stabilized", which
+!> overrides "Stabilize" when given). Mirrors the resolution legacy solvers
+!> such as HeatSolve/FlowSolve already do inline. A solver that instead spells
+!> this "Pressure Stabilization" (IncompressibleNSVec, ElasticSolve) can OR
+!> this in as a synonym, since neither keyword collides with anything those
+!> solvers already read.
+  FUNCTION GetStabilizeFlag( List, Found ) RESULT(Stabilize)
+     TYPE(ValueList_t), POINTER :: List
+     LOGICAL, OPTIONAL :: Found
+
+     LOGICAL :: Stabilize, GotIt
+     CHARACTER(:), ALLOCATABLE :: StabilizeFlag
+
+     Stabilize = ListGetLogical( List,'Stabilize', GotIt )
+     IF( PRESENT(Found) ) Found = GotIt
+
+     StabilizeFlag = ListGetString( List,'Stabilization Method', GotIt )
+     IF( GotIt ) THEN
+       IF( PRESENT(Found) ) Found = .TRUE.
+       SELECT CASE( StabilizeFlag )
+       CASE('stabilized')
+         Stabilize = .TRUE.
+       CASE('bubbles','none')
+         Stabilize = .FALSE.
+       END SELECT
+     END IF
+  END FUNCTION GetStabilizeFlag
+
+
 !> Returns a constant real by its name if found in the list structure
   RECURSIVE FUNCTION GetConstReal( List, Name, Found,x,y,z ) RESULT(r)
      TYPE(ValueList_t), POINTER :: List
@@ -1405,7 +1527,7 @@ CONTAINS
   END FUNCTION GetConstReal
 
 
-!> Returns a real that may depend on global variables such as time, or timestep size, 
+!> Returns a real that may depend on global variables such as time, or timestep size,
 !! by its name if found in the list structure
   RECURSIVE FUNCTION GetCReal( List, Name, Found ) RESULT(s)
      TYPE(ValueList_t), POINTER :: List
@@ -1437,7 +1559,7 @@ CONTAINS
   END FUNCTION GetCReal
 
 
-!> Returns a real by its name if found in the list structure, and in the active element. 
+!> Returns a real by its name if found in the list structure, and in the active element.
   RECURSIVE FUNCTION GetReal( List, Name, Found, UElement ) RESULT(x)
     IMPLICIT NONE
      TYPE(ValueList_t), POINTER :: List
@@ -1481,7 +1603,7 @@ CONTAINS
     REAL(KIND=dp) CONTIG :: Values(:)
     LOGICAL, OPTIONAL :: Found
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
-    
+
     ! Variables
     INTEGER, TARGET :: Dnodes(1)
     INTEGER, POINTER CONTIG :: NodeIndexes(:)
@@ -1489,9 +1611,9 @@ CONTAINS
     INTEGER :: n, istat
 
     IF ( PRESENT( Found ) ) Found = .FALSE.
-    
+
     Element => GetCurrentElement(UElement)
-    
+
     IF ( ASSOCIATED(Element) ) THEN
       n = GetElementNOFNodes(Element)
       NodeIndexes => Element % NodeIndexes
@@ -1500,7 +1622,7 @@ CONTAINS
       NodeIndexes => Dnodes
       NodeIndexes(1) = 1
     END IF
-    
+
     IF( ASSOCIATED(List) ) THEN
       IF ( ASSOCIATED(List % Head) ) THEN
         Values(1:n) = ListGetReal( List, Name, n, NodeIndexes, Found )
@@ -1522,13 +1644,13 @@ CONTAINS
     INTEGER :: n, leftright, mat_id
     TYPE(ValueList_t), POINTER :: Material
     TYPE(Element_t), POINTER :: Element, Parent
-    
+
     Element => GetCurrentElement(Uelement)
 
     IF( .NOT. ASSOCIATED( Element ) ) THEN
       CALL Warn('GetParentMatProp','Element not associated!')
     END IF
-    
+
     IF( PRESENT(UParent) ) NULLIFY( UParent )
 
     n = GetElementNOFNodes(Element)
@@ -1541,17 +1663,17 @@ CONTAINS
       CALL Warn('GetParentMatProp','Boundary element needs parent information!')
       RETURN
     END IF
-    
-    
+
+
     Gotit = .FALSE.
     DO leftright = 1, 2
 
       IF( leftright == 1) THEN
          Parent => Element % BoundaryInfo % Left
-       ELSE 
+       ELSE
          Parent => Element % BoundaryInfo % Right
        END IF
-       
+
        IF( ASSOCIATED(Parent) ) THEN
 
          GotMat = .FALSE.
@@ -1564,18 +1686,18 @@ CONTAINS
                ' for element '//I2S(Parent % ElementIndex))
            CYCLE
          END IF
-         
+
          IF(.NOT. GotMat) THEN
            CALL Warn('GetParentMatProp','Parent body '//I2S(Parent % BodyId)//' does not have material associated!')
          END IF
-         
+
          IF( mat_id > 0 .AND. mat_id <= CurrentModel % NumberOfMaterials ) THEN
            Material => CurrentModel % Materials(mat_id) % Values
          ELSE
            CALL Warn('GetParentMatProp','Material index '//I2S(mat_id)//' not associated to material list')
            CYCLE
          END IF
-                             
+
          IF( .NOT. ASSOCIATED( Material ) ) CYCLE
 
          IF ( ListCheckPresent( Material,Name) ) THEN
@@ -1591,17 +1713,17 @@ CONTAINS
          END IF
        END IF
     END DO
-    
+
     IF( PRESENT( Found ) ) THEN
        Found = GotIt
     ELSE IF(.NOT. GotIt) THEN
        CALL Warn('GetParentMatProp','Property '//TRIM(Name)//' not in either parents!')
     END IF
-     
+
   END FUNCTION GetParentMatProp
 
 
-!> Returns a constant real array by its name if found in the list structure. 
+!> Returns a constant real array by its name if found in the list structure.
   RECURSIVE SUBROUTINE GetConstRealArray( List, x, Name, Found, UElement )
      TYPE(ValueList_t), POINTER :: List
      REAL(KIND=dp), POINTER :: x(:,:)
@@ -1617,7 +1739,7 @@ CONTAINS
      END IF
   END SUBROUTINE GetConstRealArray
 
-!> Returns a real array by its name if found in the list structure, and in the active element. 
+!> Returns a real array by its name if found in the list structure, and in the active element.
   RECURSIVE SUBROUTINE GetRealArray( List, x, Name, Found, UElement )
      REAL(KIND=dp), POINTER :: x(:,:,:)
      TYPE(ValueList_t), POINTER :: List
@@ -1641,7 +1763,7 @@ CONTAINS
      END IF
   END SUBROUTINE GetRealArray
 
-!> Returns a real vector by its name if found in the list structure, and in the active element. 
+!> Returns a real vector by its name if found in the list structure, and in the active element.
   RECURSIVE SUBROUTINE GetRealVector( List, x, Name, Found, UElement )
      REAL(KIND=dp) :: x(:,:)
      TYPE(ValueList_t), POINTER :: List
@@ -1666,7 +1788,7 @@ CONTAINS
      END IF
   END SUBROUTINE GetRealVector
 
-!> Returns a complex vector by its name if found in the list structure, and in the active element. 
+!> Returns a complex vector by its name if found in the list structure, and in the active element.
   RECURSIVE SUBROUTINE GetComplexVector( List, x, Name, Found, UElement )
      COMPLEX(KIND=dp) :: x(:,:)
      TYPE(ValueList_t), POINTER :: List
@@ -1738,7 +1860,7 @@ CONTAINS
     END IF
   END SUBROUTINE SetElementProperty
 
-!> Get a named elementwise property (real-valued) from the active element or 
+!> Get a named elementwise property (real-valued) from the active element or
 !> from a given element
   FUNCTION GetElementProperty( Name, UElement ) RESULT(Values)
     CHARACTER(LEN=*) :: Name
@@ -1788,17 +1910,17 @@ CONTAINS
        END IF
 
        Element => Solver % Mesh % Elements( ind )
- 
+
 #ifdef _OPENMP
        IF (omp_in_parallel()) THEN
          CurrentElementThread => Element
        ELSE
          ! May be used by user functions, not thread safe
-         CurrentModel % CurrentElement => Element 
+         CurrentModel % CurrentElement => Element
        END IF
 #else
        ! May be used by user functions, not thread safe
-       CurrentModel % CurrentElement => Element 
+       CurrentModel % CurrentElement => Element
 #endif
      ELSE
        WRITE( Message, * ) 'Invalid element number requested: ', t
@@ -1847,7 +1969,7 @@ CONTAINS
   END FUNCTION GetBoundaryElement
 
 
-!> Check if the boundary element is active in the current solve 
+!> Check if the boundary element is active in the current solve
   FUNCTION ActiveBoundaryElement(UElement,USolver,DGBoundary) RESULT(l)
      TYPE(Element_t), OPTIONAL,  TARGET :: UElement
      TYPE(Solver_t),  OPTIONAL,  TARGET :: USolver
@@ -1862,12 +1984,12 @@ CONTAINS
 
      Solver => CurrentModel % Solver
      IF ( PRESENT( USolver ) ) Solver => USolver
-         
+
      Element => GetCurrentElement(UElement)
-     
+
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
-     
+
      DGb = Solver % DG .AND. PRESENT(DGboundary)
      IF(DGb) DGb = DGboundary
 
@@ -1907,7 +2029,7 @@ CONTAINS
     TYPE(Element_t), OPTIONAL :: Element
     TYPE(Element_t), POINTER :: CurrElement
     INTEGER :: etype
-    
+
     CurrElement => GetCurrentElement(Element)
     etype = CurrElement % TYPE % ElementCode
     IF( etype >= 500 ) THEN
@@ -1916,9 +2038,9 @@ CONTAINS
       edim = 2
     ELSE IF( etype >= 200 ) THEN
       edim = 1
-    ELSE 
+    ELSE
       edim = 0
-    END IF          
+    END IF
   END FUNCTION GetElementDim
 
 
@@ -1938,14 +2060,14 @@ CONTAINS
     INTEGER :: corners
     TYPE(Element_t), OPTIONAL :: Element
     TYPE(Element_t), POINTER :: CurrElement
-    
+
     CurrElement => GetCurrentElement(Element)
     corners = CurrElement % TYPE % ElementCode / 100
     IF( corners >= 5 .AND. corners <= 7 ) THEN
       corners = corners - 1
     END IF
   END FUNCTION GetElementCorners
-  
+
 !> Return true if the element is a possible flux element
 !> Needed to skip nodal elements in 2D and 3D boundary condition setting.
   FUNCTION PossibleFluxElement( Element, Mesh )  RESULT(possible)
@@ -1961,7 +2083,7 @@ CONTAINS
 
      RETURN
 
-     
+
      IF( PRESENT( Mesh ) ) THEN
        MeshDim = Mesh % MeshDim
      ELSE
@@ -1969,7 +2091,7 @@ CONTAINS
      END IF
 
      family = GetElementFamily( Element )
-     
+
      ! This is not a generic rule but happens to be true for all combinations
      ! 3D: families 3 and 4
      ! 2D: family 2
@@ -1990,7 +2112,7 @@ CONTAINS
   END FUNCTION GetELementNOFNodes
 
 
-!> Return the number of element degrees of freedom 
+!> Return the number of element degrees of freedom
   FUNCTION GetElementNOFDOFs( UElement,USolver ) RESULT(n)
 
      USE PElementMaps, ONLY : isActivePElement, getEdgeDOFs, getFaceDOFs, getBubbleDOFs
@@ -2002,7 +2124,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element, Face
      TYPE(Solver_t),  POINTER :: Solver
 
-     INTEGER :: i, j, k, id, ElemFamily, ParentFamily, face_type, face_id 
+     INTEGER :: i, j, k, id, ElemFamily, ParentFamily, face_type, face_id
      INTEGER :: NDOFs
      LOGICAL :: Found, GB, NeedEdges, Bubbles
 
@@ -2090,16 +2212,29 @@ CONTAINS
        INTEGER :: Ind, i,j, p, nb, EDOFs, FDOFs, BDOFs
        INTEGER :: face_id
        TYPE(Element_t), POINTER :: Parent, Edge
-  
+
+       ! NOTE: this edge/face block mirrors mGetElementDOFs (ElemInfo.F90); the
+       ! two routines must return the same count, so keep them in step. The
+       ! "Done" flags are optimistic and cleared whenever an iteration cycles,
+       ! since a cycled loop has counted nothing and the parent-based branches
+       ! below are the ones that then have to do the work.
        EdgesDone = .FALSE.; FacesDone = .FALSE.
        IF ( ASSOCIATED( Element % EdgeIndexes ) ) THEN
+         EdgesDone = .TRUE.
          DO j=1,Element % Type % NumberOFEdges
            Edge => Solver % Mesh % Edges( Element % EdgeIndexes(j) )
            IF (Edge % Type % ElementCode == Element % Type % ElementCode) THEN
-             IF (.NOT. Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
+             ! The "edge" is the element itself. That only carries dofs of its
+             ! own when the element is a lower-dimensional body (BodyId>0 while
+             ! sitting on a boundary) and bubbles live in the global system.
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                   Element % BodyId>0 .AND. ASSOCIATED(Element % BoundaryInfo)) ) THEN
+               EdgesDone = .FALSE.
+               CYCLE
+             END IF
            END IF
 
-           EDOFs = 0 
+           EDOFs = 0
            IF (Solver % Def_Dofs(ElemFamily,id,2) >= 0) THEN
              EDOFs = Solver % Def_Dofs(ElemFamily,id,2)
            ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
@@ -2108,15 +2243,19 @@ CONTAINS
            END IF
            n = n + EDOFs
          END DO
-         EdgesDone = .TRUE.
        END IF
 
        IF ( ASSOCIATED( Element % FaceIndexes ) ) THEN
+         FacesDone = .TRUE.
          DO j=1,Element % TYPE % NumberOfFaces
            Face => Solver % Mesh % Faces( Element % FaceIndexes(j) )
 
            IF (Face % Type % ElementCode==Element % Type % ElementCode) THEN
-             IF ( .NOT.Solver % GlobalBubbles.OR..NOT.ASSOCIATED(Element % BoundaryInfo)) CYCLE
+             IF ( .NOT. (Solver % GlobalBubbles .AND. &
+                   Element % BodyId>0 .AND. ASSOCIATED(Element % BoundaryInfo)) ) THEN
+               FacesDone = .FALSE.
+               CYCLE
+             END IF
            END IF
 
            k = MAX(0,Solver % Def_Dofs(ElemFamily,id,3))
@@ -2131,22 +2270,26 @@ CONTAINS
                face_id  = Face % BoundaryInfo % Left % BodyId
                k = MAX(0,Solver % Def_Dofs(face_type+6,face_id,5))
              END IF
-             IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
-               face_id = Face % BoundaryInfo % Right % BodyId
-               k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+             IF (k == 0) THEN
+               IF (ASSOCIATED(Face % BoundaryInfo % Right)) THEN
+                 face_id = Face % BoundaryInfo % Right % BodyId
+                 k = MAX(k,Solver % Def_Dofs(face_type+6,face_id,5))
+               END IF
              END IF
+           END IF
 
-             FDOFs = 0
-             IF (k > 0) THEN
-               FDOFs = k
-             ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
+           ! Outside the k==0 branch: with face dofs given explicitly (k>0 from
+           ! Def_Dofs(...,3)) this is the only assignment FDOFs gets, and n was
+           ! being incremented by a stale value without it.
+           FDOFs = 0
+           IF (k > 0) THEN
+             FDOFs = k
+           ELSE IF (Solver % Def_Dofs(ElemFamily,id,6) > 1) THEN
 ! TO DO: This is not yet perfect; cf. what is done in InitialPermutation
-               FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
-             END IF
+             FDOFs = getFaceDOFs(Element,Solver % Def_Dofs(ElemFamily,id,6),j,Face)
            END IF
            n = n + FDOFs
          END DO
-         FacesDone = .TRUE.
        END IF
 
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
@@ -2206,7 +2349,7 @@ CONTAINS
                  IF ( k==Face % TYPE % NumberOfNodes) EXIT
                END DO
              END IF
-               
+
              IF (Ind >= 1 .AND. Ind <= Parent % Type % NumberOfFaces) THEN
 
                IF (ASSOCIATED(Element % FaceIndexes).AND. isActivePelement(Element, Solver) ) THEN
@@ -2292,7 +2435,7 @@ CONTAINS
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
      LOGICAL, OPTIONAL  ::  NotDG
      INTEGER :: NB
-     
+
      NB = mGetElementDOFs( Indexes, UElement, USolver, NotDG )
   END FUNCTION GetElementDOFs
 
@@ -2300,10 +2443,10 @@ CONTAINS
 ! -----------------------------------------------------------------------------
 !> Returns the number of bubble degrees of freedom in the active element.
 !> If the sif file contains more than one solver section
-!> with each of them having their own specification of the "Element" 
-!> keyword, the BDOFs field of the Element structure may not be the number of 
-!> bubbles that should be assigned to the solver. With the optional argument 
-!> Update = .TRUE., the correct solver-wise bubble count is assigned to the 
+!> with each of them having their own specification of the "Element"
+!> keyword, the BDOFs field of the Element structure may not be the number of
+!> bubbles that should be assigned to the solver. With the optional argument
+!> Update = .TRUE., the correct solver-wise bubble count is assigned to the
 !> the Element structure.
 ! -----------------------------------------------------------------------------
   FUNCTION GetElementNOFBDOFs( Element, USolver, Update ) RESULT(n)
@@ -2347,10 +2490,10 @@ CONTAINS
       END IF
       ! This is risky business, see mGetElementDofs()
       IF(id==0) id=1
-      
-  
-      k = Solver % Def_Dofs(ElemFamily, id, 5) 
-      p = Solver % Def_Dofs(ElemFamily, id, 6) 
+
+
+      k = Solver % Def_Dofs(ElemFamily, id, 5)
+      p = Solver % Def_Dofs(ElemFamily, id, 6)
 
       IF (k >= 0 .OR. p >= 1) THEN
         ! Apparently an "Element" command has been read from a solver section.
@@ -2379,8 +2522,8 @@ CONTAINS
         CurrElement => GetCurrentElement(Element)
         ElemFamily = GetElementFamily(CurrElement)
 
-        k = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 5) 
-        p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6) 
+        k = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 5)
+        p = Solver % Def_Dofs(ElemFamily, CurrElement % Bodyid, 6)
 
         IF (k >= 0 .OR. p >= 1) THEN
           IF (p > 1) n = GetBubbleDOFs(CurrElement, p)
@@ -2405,16 +2548,18 @@ CONTAINS
 
 
 !> Returns the nodal coordinate values in the active element
-  SUBROUTINE GetElementNodes( ElementNodes, UElement, USolver, UMesh )
-     TYPE(Nodes_t) :: ElementNodes
+  SUBROUTINE GetElementNodes( ElementNodes, UElement, USolver, UMesh, UNodes )
+     TYPE(Nodes_t), TARGET :: ElementNodes
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
      TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
+     TYPE(Nodes_t), OPTIONAL, TARGET :: UNodes
 
      INTEGER :: i,n,nd,sz,sz1
      INTEGER, POINTER :: Indexes(:)
      TYPE(Mesh_t),  POINTER  :: Mesh
      TYPE(Element_t), POINTER :: Element
+     TYPE(Nodes_t), POINTER :: MeshNodes
 
      Element => GetCurrentElement(UElement)
 
@@ -2426,20 +2571,40 @@ CONTAINS
        Mesh => CurrentModel % Solver % Mesh
      END IF
 
+     ! Source of nodal coordinates: by default the current mesh nodes.
+     ! Passing them as argument avoids swapping Mesh % Nodes which is not thread safe.
+     IF( PRESENT( UNodes ) ) THEN
+       MeshNodes => UNodes
+     ELSE
+       MeshNodes => Mesh % Nodes
+     END IF
+
      n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
-     
-     IF ( .NOT. ASSOCIATED( ElementNodes % x ) ) THEN
-       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
-     ELSE IF ( SIZE(ElementNodes % x)<n ) THEN
-       DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z)
-       ALLOCATE( ElementNodes % x(n), ElementNodes % y(n),ElementNodes % z(n) )
+
+     IF ( .NOT. ALLOCATED( ElementNodes % xyz ) ) THEN
+       ALLOCATE( ElementNodes % xyz(n,3) )
+       ElementNodes % xyz = 0.0_dp
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
+     ELSE IF ( SIZE(ElementNodes % xyz, 1) < n ) THEN
+       DEALLOCATE( ElementNodes % xyz )
+       ALLOCATE( ElementNodes % xyz(n,3) )
+       ElementNodes % xyz = 0.0_dp
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
+     ELSE
+       ElementNodes % x => ElementNodes % xyz(1:n,1)
+       ElementNodes % y => ElementNodes % xyz(1:n,2)
+       ElementNodes % z => ElementNodes % xyz(1:n,3)
      END IF
 
      n = Element % TYPE % NumberOfNodes
 
-     ElementNodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes(1:n))
-     ElementNodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes(1:n))
-     ElementNodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes(1:n))
+     ElementNodes % x(1:n) = MeshNodes % x(Element % NodeIndexes(1:n))
+     ElementNodes % y(1:n) = MeshNodes % y(Element % NodeIndexes(1:n))
+     ElementNodes % z(1:n) = MeshNodes % z(Element % NodeIndexes(1:n))
 
      sz = SIZE(ElementNodes % x)
      IF ( sz > n ) THEN
@@ -2447,15 +2612,15 @@ CONTAINS
        ElementNodes % y(n+1:sz) = 0.0_dp
        ElementNodes % z(n+1:sz) = 0.0_dp
 
-       sz1 = SIZE(Mesh % Nodes % x)
+       sz1 = SIZE(MeshNodes % x)
        IF (sz1 > Mesh % NumberOfNodes) THEN
          Indexes => GetIndexStore()
          nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
          DO i=n+1,nd
            IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
-             ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
-             ElementNodes % y(i) = Mesh % Nodes % y(Indexes(i))
-             ElementNodes % z(i) = Mesh % Nodes % z(Indexes(i))
+             ElementNodes % x(i) = MeshNodes % x(Indexes(i))
+             ElementNodes % y(i) = MeshNodes % y(Indexes(i))
+             ElementNodes % z(i) = MeshNodes % z(Indexes(i))
            END IF
          END DO
        END IF
@@ -2475,7 +2640,6 @@ CONTAINS
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
 
      TYPE(Mesh_t),  POINTER  :: Mesh
-     TYPE(Nodes_t), POINTER :: TmpNodes
 
      IF( PRESENT( UMesh ) ) THEN
        Mesh => UMesh
@@ -2484,25 +2648,22 @@ CONTAINS
      ELSE
        Mesh => CurrentModel % Solver % Mesh
      END IF
-
-     TmpNodes => Mesh % Nodes
      IF(.NOT. ASSOCIATED( Mesh % NodesOrig ) ) THEN
        CALL Fatal('GetElementNodesOrig','Original node coordinates not yet stored!')
      END IF
-     Mesh % Nodes => Mesh % NodesOrig
 
-     CALL GetElementNodes( ElementNodes, UElement, Umesh = Mesh )
-     Mesh % Nodes => TmpNodes
+     CALL GetElementNodes( ElementNodes, UElement, UMesh = Mesh, UNodes = Mesh % NodesOrig )
 
    END SUBROUTINE GetElementNodesOrig
 
-  
+
 !> Returns the nodal coordinate values in the active element
-    SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh )
+    SUBROUTINE GetElementNodesVec( ElementNodes, UElement, USolver, UMesh, UNodes )
         TYPE(Nodes_t), TARGET :: ElementNodes
         TYPE(Solver_t), OPTIONAL, TARGET :: USolver
         TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
         TYPE(Element_t), OPTIONAL, TARGET :: UElement
+        TYPE(Nodes_t), OPTIONAL, TARGET :: UNodes
 
         INTEGER :: padn, dum
 
@@ -2512,6 +2673,7 @@ CONTAINS
         TYPE(Solver_t),  POINTER  :: Solver
         TYPE(Mesh_t),  POINTER  :: Mesh
         TYPE(Element_t), POINTER :: Element
+        TYPE(Nodes_t), POINTER :: MeshNodes
 
         Element => GetCurrentElement(UElement)
 
@@ -2523,18 +2685,26 @@ CONTAINS
           Mesh => CurrentModel % Solver % Mesh
         END IF
 
+        ! Source of nodal coordinates: by default the current mesh nodes.
+        ! Passing them as argument avoids swapping Mesh % Nodes which is not thread safe.
+        IF( PRESENT( UNodes ) ) THEN
+          MeshNodes => UNodes
+        ELSE
+          MeshNodes => Mesh % Nodes
+        END IF
+
         n = MAX(Mesh % MaxElementNodes,Mesh % MaxElementDOFs)
         padn = n
-        
-        ! Here we could pad beginning of columns of xyz to 64-byte 
+
+        ! Here we could pad beginning of columns of xyz to 64-byte
         ! boundaries if needed as follows
         ! padn=NBytePad(n,STORAGE_SIZE(REAL(1,dp))/8,64)
-        
+
         IF (.NOT. ALLOCATED( ElementNodes % xyz)) THEN
-            IF (ASSOCIATED(ElementNodes % x)) DEALLOCATE(ElementNodes % x) 
-            IF (ASSOCIATED(ElementNodes % y)) DEALLOCATE(ElementNodes % y) 
-            IF (ASSOCIATED(ElementNodes % z)) DEALLOCATE(ElementNodes % z) 
-          
+            IF (ASSOCIATED(ElementNodes % x)) DEALLOCATE(ElementNodes % x)
+            IF (ASSOCIATED(ElementNodes % y)) DEALLOCATE(ElementNodes % y)
+            IF (ASSOCIATED(ElementNodes % z)) DEALLOCATE(ElementNodes % z)
+
             ALLOCATE(ElementNodes % xyz(padn,3))
             ElementNodes % xyz = REAL(0,dp)
             ElementNodes % x => ElementNodes % xyz(1:n,1)
@@ -2556,9 +2726,9 @@ CONTAINS
         n = Element % TYPE % NumberOfNodes
 !DIR$ IVDEP
         DO i=1,n
-          ElementNodes % x(i) = Mesh % Nodes % x(Element % NodeIndexes(i))
-          ElementNodes % y(i) = Mesh % Nodes % y(Element % NodeIndexes(i))
-          ElementNodes % z(i) = Mesh % Nodes % z(Element % NodeIndexes(i))
+          ElementNodes % x(i) = MeshNodes % x(Element % NodeIndexes(i))
+          ElementNodes % y(i) = MeshNodes % y(Element % NodeIndexes(i))
+          ElementNodes % z(i) = MeshNodes % z(Element % NodeIndexes(i))
         END DO
 
         sz = SIZE(ElementNodes % xyz,1)
@@ -2568,16 +2738,16 @@ CONTAINS
             ElementNodes % xyz(n+1:sz,3) = 0.0d0
         END IF
 
-        sz1 = SIZE(Mesh % Nodes % x)
+        sz1 = SIZE(MeshNodes % x)
         IF (sz1 > Mesh % NumberOfNodes) THEN
             Indexes => GetIndexStore()
             nd = GetElementDOFs(Indexes,Element,NotDG=.TRUE.)
 !DIR$ IVDEP
             DO i=n+1,nd
                 IF ( Indexes(i)>0 .AND. Indexes(i)<=sz1 ) THEN
-                    ElementNodes % x(i) = Mesh % Nodes % x(Indexes(i))
-                    ElementNodes % y(i) = Mesh % Nodes % y(Indexes(i))
-                    ElementNodes % z(i) = Mesh % Nodes % z(Indexes(i))
+                    ElementNodes % x(i) = MeshNodes % x(Indexes(i))
+                    ElementNodes % y(i) = MeshNodes % y(Indexes(i))
+                    ElementNodes % z(i) = MeshNodes % z(Indexes(i))
                 END IF
             END DO
         END IF
@@ -2589,10 +2759,9 @@ CONTAINS
       TYPE(Element_t), OPTIONAL, TARGET :: UElement
       TYPE(Solver_t), OPTIONAL, TARGET :: USolver
       TYPE(Mesh_t), OPTIONAL, TARGET :: UMesh
-      
+
       TYPE(Mesh_t), POINTER :: Mesh
-      TYPE(Nodes_t), POINTER :: TmpNodes
-      
+
       IF( PRESENT( UMesh ) ) THEN
         Mesh => UMesh
       ELSE IF( PRESENT( USolver ) ) THEN
@@ -2600,21 +2769,16 @@ CONTAINS
       ELSE
         Mesh => CurrentModel % Solver % Mesh
       END IF
-
-      TmpNodes => Mesh % Nodes
       IF(.NOT. ASSOCIATED( Mesh % NodesOrig ) ) THEN
         CALL Fatal('GetElementNodesOrigVec','Original node coordinates not yet stored!')
       END IF
-      Mesh % Nodes => Mesh % NodesOrig
-      
-      CALL GetElementNodesVec( ElementNodes, UElement, UMesh = Mesh ) 
-            
-      Mesh % Nodes => TmpNodes
-      
+
+      CALL GetElementNodesVec( ElementNodes, UElement, UMesh = Mesh, UNodes = Mesh % NodesOrig )
+
     END SUBROUTINE GetElementNodesOrigVec
-      
-        
-    
+
+
+
 !> Get element body id
 !------------------------------------------------------------------------------
   FUNCTION GetBody( Element ) RESULT(body_id)
@@ -2645,7 +2809,7 @@ CONTAINS
   END FUNCTION GetBodyParams
 !------------------------------------------------------------------------------
 
-  
+
 !> Get the body force index of the active element
 !------------------------------------------------------------------------------
   FUNCTION GetBodyForceId(  Element, Found ) RESULT(bf_id)
@@ -2657,10 +2821,10 @@ CONTAINS
      INTEGER :: bf_id, body_id
 
      CurrElement => GetCurrentElement(Element)
-     body_id = CurrElement % BodyId 
+     body_id = CurrElement % BodyId
 
      IF ( PRESENT( Found ) ) THEN
-	bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
+       bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
            'Body Force', Found, minv=1,maxv=CurrentModel % NumberOfBodyForces )
      ELSE
         bf_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
@@ -2683,14 +2847,14 @@ CONTAINS
      INTEGER :: mat_id, body_id
 
      CurrElement => GetCurrentElement(Element)
-     body_id = CurrElement % BodyId 
+     body_id = CurrElement % BodyId
 
      IF( body_id <= 0 ) THEN
        mat_id = 0
        IF( PRESENT( Found ) ) Found = .FALSE.
        RETURN
      END IF
-     
+
      IF ( PRESENT( Found ) ) THEN
         mat_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
            'Material', Found, minv=1,maxv=CurrentModel % NumberOfMaterials )
@@ -2729,7 +2893,7 @@ CONTAINS
      INTEGER :: eq_id, body_id
 
      CurrElement => GetCurrentElement(Element)
-     body_id = CurrElement % BodyId 
+     body_id = CurrElement % BodyId
 
      IF ( PRESENT( Found ) ) THEN
         eq_id = ListGetInteger( CurrentModel % Bodies(body_id) % Values, &
@@ -2810,29 +2974,29 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Returns handle to Parent element of a boundary element with a larger body id.
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
   FUNCTION GetBulkElementAtBoundary( Element, Found ) RESULT(BulkElement)
 !------------------------------------------------------------------------------
     TYPE(Element_t), OPTIONAL :: Element
     LOGICAL, OPTIONAL :: Found
     TYPE(element_t), POINTER :: BulkElement
-!------------------------------------------------------------------------------    
+!------------------------------------------------------------------------------
     TYPE(element_t), POINTER :: BulkElementL, BulkElementR, BoundaryElement
     LOGICAL :: L
     INTEGER :: mat_id, BodyIdL, BodyIdR
 
     BulkElement => NULL()
-    
+
     BoundaryElement => GetCurrentElement(Element)
-      
+
     IF ( .NOT. ASSOCIATED(BoundaryElement % boundaryinfo)) RETURN
     BulkElementR => BoundaryElement % boundaryinfo % right
     BulkElementL => BoundaryElement % boundaryinfo % left
     BodyIdR = 0; BodyIdL = 0
-    
+
     IF (ASSOCIATED(BulkElementR)) BodyIdR = BulkElementR % BodyId
     IF (ASSOCIATED(BulkElementL)) BodyIdL = BulkElementL % BodyId
-    
+
     IF (BodyIdR == 0 .AND. BodyIdL == 0) THEN
       RETURN
     ELSE IF (BodyIdR > BodyIdL) THEN
@@ -2841,15 +3005,15 @@ CONTAINS
       BulkElement => BulkElementL
     END IF
 
-    IF( PRESENT( Found ) ) Found = ASSOCIATED( BulkElement ) 
-    
+    IF( PRESENT( Found ) ) Found = ASSOCIATED( BulkElement )
+
 !------------------------------------------------------------------------------
   END FUNCTION GetBulkElementAtBoundary
 !------------------------------------------------------------------------------
 
-  
+
 !------------------------------------------------------------------------------
-!> Returns handle to Material value list of the bulk material meeting  
+!> Returns handle to Material value list of the bulk material meeting
 !> element with larger body id. Typically Element is a boundary element.
   FUNCTION GetBulkMaterialAtBoundary( Element, Found ) RESULT(Material)
 !------------------------------------------------------------------------------
@@ -2866,12 +3030,12 @@ CONTAINS
     BulkElement => GetBulkElementAtBoundary(Element, Found)
 
     IF( ASSOCIATED( BulkElement ) ) THEN
-      mat_id = GetMaterialId( BulkElement, L )      
+      mat_id = GetMaterialId( BulkElement, L )
       IF ( L ) Material => CurrentModel % Materials(mat_id) % Values
     ELSE
       L = .FALSE.
     END IF
-    
+
     IF ( PRESENT( Found ) ) Found = L
 !------------------------------------------------------------------------------
   END FUNCTION GetBulkMaterialAtBoundary
@@ -2922,7 +3086,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!> Returns the handle to the equation where the active element belongs to 
+!> Returns the handle to the equation where the active element belongs to
 !------------------------------------------------------------------------------
   FUNCTION GetEquation( Element, Found ) RESULT(Equation)
 !------------------------------------------------------------------------------
@@ -2961,16 +3125,16 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 
      Element => GetCurrentElement( UElement )
-     
+
      IF(.NOT. ASSOCIATED( Element % BoundaryInfo ) ) THEN
        bc_id = 0
        RETURN
      END IF
-     
+
      DO bc_id=1,CurrentModel % NumberOfBCs
        IF ( Element % BoundaryInfo % Constraint == CurrentModel % BCs(bc_id) % Tag ) EXIT
      END DO
-      
+
      IF ( bc_id > CurrentModel % NumberOfBCs ) bc_id=0
 !------------------------------------------------------------------------------
   END FUNCTION GetBCId
@@ -2989,12 +3153,12 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
 
      Element => GetCurrentElement( UElement )
-     
+
      BC => NULL()
      bc_id = GetBCId( Element )
-     
+
      IF ( bc_id > 0 )  BC => CurrentModel % BCs(bc_id) % Values
-     
+
 !------------------------------------------------------------------------------
   END FUNCTION GetBC
 !------------------------------------------------------------------------------
@@ -3051,11 +3215,12 @@ CONTAINS
 
 !> Add the local matrix entries to for real valued equations that are of first order in time
 !------------------------------------------------------------------------------
-  SUBROUTINE Default1stOrderTimeR( M, A, F, UElement, USolver )
+  SUBROUTINE Default1stOrderTimeR( M, A, F, UElement, USolver, Nb )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: M(:,:),A(:,:), F(:)
     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+    INTEGER, OPTIONAL :: Nb                       !< Trailing locally condensed p-bubble basis functions in M/A/F, if any.
 
     LOGICAL :: Found
     TYPE(ValueList_t), POINTER :: Params
@@ -3088,13 +3253,131 @@ CONTAINS
 
     dt = Solver % dt
     Indexes => GetIndexStore()
+    ! GetElementDOFs already excludes a locally condensed bubble from n and
+    ! Indexes (it only counts Element % BubbleIndexes when Solver %
+    ! GlobalBubbles is True -- see mGetElementDOFs), so n here is already the
+    ! retained-only count even when Nb (below) is present.
     n = GetElementDOFs( Indexes,Element,Solver )
-          
+
+    IF( PRESENT(Nb) ) THEN
+      IF( Nb > 0 ) THEN
+        CALL Default1stOrderTimeBubble( Solver, Params, Element, x, dt, n, Nb, &
+            Indexes, M, A, F )
+        RETURN
+      END IF
+    END IF
+
     CALL Add1stOrderTime( M, A, F, dt, n, x % DOFs, &
         x % Perm(Indexes(1:n)), Solver, UElement=Element )
-      
+
 !------------------------------------------------------------------------------
   END SUBROUTINE Default1stOrderTimeR
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> The Nb > 0 branch of Default1stOrderTimeR: M, A and F cover N retained
+!> basis functions (N = the n GetElementDOFs already returned) followed by Nb
+!> locally condensed p-bubble ones. A condensed bubble's own value from the
+!> previous timestep is nowhere in the global solution vector -- Add1stOrderTime
+!> reads Solver % Variable via Perm, which such a bubble was never assigned a
+!> row in -- so x's own BubbleValues/BubblePrevValues (Types.F90) stand in
+!> for it instead, and CondensatePTransientH both forms the time derivative
+!> over the FULL retained+bubble block and eliminates the bubble rows/columns
+!> in one step, taking the place of Add1stOrderTime AND a following
+!> CondensateP call.
+!>
+!> Only the default (Implicit Euler / BDF order 1) scheme is supported so
+!> far -- CondensatePTransient hardcodes M/dt, unlike Add1stOrderTime's own
+!> dispatch on "Timestepping Method". Generalizing that (e.g. a higher BDF
+!> order needs more than one stored previous bubble value) is future work;
+!> for now a mismatched request is a Fatal, not a silently wrong answer.
+!> Having this live in one shared place, rather than duplicated per solver,
+!> is what will make that generalization tractable later.
+!------------------------------------------------------------------------------
+  SUBROUTINE Default1stOrderTimeBubble( Solver, Params, Element, x, dt, n, Nb, &
+      Indexes, M, A, F )
+!------------------------------------------------------------------------------
+    TYPE(Solver_t) :: Solver
+    TYPE(ValueList_t), POINTER :: Params
+    TYPE(Element_t) :: Element
+    TYPE(Variable_t), POINTER :: x
+    REAL(KIND=dp) :: dt
+    INTEGER :: n, Nb
+    INTEGER :: Indexes(:)
+    REAL(KIND=dp) :: M(:,:), A(:,:), F(:)
+
+    CHARACTER(LEN=MAX_NAME_LEN) :: Method
+    LOGICAL :: Found
+    INTEGER :: i, j, K, L, DOFs
+    REAL(KIND=dp), ALLOCATABLE :: PrevSol(:), CurSol(:)
+
+    IF( .NOT. ASSOCIATED( x % BubbleValues ) ) CALL Fatal( 'Default1stOrderTime', &
+        'A locally condensed bubble (Nb > 0) needs Solver % Variable''s bubble '// &
+        'history (x % BubbleValues) allocated first -- see BubbleHistoryUpdate.' )
+
+    ! Called from per-element threaded assembly (e.g. SSTKomega/V2FSolver's
+    ! LocalMatrixVec) -- ListGetString's CHARACTER(:) ALLOCATABLE result is
+    ! NOT thread-safe under gfortran (see GetStringThreadSafe's own callers /
+    ! the ListCompareElementString fix), so go through the thread-safe
+    ! fixed-length wrapper instead of assigning its result directly.
+    CALL GetStringThreadSafe( Params, 'Timestepping Method', Method, Found )
+    IF( Solver % Order /= 1 .OR. &
+        ( Found .AND. Method /= 'implicit euler' .AND. Method /= 'bdf' ) ) THEN
+      WRITE( Message, * ) 'A locally condensed bubble (Nb > 0) only supports the ' // &
+          'default Implicit Euler / BDF order 1 time integration -- got ' // &
+          'Timestepping Method = "'//TRIM(Method)//'", Order = ', Solver % Order
+      CALL Fatal( 'Default1stOrderTime', Message )
+    END IF
+
+    DOFs = x % DOFs
+    ALLOCATE( PrevSol(DOFs*n), CurSol(DOFs*n) )
+    DO i=1,n
+      DO j=1,DOFs
+        K = DOFs*(i-1)+j
+        L = DOFs*(x % Perm(Indexes(i))-1)+j
+        PrevSol(K) = x % PrevValues(L,1)
+        CurSol(K) = x % Values(L)
+      END DO
+    END DO
+
+    CALL CondensatePTransientH( x, Element % ElementIndex, n, Nb, DOFs, dt, &
+        M, A, F, PrevSol, CurSol )
+!------------------------------------------------------------------------------
+  END SUBROUTINE Default1stOrderTimeBubble
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Convenience wrapper over BubbleHistoryUpdate (MatrixAssembly.F90) for a
+!> solver's own top-level call, once per solve, before its element loop: the
+!> caller only ever needs to say Dofs, the number of interleaved dofs a
+!> bubble augments (usually the field's own Solver % Variable % DOFs, but
+!> e.g. IncompressibleNS/FlowSolve's velocity bubble excludes the pressure
+!> dof and so passes "dim" instead -- that is genuinely solver-specific and
+!> cannot be defaulted safely). Which Variable, how many mesh elements to
+!> size the history for, and which timestep to shift the recovered bubble
+!> part into "previous" for are all derived from USolver (or, absent that,
+!> CurrentModel % Solver, mirroring DefaultStart) rather than left for the
+!> caller to recompute at every call site.
+!------------------------------------------------------------------------------
+  SUBROUTINE DefaultBubbleHistoryUpdate( Dofs, USolver )
+!------------------------------------------------------------------------------
+    INTEGER :: Dofs                             !< Interleaved dofs per bubble.
+    TYPE(Solver_t), OPTIONAL, TARGET :: USolver
+
+    TYPE(Solver_t), POINTER :: Solver
+!------------------------------------------------------------------------------
+    IF( PRESENT(USolver) ) THEN
+      Solver => USolver
+    ELSE
+      Solver => CurrentModel % Solver
+    END IF
+
+    CALL BubbleHistoryUpdate( Solver % Variable, &
+        Dofs * MAX( Solver % Mesh % MaxBDOFs, Solver % Mesh % MaxElementNodes ), &
+        Solver % Mesh % NumberOfBulkElements + Solver % Mesh % NumberOfBoundaryElements, &
+        GetTimestep() )
+!------------------------------------------------------------------------------
+  END SUBROUTINE DefaultBubbleHistoryUpdate
 !------------------------------------------------------------------------------
 
 !> Add the local matrix entries to for complex valued equations that are of first order in time
@@ -3131,7 +3414,7 @@ CONTAINS
       RETURN
     END IF
 
-    Element => GetCurrentElement( UElement ) 
+    Element => GetCurrentElement( UElement )
 
     x => Solver % Variable
 
@@ -3197,7 +3480,7 @@ CONTAINS
      Solver => CurrentModel % solver
    END IF
 
-   Order = MAX( MIN( Solver % DoneTime, Solver % Order ), 1)   
+   Order = MAX( MIN( Solver % DoneTime, Solver % Order ), 1)
    HasMass = ASSOCIATED( Solver % Matrix % MassValues )
 
    HasFCT = ListGetLogical( Solver % Values,'Linear System FCT', Found )
@@ -3230,10 +3513,10 @@ CONTAINS
        n = MAX( n,Solver % Matrix % Rows(i+1)-Solver % Matrix % Rows(i) )
      END DO
      k = SIZE(Solver % Variable % PrevValues,2)
-     ALLOCATE( STIFF(1,n),MASS(1,n),X(n,k) )     
+     ALLOCATE( STIFF(1,n),MASS(1,n),X(n,k) )
      SaveValues => Solver % Variable % Values
    END IF
-   
+
    STIFF = 0.0_dp
    MASS = 0.0_dp
    X = 0.0_dp
@@ -3250,7 +3533,7 @@ CONTAINS
        END DO
      END IF
    END IF
-   
+
    DO i=1,Solver % Matrix % NumberOFRows
      n = 0
      k = 0
@@ -3262,7 +3545,7 @@ CONTAINS
          MASS(1,n) = Solver % Matrix % MassValues(j)
        ELSE IF( HasFCT ) THEN
          IF( j == Solver % Matrix % Diag(i) ) k = n
-       END IF         
+       END IF
        X(n,:) = Solver % Variable % PrevValues(Solver % Matrix % Cols(j),:)
      END DO
 
@@ -3282,14 +3565,14 @@ CONTAINS
      CASE( 'fs' )
        CALL FractionalStep( n, Solver % dt, MASS, STIFF, FORCE, &
            X(:,1), Solver % Beta, Solver )
-       
-     CASE('bdf')       
+
+     CASE('bdf')
        IF(ConstantDt) THEN
          CALL BDFLocal( n, Solver % dt, MASS, STIFF, FORCE, X, Order )
        ELSE
          CALL VBDFLocal(n, Dts, MASS, STIFF, FORCE, X, Order )
        END IF
-       
+
      CASE DEFAULT
        CALL NewmarkBeta( n, Solver % dt, MASS, STIFF, FORCE, &
            X(:,1), Solver % Beta )
@@ -3327,7 +3610,7 @@ CONTAINS
    ELSE
      Solver => CurrentModel % solver
    END IF
-   
+
    ! This is now the default global time integration routine but the old hack may still be called
    !---------------------------------------------------------------------------------------------
    IF( .NOT. ListGetLogical( Solver % Values,'Old Global Time Integration',Found ) ) THEN
@@ -3336,7 +3619,7 @@ CONTAINS
      RETURN
    END IF
 
-   
+
    IF ( .NOT.ASSOCIATED(Solver % Variable % Values, SaveValues) ) THEN
       IF ( ALLOCATED(STIFF) ) DEALLOCATE( STIFF,MASS,DAMP,X )
       n = 0
@@ -3367,10 +3650,10 @@ CONTAINS
       END DO
       FORCE(1) = Solver % Matrix % RHS(i)
       Solver % Matrix % Force(i,1) = FORCE(1)
-      
+
       CALL Time2ndOrder( n, Solver % dt, MASS, DAMP, STIFF, &
           FORCE, X(1:n,3), X(1:n,4), X(1:n,5), X(1:n,7), Solver % Alpha, Solver % Beta )
-      
+
       n = 0
       DO j=Solver % Matrix % Rows(i),Solver % Matrix % Rows(i+1)-1
         n=n+1
@@ -3412,7 +3695,7 @@ CONTAINS
       RETURN
     END IF
 
-    Element => GetCurrentElement( UElement ) 
+    Element => GetCurrentElement( UElement )
 
     x => Solver % Variable
 
@@ -3458,8 +3741,8 @@ CONTAINS
       RETURN
     END IF
 
-    Element => GetCurrentElement( UElement ) 
-    
+    Element => GetCurrentElement( UElement )
+
     x => Solver % Variable
 
     dt = Solver % dt
@@ -3512,12 +3795,14 @@ CONTAINS
 !> The strategy can be particularly efficient for nonlinear problems when the
 !> slave solver is cheap and a stepsize control is applied.
 !> Also one can easily make postprocessing steps just at the correct slot.
-!-----------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr)
-!------------------------------------------------------------------------------  
+!---------------------------------------------------------------------------------------
+  RECURSIVE SUBROUTINE DefaultSlaveSolvers( Solver, SlaveSolverStr, SlaveInd, SlaveCnt )
+!---------------------------------------------------------------------------------------
      TYPE(Solver_t), TARGET :: Solver
      CHARACTER(LEN=*) :: SlaveSolverStr
-     
+     INTEGER, OPTIONAL :: SlaveInd
+     INTEGER, OPTIONAL :: SlaveCnt
+
      TYPE(Solver_t), POINTER :: SlaveSolver
      TYPE(ValueList_t), POINTER :: Params
      TYPE(Variable_t), POINTER :: iterV
@@ -3538,22 +3823,38 @@ CONTAINS
        END SUBROUTINE SolverActivate_x
      END INTERFACE
 
-     SlaveSolverIndexes =>  ListGetIntegerArray( Solver % Values,&
+     IF(PRESENT(SlaveCnt)) SlaveCnt = 0
+     SlaveSolverIndexes => ListGetIntegerArray( Solver % Values,&
          SlaveSolverStr,Found )
      IF(.NOT. Found ) RETURN
 
-     CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
-         TRIM(SlaveSolverStr),Level=6)
-     
-     dt = GetTimeStepsize()
-     Transient = GetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
+     IF( PRESENT( SlaveInd ) ) THEN
+       CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
+           TRIM(SlaveSolverStr)//' : '//I2S(SlaveInd),Level=6)
+     ELSE
+       CALL Info('DefaultSlaveSolvers','Executing slave solvers: '// &
+           TRIM(SlaveSolverStr),Level=6)
+     END IF
+
+     dt = 0.0_dp
+     iterV => VariableGet( Solver % Mesh % Variables, 'timestep size', &
+         ThisOnly = .TRUE., UnfoundFatal=.TRUE.)
+     dt = iterV % Values(1)
+
+     Transient = ListGetString(CurrentModel % Simulation,'Simulation type',Found)=='transient'
 
      ! store the nonlinear iteration at the outer loop
      iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
-     iter = NINT(iterV % Values(1))
+     IF(ASSOCIATED(iterV)) iter = NINT(iterV % Values(1))
 
-     
+     IF(PRESENT(SlaveCnt)) SlaveCnt = SIZE(SlaveSolverIndexes)
+
      DO j=1,SIZE(SlaveSolverIndexes)
+
+       IF(PRESENT(SlaveInd)) THEN
+         IF(j /= SlaveInd) CYCLE
+       END IF
+
        k = SlaveSolverIndexes(j)
        SlaveSolver => CurrentModel % Solvers(k)
 
@@ -3565,13 +3866,13 @@ CONTAINS
            CALL ListAddLogical(SlaveSolver % Values,'Linear System Solver Disabled',.TRUE.)
          END IF
        END IF
-         
+
        IF(ParEnv % PEs>1) THEN
          SParEnv => ParEnv
 
          IF(ASSOCIATED(SlaveSolver % Matrix)) THEN
            IF(ASSOCIATED(SlaveSolver % Matrix % ParMatrix) ) THEN
-             ParEnv => SlaveSolver % ParEnv
+             CALL SetMatrixParEnv( SlaveSolver % Matrix )
            ELSE
              ParEnv % ActiveComm = SlaveSolver % Matrix % Comm
            END IF
@@ -3587,13 +3888,13 @@ CONTAINS
          ParEnv => SParEnv
        END IF
      END DO
-     iterV % Values = iter       
+     IF(ASSOCIATED(iterV)) iterV % Values = iter
      CurrentModel % Solver => Solver
 
    END SUBROUTINE DefaultSlaveSolvers
 !------------------------------------------------------------------------------
- 
-  
+
+
 
 !> Performs initialization for matrix equation related to the active solver
 !------------------------------------------------------------------------------
@@ -3608,7 +3909,7 @@ CONTAINS
      INTEGER :: i,n,dim
      TYPE(ElementType_t), POINTER :: et
      LOGICAL :: Found, AnyNT, AnyProj, DoDisplaceMesh
-     
+
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
@@ -3617,7 +3918,7 @@ CONTAINS
 
      IF(.NOT. ASSOCIATED( Solver % Matrix ) ) THEN
        CALL Fatal('DefaultInitialize','No matrix exists, cannot initialize!')
-     END IF     
+     END IF
 
      ! Reset basis cache on all element types so ip-slot assignments from this
      ! solver do not corrupt lookups by the next solver (which may use a
@@ -3649,16 +3950,16 @@ CONTAINS
        CALL ApplyExplicitControl( Solver )
      END IF
 
-     
+
      CALL DefaultSlaveSolvers(Solver,'Slave Solvers') ! this is the initial name of the slot
-     CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')     
+     CALL DefaultSlaveSolvers(Solver,'Nonlinear Pre Solvers')
 
 
      ! If we changed the system last time to harmonic one then revert back the real system
      IF( ListGetLogical( Solver % Values,'Harmonic Mode',Found ) ) THEN
        CALL ChangeToHarmonicSystem( Solver, .TRUE. )
      END IF
-     
+
      CALL InitializeToZero( Solver % Matrix, Solver % Matrix % RHS )
 
      IF ( Solver % Variable % DOFs > 1 ) THEN
@@ -3707,22 +4008,22 @@ CONTAINS
      IF(ASSOCIATED(Solver % Matrix % RhsAdjoint) ) THEN
        Solver % Matrix % RhsAdjoint = 0.0_dp
      END IF
-     
+
      IF( ALLOCATED(Solver % Matrix % ConstrainedDOF) ) THEN
        Solver % Matrix % ConstrainedDOF = .FALSE.
      END IF
-       
+
      IF( ALLOCATED(Solver % Matrix % Dvalues) ) THEN
        Solver % Matrix % Dvalues = 0._dp
      END IF
 
-     IF( ListGetLogical( Solver % Values,'Bulk Assembly Timing',Found ) ) THEN 
-       CALL ResetTimer('BulkAssembly'//GetVarName(Solver % Variable) ) 
+     IF( ListGetLogical( Solver % Values,'Bulk Assembly Timing',Found ) ) THEN
+       CALL ResetTimer('BulkAssembly'//GetVarName(Solver % Variable) )
      END IF
 
      ! This is a slot for calling solver that contribute to the assembly
      CALL DefaultSlaveSolvers(Solver,'Assembly Solvers')
-                
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultInitialize
 !------------------------------------------------------------------------------
@@ -3733,13 +4034,13 @@ CONTAINS
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultStart( USolver )
 !------------------------------------------------------------------------------
-     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver     
+     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(IN) :: USolver
      TYPE(Solver_t), POINTER :: Solver
      LOGICAL :: Found
      TYPE(ValueList_t), POINTER :: Params
      INTEGER :: i,j,n
      TYPE(Matrix_t), POINTER :: pMatrix
-     
+
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
@@ -3747,10 +4048,22 @@ CONTAINS
      END IF
 
      Params => Solver % Values
-     
+
      CALL Info('DefaultStart','Starting solver: '//&
         GetString(Params,'Equation'),Level=10)
-     
+#if 0 
+     ! Code for splitting the mesh to be able to integrate accurately over discontinuous
+     ! fields defined by zero levelset.
+     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
+       pMatrix => Solver % Matrix
+       CALL CreateCutFEMPerm(Solver,.TRUE.)
+       Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
+       CALL FreeMatrix(pMatrix)
+       IF(.NOT. ListGetLogical( Params,'CutFEM Solver',Found ) ) THEN
+         CALL CreateCutFEMAddMesh(Solver)
+       END IF
+     END IF
+#endif
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -3759,7 +4072,7 @@ CONTAINS
      IF( ListGetLogical( Params,'Nonlinear System Nullify Guess', Found ) ) THEN
        Solver % Variable % Values = 0.0_dp
      END IF
-     
+
      ! If we changed the system last time to harmonic one then revert back the real system
      IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
        CALL ChangeToHarmonicSystem( Solver, .TRUE. )
@@ -3772,7 +4085,7 @@ CONTAINS
      IF( ListGetLogical(Params,'Local Matrix Storage',Found ) ) THEN
        IF(.NOT. ASSOCIATED(Solver % InvActiveElements) ) THEN
          ALLOCATE( Solver % InvActiveElements( Solver % Mesh % NumberOfBulkElements &
-             + Solver % Mesh % NumberOFBoundaryElements ) )         
+             + Solver % Mesh % NumberOFBoundaryElements ) )
          Solver % InvActiveElements = 0
          DO i=1,Solver % NumberOfActiveElements
            Solver % InvActiveElements( Solver % ActiveElements(i) ) = i
@@ -3786,16 +4099,16 @@ CONTAINS
        IF(.NOT. ASSOCIATED(Solver % LocalSystem ) ) THEN
          CALL Info('DefaultStart','Allocating local storage of size: '//I2S(n),Level=7)
          ALLOCATE( Solver % LocalSystem(n) )
-         Solver % LocalSystem(1:n) % eind = 0         
+         Solver % LocalSystem(1:n) % eind = 0
          ! If the stiffness matrix is constant the 1st element gives stiffness matrix for all!
-         ! This could be inherited differently too for splitted meshes, for example. 
+         ! This could be inherited differently too for splitted meshes, for example.
          IF( ListGetLogical( Params,'Local Matrix Identical', Found )  ) THEN
            CALL Info('DefaultStart','Assuming all elements to be identical!')
-           Solver % LocalSystem(1:n) % eind = 1         
+           Solver % LocalSystem(1:n) % eind = 1
          ELSE IF( ListGetLogical( Params,'Local Matrix Identical Bodies', Found )  ) THEN
            CALL Info('DefaultStart','Assuming all elements to be identical within bodies!')
            BLOCK
-             INTEGER, ALLOCATABLE :: Body1st(:)             
+             INTEGER, ALLOCATABLE :: Body1st(:)
              ALLOCATE(Body1st(CurrentModel % NumberOfBodies))
              Body1st = 0
              DO i=1,Solver % NumberOfActiveElements
@@ -3806,32 +4119,32 @@ CONTAINS
            END BLOCK
          END IF
        END IF
-       
+
        Solver % LocalSystemMode = 1
      END IF
-     
+
      IF(ListGetLogical( Params,'Solve Adjoint Equation',Found ) ) THEN
        IF(.NOT. ASSOCIATED( Solver % Matrix % RhsAdjoint ) ) THEN
          ALLOCATE( Solver % Matrix % RhsAdjoint(SIZE(Solver % Matrix % Rhs)))
        END IF
        CALL ListAddLogical( Params,'Constraint Modes Analysis Frozen',.TRUE.)
      END IF
-     
-     
-     BLOCK 
+
+
+     BLOCK
        INTEGER, POINTER :: SlaveSolverIndexes(:)
        CHARACTER(:), ALLOCATABLE :: str
        TYPE(Solver_t), POINTER :: SlaveSolver
        TYPE(NormalTangential_t), POINTER :: NT
        INTEGER :: dim
 
-       SlaveSolverIndexes =>  ListGetIntegerArray( Params,'prec solvers',Found )     
+       SlaveSolverIndexes =>  ListGetIntegerArray( Params,'prec solvers',Found )
 
        IF(ASSOCIATED(SlaveSolverIndexes)) THEN
          DO i=1,SIZE(SlaveSolverIndexes)
            j = SlaveSolverIndexes(i)
            SlaveSolver => CurrentModel % Solvers(j)
-           
+
            str = 'Normal-Tangential ' // GetVarName(SlaveSolver % Variable)
            IF( ListGetLogicalAnyBC( CurrentModel, str ) ) THEN
              CALL Info('DefaultStart','Generating N-T system for preconditioning solver!')
@@ -3840,11 +4153,11 @@ CONTAINS
              NT => SlaveSolver % NormalTangential
              NT % NormalTangentialNOFNodes = 0
              NT % NormalTangentialName = TRIM(str)
-             
+
              CALL CheckNormalTangentialBoundary( CurrentModel, NT % NormalTangentialName, &
                  NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
                  NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, dim )
-             
+
              CALL AverageBoundaryNormals( CurrentModel, NT % NormalTangentialName, &
                  NT % NormalTangentialNOFNodes, NT % BoundaryReorder, &
                  NT % BoundaryNormals, NT % BoundaryTangent1, NT % BoundaryTangent2, &
@@ -3854,13 +4167,13 @@ CONTAINS
 
        END IF
      END BLOCK
-            
+
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultStart
 !------------------------------------------------------------------------------
 
 
-  
+
 !> Performs finalizing steps related to the active solver
 !------------------------------------------------------------------------------
   RECURSIVE SUBROUTINE DefaultFinish( USolver )
@@ -3871,7 +4184,7 @@ CONTAINS
      TYPE(Mesh_t), POINTER :: Mesh
      CHARACTER(:), ALLOCATABLE :: str
      LOGICAL :: Found, SolveAdjoint
-     
+
      IF ( PRESENT( USolver ) ) THEN
        Solver => USolver
      ELSE
@@ -3883,10 +4196,10 @@ CONTAINS
      IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
        str = GetString( Params,'Linear System Save Slot', Found )
        IF(Found .AND. str == 'finish') THEN
-         CALL SaveLinearSystem( Solver ) 
+         CALL SaveLinearSystem( Solver )
        END IF
      END IF
-             
+
      ! One can run postprocessing solver in this slot.
      !-----------------------------------------------------------------------------
      CALL DefaultSlaveSolvers(Solver,'Post Solvers')
@@ -3897,8 +4210,11 @@ CONTAINS
 
 
      SolveAdjoint = ListGetLogical(Params,'Solve Adjoint Equation', Found )
-
      IF( SolveAdjoint ) THEN
+       ! This routine uses the existing linear system and computes an additional solution
+       ! with different r.h.s. that can come from given source vector or given source term.
+       ! This can be used to compute sensitivities for problems that are self-adjoined.
+       !----------------------------------------------------------------------------------
        BLOCK
          INTEGER :: n
          REAL(KIND=dp) :: Norm
@@ -3907,10 +4223,10 @@ CONTAINS
          TYPE(Variable_t), POINTER :: aVar
          TYPE(Mesh_t), POINTER :: Mesh
          LOGICAL :: LFact, FreeFact
-         
+
          n = SIZE(Solver % Matrix % rhs)
 
-         LFact = ListGetLogical( Params,'Linear System Refacrtorize', Found )
+         LFact = ListGetLogical( Params,'Linear System Refactorize', Found )
          IF(.NOT. Found) LFact = .TRUE.
          FreeFact = ListGetLogical( Params,'Linear System Free Factorization', Found )
 
@@ -3924,8 +4240,8 @@ CONTAINS
            CALL Info('DefaultFinish','Creating adjoint solution with source: '//TRIM(str))
            CALL AssembleAdjointRhs( Solver, str )
          END IF
-         
-         
+
+
          Mesh => Solver % Mesh
          aVar => VariableGet( Mesh % Variables,TRIM(Solver % Variable % Name)//' adjoint')
          IF(.NOT. ASSOCIATED(aVar)) THEN
@@ -3942,9 +4258,9 @@ CONTAINS
                  Output = .TRUE., Secondary = .TRUE.)
          ELSE
            AdjSol => avar % Values
-           AdjSol = 0.0_dp           
+           AdjSol = 0.0_dp
          END IF
-           
+
          ! Dirichlet conditions are not sensitive because they are constant
          WHERE( Solver % Matrix % ConstrainedDOF )
            Solver % Matrix % RhsAdjoint = 0.0_dp
@@ -3952,7 +4268,7 @@ CONTAINS
 
          CALL SolveSystem( Solver % Matrix, ParMatrix, Solver % Matrix % rhsAdjoint, &
              AdjSol, Norm, Solver % Variable % DOFs,Solver )
-             
+
          CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
          CALL ListAddLogical( Params,'Skip Advance Nonlinear iter',.FALSE.)
          CALL ListAddLogical( Params, 'Linear System Constant Matrix', .FALSE.)
@@ -3961,24 +4277,24 @@ CONTAINS
 
        END BLOCK
      END IF
-       
-     
-     
+
+
+
      IF( Solver % NumberOfConstraintModes > 0 ) THEN
        ! If we have a frozen stat then the nonlinear system loop is used to find that frozen state
-       ! and we perform the linearized constraint modes analysis at the end. 
+       ! and we perform the linearized constraint modes analysis at the end.
        IF( ListGetLogical(Params,'Constraint Modes Analysis Frozen',Found ) ) THEN
-         BLOCK 
+         BLOCK
            INTEGER :: n
            REAL(KIND=dp) :: Norm
            REAL(KIND=dp), ALLOCATABLE :: xtmp(:), btmp(:)
            REAL(KIND=dp), POINTER :: AdjSol(:)
-           
+
            n = SIZE(Solver % Matrix % rhs)
            CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
 
            IF( SolveAdjoint ) THEN
-             
+
              CALL SolveSystem( Solver % Matrix, ParMatrix, Solver % Matrix % rhsAdjoint, &
                  Solver % Variable % ConstraintModes(1,:), Norm, Solver % Variable % DOFs,Solver )
 
@@ -3992,54 +4308,179 @@ CONTAINS
                  TRIM(Solver % Variable % Name)//' adjoint rhs',Solver % Variable % Dofs,&
                  Solver % Matrix % rhsAdjoint, Solver % Variable % Perm, &
                  Output = .TRUE., Secondary = .TRUE.)
-             
-           ELSE           
+
+           ELSE
              ALLOCATE(xtmp(n),btmp(n))
              btmp = Solver % Matrix % rhs
-             xtmp = Solver % Variable % Values 
-             
+             xtmp = Solver % Variable % Values
+
              Solver % Matrix % rhs = 0.0_dp
-             
+
              CALL ListAddLogical(Params,'Constraint Modes Analysis Frozen',.FALSE.)
-             
+
              CALL SolveSystem( Solver % Matrix, ParMatrix, Solver % Matrix % rhs, &
                  Solver % Variable % Values, Norm, Solver % Variable % DOFs,Solver )
-             
+
              CALL ListAddLogical(Params,'Constraint Modes Analysis Frozen',.TRUE.)
-             
-             Solver % Matrix % rhs = btmp 
+
+             Solver % Matrix % rhs = btmp
              Solver % Variable % Values = xtmp
              DEALLOCATE(xtmp,btmp)
            END IF
-             
+
            CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
          END BLOCK
        END IF
-         
+
        IF( ListGetLogical( Params,'Nonlinear System Constraint Modes', Found ) ) THEN
-         CALL FinalizeLumpedMatrix( Solver )            
+         CALL FinalizeLumpedMatrix( Solver )
        END IF
      END IF
 
+#if 0
+     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
+       Mesh => Solver % Mesh
+
+       ! We do not need the old meshes. When we reach a new timestep
+       ! they have already been saved.
+       IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
+         IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
+           CALL FreeMesh(Solver % Mesh % Next % Next )
+         END IF
+         CALL FreeMesh(Solver % Mesh % Next)
+       END IF
+
+       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
+       ! The Mesh % Next is saved normally in the VTU files etc.
+       CALL LevelSetUpdate(Solver,Solver % Mesh)
+
+       ! We do not need to create the actual CutFEM Mesh, but we might want to have it
+       ! for visualization purposes.
+       IF( ListGetLogical( Solver % Values,'CutFEM Mesh Save', Found ) )  THEN
+         ! This 2D mesh becomes Mesh % Next % Next
+         Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
+             .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable')
+       END IF
+
+       CALL CutFEMVariableFinalize(Solver)
+     END IF
+#endif
+     
      IF( ListGetLogical( Params,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)
      END IF
 
      CALL Info('DefaultFinish','Finished solver: '//GetString(Params,'Equation'),Level=8)
-     
+
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------
 
-   FUNCTION DefaultSplitFEM(Solver) RESULT( Swap ) 
-     TYPE(Solver_t), TARGET, OPTIONAL :: Solver
+   !------------------------------------------------------------------------------
+   !> Calculate full derivative resulting from a change in another field solver.
+   !> This routine modifies one field, and returns to do assembly ans solution
+   !> of the primary field and then computes the sensitivity on the 2nd round.
+   !------------------------------------------------------------------------------
+   FUNCTION DefaultSensitivity(uSolver) RESULT ( omstart )
+     TYPE(Solver_t), TARGET, OPTIONAL :: uSolver
+     LOGICAL :: Omstart
 
+     TYPE(ValueList_t), POINTER :: Params
+     LOGICAL :: SensActive = .FALSE.
+     TYPE(Variable_t), POINTER :: changeVar, sensVar, primVar, changeVeloVar, dtVar
+     TYPE(Solver_t), POINTER :: Solver
+     REAL(KIND=dp) :: changeEps, aid, Nrm
+     LOGICAL :: Found, ApplyLImiter
+     CHARACTER(:), ALLOCATABLE :: str
+     INTEGER :: i
+
+
+     SAVE SensActive, changeVar, sensVar, changeEps, ApplyLimiter, primVar, &
+         dtVar, changeVeloVar, Nrm
+
+     IF ( PRESENT( USolver ) ) THEN
+       Solver => USolver
+     ELSE
+       Solver => CurrentModel % Solver
+     END IF
+
+     Params => Solver % Values
+     Omstart = .FALSE.
+     IF(.NOT. ListGetLogical( Params,'Calculate Sensitivity', Found ) ) RETURN
+
+     IF(.NOT. SensActive ) THEN
+       CALL Info('DefaultSensitivity','Making a small variation and recomputing the solution!',Level=12)
+
+       ! Find the variable that is internally used to update the gap
+       str = ListGetString(Params,'Change Variable', UnfoundFatal = .TRUE.)
+       changeVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE. )
+       changeEps = ListGetCReal( Params,'Change Epsilon', UnfoundFatal = .TRUE. )
+       changeVar % Values = changeVar % Values + changeEps
+
+       ! We may need to compute the derivative of the changing variable too!
+       NULLIFY( changeVeloVar )
+       str = ListGetString(Params,'Change Velocity Variable', Found )
+       IF( Found ) THEN
+         changeVeloVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal = .TRUE.)
+         dtVar => VariableGet( Solver % Mesh % Variables, 'timestep size', UnfoundFatal = .TRUE.)
+         changeVeloVar % Values = (changeVar % Values(:) - changeVar % PrevValues(:,1)) / dtVar % Values(1)
+       END IF
+
+       ! Get pointer to the sensitivity variable
+       str = ListGetString(Params,'Sensitivity Variable', UnfoundFatal = .TRUE.)
+       SensVar => VariableGet( Solver % Mesh % Variables, str, UnfoundFatal=.TRUE.)
+
+       ! The primary variable
+       PrimVar => Solver % Variable
+       Nrm = Solver % Variable % Norm
+       ! Remember the old values
+       SensVar % Values = PrimVar % Values
+
+       ApplyLimiter = ListGetLogical( Params,'Apply Limiter', Found )
+       IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .FALSE. )
+       CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.TRUE.)
+
+       SensActive = .TRUE.
+       Omstart = .TRUE.
+     ELSE
+       CALL Info('DefaultSensitivity','Computing sensitivity from numerical derivative!',Level=12)
+
+       ! Return the gap as it was
+       changeVar % Values = changeVar % Values - changeEps
+
+       ! Revert back to the velocity
+       IF( ASSOCIATED(changeVeloVar) ) THEN
+         changeVeloVar % Values = (changeVar % Values(:) - changeVar % PrevValues(:,1)) / dtVar % Values(1)
+       END IF
+
+       ! Calculate the sensitivity from one-sided differential, we need to swap the values
+       ! so let's do it one value at the time.
+       DO i=1,SIZE(SensVar % Values)
+         aid = SensVar % Values(i)
+         SensVar % Values(i) = ( PrimVar % Values(i) - aid) / changeEps
+         PrimVar % Values(i) = aid
+       END DO
+       Solver % Variable % Norm = Nrm
+
+       ! Return solver variable and solver settings as they were
+       IF( ApplyLimiter ) CALL ListAddLogical( Params,'Apply Limiter', .TRUE. )
+       CALL ListAddLogical(Params,'Skip Compute Nonlinear Change',.FALSE.)
+
+       SensActive = .FALSE.
+       Omstart = .FALSE.
+     END IF
+
+   END FUNCTION DefaultSensitivity
+
+
+   FUNCTION DefaultSplitFEM(Solver) RESULT( Swap )
+     TYPE(Solver_t), TARGET, OPTIONAL :: Solver
      TYPE(Solver_t), POINTER :: pSolver
      LOGICAL :: Swap, Found
      INTEGER :: i,n,Counter=0
 
-     SAVE Counter 
-     
+     SAVE Counter
+
      Swap = .FALSE.
 
      IF(PRESENT(Solver)) THEN
@@ -4047,8 +4488,7 @@ CONTAINS
      ELSE
        pSolver => CurrentModel % Solver
      END IF
-       
-     
+            
      ! Nothing to do. 
      IF(.NOT. pSolver % SplitFEM ) RETURN
      
@@ -4064,7 +4504,8 @@ CONTAINS
      END IF
      
    END FUNCTION DefaultSplitFEM
-      
+
+   
 
 !> Solver the matrix equation related to the active solver
 !------------------------------------------------------------------------------
@@ -4089,9 +4530,9 @@ CONTAINS
     LOGICAL :: LinearSystemTrialing, SourceControl, NonlinearControl, &
         MonolithicSlave
     REAL(KIND=dp) :: s(3)
-    
+
     CALL Info('DefaultSolve','Solving linear system with default routines',Level=10)
-    
+
     Solver => CurrentModel % Solver
     Norm = REAL(0, dp)
     IF ( PRESENT( USolver ) ) Solver => USolver
@@ -4101,7 +4542,7 @@ CONTAINS
     NameSpaceI = NINT( ListGetCReal( Params,'Linear System Namespace Number', Found ) )
     LinearSystemTrialing = ListGetLogical( Params,'Linear System Trialing', Found )
     IF( LinearSystemTrialing ) NameSpaceI = MAX( 1, NameSpaceI )
-      
+
     IF( NameSpaceI > 0 ) THEN
       CALL Info('DefaultSolve','Linear system namespace number: '//I2S(NameSpaceI),Level=7)
       CALL ListPushNamespace('linsys'//I2S(NameSpaceI)//':')
@@ -4109,15 +4550,15 @@ CONTAINS
 
     IF( ListGetLogical( Params,'Linear System Remove Zeros',Found ) ) THEN
       CALL CRS_RemoveZeros( Solver % Matrix )
-    END IF	
-        
+    END IF
+
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF(.NOT. Found .OR. saveslot == 'solve') THEN
-        CALL SaveLinearSystem( Solver ) 
+        CALL SaveLinearSystem( Solver )
       END IF
     END IF
-    
+
     IF (PRESENT(BackRotNT)) THEN
       BackRot=GetLogical(Params,'Back Rotate N-T Solution',Found)
       IF(.NOT.Found) BackRot=.TRUE.
@@ -4127,58 +4568,58 @@ CONTAINS
     END IF
 
     MonolithicSlave = ListGetLogical(Params,'Monolithic Slave',Found )
-    IF( MonolithicSlave ) THEN      
+    IF( MonolithicSlave ) THEN
       CALL MergeSlaveSolvers( Solver, PreSolve = .TRUE.)
     END IF
-           
+
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver )
     END IF
 
     ! Generate projector that allows enforcing of total flux when using Robin BC's
     CALL GenerateRobinProjectors( CurrentModel, Solver )
-    
+
     ! Combine the individual projectors into one massive projector
     CALL GenerateConstraintMatrix( CurrentModel, Solver )
     CALL GenerateAddMatrix( CurrentModel, Solver )
-    
+
     IF( GetLogical(Params,'Linear System Solver Disabled',Found) ) THEN
       CALL Info('DefaultSolve','Solver disabled, exiting early!',Level=10)
       RETURN
-    END IF    
+    END IF
 
     SourceControl = ListGetLogical( Params,'Apply Source Control',Found )
-    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.TRUE. ) 
-    
+    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.TRUE. )
+
     NonlinearControl = ListGetLogical( Params,'Apply Nonlinear Control',Found )
     IF(NonlinearControl) CALL ControlNonlinearSystem( Solver, PreSolve=.TRUE.)
 
-    
+
     CALL Info('DefaultSolve','Calling SolveSystem for linear solution',Level=20)
 
     A => Solver % Matrix
-    x => Solver % Variable    
+    x => Solver % Variable
     b => A % RHS
     SOL => x % Values
 
     ! Debugging stuff activated only when "Max Output Level" >= 20
     IF( InfoActive( 20 ) ) THEN
-      CALL VectorValuesRange(A % Values,SIZE(A % Values),'A')       
-      CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b')       
+      CALL VectorValuesRange(A % Values,SIZE(A % Values),'A')
+      CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b')
     END IF
-      
+
 10  CONTINUE
 
     CALL SolveSystem(A,ParMatrix,b,SOL,x % Norm,x % DOFs,Solver)
-    
+
     IF( InfoActive( 20 ) ) THEN
-      CALL VectorValuesRange(x % Values,SIZE(x % values),'x')       
+      CALL VectorValuesRange(x % Values,SIZE(x % values),'x')
     END IF
-    
+
     IF( LinearSystemTrialing ) THEN
       IF( x % LinConverged > 0 ) THEN
         IF( ListGetLogical( Params,'Linear System Trialing Conserve',Found ) ) THEN
-          MaxCount = ListGetInteger( Params,'Linear System Trialing Conserve Rounds',Found ) 
+          MaxCount = ListGetInteger( Params,'Linear System Trialing Conserve Rounds',Found )
           IF( Found ) THEN
             i = NINT( ListGetConstReal( Params,'Linear System Namespace Number',Found ) )
             IF( i == NameSpaceI ) THEN
@@ -4190,12 +4631,12 @@ CONTAINS
               NameSpaceI = 0
               Count = 0
             END IF
-            CALL ListAddInteger( Params,'Linear System Namespace Conserve Count',Count )            
+            CALL ListAddInteger( Params,'Linear System Namespace Conserve Count',Count )
           END IF
           CALL ListAddConstReal( Params,'Linear System Namespace Number', 1.0_dp *NameSpaceI )
         END IF
       ELSE
-        NameSpaceI = NameSpaceI + 1      
+        NameSpaceI = NameSpaceI + 1
         IF( .NOT. ListCheckPrefix( Params,'linsys'//I2S(NameSpaceI) ) ) THEN
           CALL Fatal('DefaultSolve','Exhausted all linear system strategies!')
         END IF
@@ -4205,33 +4646,33 @@ CONTAINS
         GOTO 10
       END IF
     END IF
-    
-    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.FALSE. ) 
+
+    IF(SourceControl) CALL ControlLinearSystem( Solver,PreSolve=.FALSE. )
     IF(NonlinearControl) CALL ControlNonlinearSystem(Solver,PreSolve=.FALSE.)
-    
+
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       saveslot = GetString( Params,'Linear System Save Slot', Found )
       IF( Found .AND. saveslot == 'after') THEN
-        CALL SaveLinearSystem( Solver ) 
+        CALL SaveLinearSystem( Solver )
       END IF
     END IF
 
 
-    
+
     ! If flux corrected transport is used then apply the corrector to the system
     IF( GetLogical( Params,'Linear System FCT',Found ) ) THEN
       CALL FCT_Correction( Solver )
     END IF
 
-    IF( MonolithicSlave ) THEN      
+    IF( MonolithicSlave ) THEN
       CALL MergeSlaveSolvers( Solver, PreSolve = .FALSE.)
     END IF
-    
-    ! Backchange the linear system 
+
+    ! Backchange the linear system
     IF( ListGetLogical( Params,'Harmonic Mode',Found ) ) THEN
       CALL ChangeToHarmonicSystem( Solver, .TRUE. )
     END IF
-    
+
     IF (PRESENT(BackRotNT)) THEN
       IF (BackRot.NEQV.BackRotNT) &
         CALL ListAddLogical(Params,'Back Rotate N-T Solution',BackRot)
@@ -4240,7 +4681,7 @@ CONTAINS
     Norm = x % Norm
 
     IF( NameSpaceI > 0 ) CALL ListPopNamespace()
-    
+
     ! One can run postprocessing solver in this slot in every nonlinear iteration.
     !-----------------------------------------------------------------------------
     CALL DefaultSlaveSolvers(Solver,'Nonlinear Post Solvers')
@@ -4253,7 +4694,7 @@ CONTAINS
       CALL Info('DefaultSolve','Just solved matrix and stopped!',Level=4)
       STOP EXIT_OK
     END IF
-    
+
 !------------------------------------------------------------------------------
   END FUNCTION DefaultSolve
 !------------------------------------------------------------------------------
@@ -4262,20 +4703,20 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Is the system converged. Wrapper to hide the dirty test.
 !------------------------------------------------------------------------------
-  FUNCTION DefaultConverged( USolver ) RESULT( Converged ) 
+  FUNCTION DefaultConverged( USolver ) RESULT( Converged )
 !------------------------------------------------------------------------------
     TYPE(Solver_t), OPTIONAL, TARGET, INTENT(in) :: USolver
     TYPE(Solver_t), POINTER :: Solver
     LOGICAL :: Converged
     LOGICAL :: Found
     INTEGER :: i,imin,imax
-    
+
     Solver => CurrentModel % Solver
     IF ( PRESENT( USolver ) ) Solver => USolver
 
     IF( ListGetLogical( CurrentModel % Simulation,'Parallel Timestepping',Found ) ) THEN
       i = Solver % Variable % NonlinConverged
-      CALL Info('DefaultConverged','Convergence status: '//I2S(i),Level=12)      
+      CALL Info('DefaultConverged','Convergence status: '//I2S(i),Level=12)
       imin = ParallelReduction(i,1)
       imax = ParallelReduction(i,2)
       IF(imin /= imax ) THEN
@@ -4285,17 +4726,17 @@ CONTAINS
     END IF
 
     Converged = ( Solver % Variable % NonlinConverged > 0 )
-          
+
   END FUNCTION DefaultConverged
 !------------------------------------------------------------------------------
-         
+
 
 !------------------------------------------------------------------------------
-  FUNCTION DefaultLinesearch( Converged, USolver, FirstIter, nsize, values, values0 ) RESULT( ReduceStep ) 
+  FUNCTION DefaultLinesearch( Converged, USolver, FirstIter, nsize, values, values0 ) RESULT( ReduceStep )
 !------------------------------------------------------------------------------
     LOGICAL, OPTIONAL :: Converged
     TYPE(Solver_t), OPTIONAL, TARGET :: USolver
-    LOGICAL, OPTIONAL :: FirstIter 
+    LOGICAL, OPTIONAL :: FirstIter
     INTEGER, OPTIONAL :: nsize
     REAL(KIND=dp), OPTIONAL, TARGET :: values(:), values0(:)
     LOGICAL :: ReduceStep
@@ -4326,29 +4767,29 @@ CONTAINS
       END IF
     END IF
 
-    ! This routine might be called for convenience also without checking 
+    ! This routine might be called for convenience also without checking
     ! first whether it is needed.
     IF(.NOT. DoLinesearch ) THEN
       ReduceStep = .FALSE.
       IF( PRESENT( Converged ) ) Converged = .FALSE.
       RETURN
     END IF
-    
+
     IF( PRESENT( FirstIter ) ) THEN
       First = FirstIter
       Last = .FALSE.
     ELSE
       ! This is the first trial if we are the first nonlinear iteration
-      ! for the first time. 
+      ! for the first time.
       iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
       iter = NINT(iterV % Values(1))
-      MaxIter = ListGetInteger( Solver % Values,'Nonlinear System Max Iterations',Stat) 
+      MaxIter = ListGetInteger( Solver % Values,'Nonlinear System Max Iterations',Stat)
       First = (iter == 1 ) .AND. (iter /= previter)
       Last = (iter == MaxIter )
       previter = iter
     END IF
 
-    ReduceStep = CheckStepSize(Solver,First,nsize,values,values0) 
+    ReduceStep = CheckStepSize(Solver,First,nsize,values,values0)
 
     IF( Last .AND. .NOT. ReduceStep ) THEN
       CALL Info('DefaultLinesearch',&
@@ -4362,9 +4803,9 @@ CONTAINS
   END FUNCTION DefaultLinesearch
 
 
- 
+
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly )
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -4393,7 +4834,7 @@ CONTAINS
      b => A % RHS
 
      Element => GetCurrentElement( UElement )
-     
+
      VecAsm = .FALSE.
      IF ( PRESENT( VecAssembly )) THEN
        VecAsm = VecAssembly
@@ -4411,7 +4852,7 @@ CONTAINS
            G, F, Element, n, nd )
      END IF
 
-     
+
      IF ( ParEnv % PEs > 1 ) THEN
        IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
           P1 => Element % BoundaryInfo % Left
@@ -4422,7 +4863,7 @@ CONTAINS
 
             IF ( P1 % PartIndex /= ParEnv % myPE .OR. &
                  P2 % PartIndex /= ParEnv % myPE ) THEN
-              G=G/2; F=F/2; 
+              G=G/2; F=F/2;
             END IF
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex /= ParEnv % myPE ) RETURN
@@ -4459,10 +4900,10 @@ CONTAINS
      ELSE
        MCAsm = .FALSE.
      END IF
-       
+
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
-       
+
      PermIndexes => GetPermIndexStore()
      ! Get permuted indices
 !DIR$ IVDEP
@@ -4473,7 +4914,7 @@ CONTAINS
      IF( Solver % LocalSystemMode > 0 ) THEN
        CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
      END IF
-     
+
      ! If we have any antiperiodic entries we need to check them all!
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
@@ -4484,34 +4925,34 @@ CONTAINS
        CALL UpdateGlobalEquationsVec( A, G, b, f, n, &
            x % DOFs, PermIndexes, &
            UElement=Element, MCAssembly=MCAsm )
-     ELSE       
+     ELSE
 !      IF( A % FORMAT == MATRIX_CRS ) THEN
 !        ! For CRS format these are effectively the same
 !        CALL UpdateGlobalEquationsVec( A,G,b,f,n,x % DOFs, &
 !            PermIndexes, UElement=Element )
 !      ELSE
          CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs, &
-             PermIndexes, UElement=Element )       
+             PermIndexes, UElement=Element )
 !      END IF
-         
+
        IF(Solver % DirectMethod == DIRECT_PERMON) THEN
          CALL UpdatePermonMatrix( A, G, n, x % DOFs, PermIndexes )
        END IF
      END IF
-     
+
      ! backflip, in case G is needed again
      ! For change of sign backflip and flip are same operations.
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-     
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateEquationsR
 !------------------------------------------------------------------------------
 
 
-  SUBROUTINE DefaultUpdateEquationsIm( G, F, UElement, USolver, VecAssembly )     
+  SUBROUTINE DefaultUpdateEquationsIm( G, F, UElement, USolver, VecAssembly )
     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
     REAL(KIND=dp) :: G(:,:), f(:)
@@ -4519,34 +4960,34 @@ CONTAINS
 
     TYPE(Matrix_t), POINTER   :: A
     REAL(KIND=dp), POINTER :: pvalues(:), prhs(:)
-    
+
     IF ( PRESENT( USolver ) ) THEN
       A => USolver % Matrix
     ELSE
       A => CurrentModel % Solver % Matrix
     END IF
-    
+
     IF(.NOT. ASSOCIATED( A % Values_im ) ) THEN
       ALLOCATE( A % Values_im(SIZE( A % Values ) ) )
       A % Values_im = 0.0_dp
     END IF
     pvalues => A % Values
-    A % Values => A % Values_im    
-    
+    A % Values => A % Values_im
+
     IF(.NOT. ASSOCIATED( A % rhs_im ) ) THEN
       ALLOCATE( A % rhs_im(SIZE( A % rhs ) ) )
       A % rhs_im = 0.0_dp
     END IF
     prhs => A % Rhs
-    A % rhs => A % rhs_im    
-    
-    CALL DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly )     
-    
+    A % rhs => A % rhs_im
+
+    CALL DefaultUpdateEquationsR( G, F, UElement, USolver, VecAssembly )
+
     A % Values => pValues
     A % rhs => prhs
-    
+
   END SUBROUTINE DefaultUpdateEquationsIm
-  
+
 
 !------------------------------------------------------------------------------
  SUBROUTINE UpdatePermonMatrix(A,G,n,dofs,nind)
@@ -4566,7 +5007,7 @@ CONTAINS
   INTEGER(C_INT), ALLOCATABLE :: ind(:)
 
   TYPE(Element_t), POINTER :: CElement
-  
+
 #ifdef HAVE_FETI4I
 !!$  INTERFACE
 !!$     FUNCTION Permon_InitMatrix(n) RESULT(handle) BIND(C,Name="permon_init")
@@ -4587,12 +5028,12 @@ CONTAINS
   IF(.NOT. C_ASSOCIATED(A % PermonMatrix)) THEN
     A % NoDirichlet = .TRUE.
     !! A % PermonMatrix = Permon_InitMatrix(A % NumberOFRows)
-    !! TODO: get correct matrix type 
+    !! TODO: get correct matrix type
     matrixType = 0  !! symmetric positive definite (for other types see feti4i.h)
     CALL FETI4ICreateStiffnessMatrix(A % PermonMatrix, matrixType, 1) !TODO add number of rows A % NumberOFRows
   END IF
 
-  
+
   ALLOCATE(vals(n*n*dofs*dofs), ind(n*dofs))
   DO i=1,n
     DO j=1,dofs
@@ -4616,19 +5057,19 @@ CONTAINS
   CALL FETI4IAddElement(A % PermonMatrix, eType, n, nInd, n*dofs, ind, vals)
 
 #endif
-    
+
 !------------------------------------------------------------------------------
  END SUBROUTINE UpdatePermonMatrix
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, VecAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsC( GC, FC, UElement, USolver, VecAssembly )
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
-     LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this 
+     LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this
 
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
@@ -4668,7 +5109,7 @@ CONTAINS
 
             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
                  P2 % PartIndex/=ParEnv % myPE ) THEN
-              GC=GC/2; FC=FC/2; 
+              GC=GC/2; FC=FC/2;
             END IF
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex/=ParEnv % myPE ) RETURN
@@ -4696,13 +5137,13 @@ CONTAINS
      IF( Solver % LocalSystemMode > 0 ) THEN
        CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
      END IF
-               
+
      ! If we have any antiperiodic entries we need to check them all!
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-          
+
      CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
 
      DEALLOCATE( G, F)
@@ -4714,12 +5155,12 @@ CONTAINS
 ! This is a version when the initial matrix is given in diagonal form,
 ! such that the last array index refers to the component.
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsDiagC( GC, FC, UElement, USolver, VecAssembly ) 
+  SUBROUTINE DefaultUpdateEquationsDiagC( GC, FC, UElement, USolver, VecAssembly )
 !------------------------------------------------------------------------------
     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
     COMPLEX(KIND=dp)   :: GC(:,:,:), FC(:,:)
-    LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this 
+    LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this
 
     TYPE(Solver_t), POINTER   :: Solver
     TYPE(Matrix_t), POINTER   :: A
@@ -4748,7 +5189,7 @@ CONTAINS
     DOFs = x % DOFs
     Indexes => GetIndexStore()
     n = GetElementDOFs( Indexes, Element, Solver )
-    
+
     Half = .FALSE.
     IF ( ParEnv % PEs > 1 ) THEN
       IF ( ASSOCIATED(Element % BoundaryInfo) ) THEN
@@ -4776,12 +5217,12 @@ CONTAINS
     G = 0.0_dp; F = 0.0_dp
 
     DO i=1,n
-      DO k=1,dofs/2 
+      DO k=1,dofs/2
         F( dofs*(i-1)+2*k-1) = REAL( FC(i,k) )
         F( dofs*(i-1)+2*k ) = AIMAG( FC(i,k) )
       END DO
     END DO
-    
+
     DO i=1,n
       DO j=1,n
         DO k=1,DOFs/2
@@ -4795,7 +5236,7 @@ CONTAINS
 
     ! Scale only the temporal fields
     IF( Half ) THEN
-      G = G/2; F = F/2 
+      G = G/2; F = F/2
     END IF
 
     ! If we have any antiperiodic entries we need to check them all!
@@ -4812,8 +5253,8 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
-!> Adds the elementwise contribution the right-hand-side of the real valued matrix equation 
+
+!> Adds the elementwise contribution the right-hand-side of the real valued matrix equation
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateForceR( F, UElement, USolver, BulkUpdate )
 !------------------------------------------------------------------------------
@@ -4834,7 +5275,7 @@ CONTAINS
     Solver => CurrentModel % Solver
     IF ( PRESENT(USolver) ) Solver => USolver
 
-    Element => GetCurrentElement( UElement ) 
+    Element => GetCurrentElement( UElement )
 
     x => Solver % Variable
     Indexes => GetIndexStore()
@@ -4849,7 +5290,7 @@ CONTAINS
                  P2 % PartIndex/=ParEnv % myPE )RETURN
 
             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
-                 P2 % PartIndex/=ParEnv % myPE ) F=F/2; 
+                 P2 % PartIndex/=ParEnv % myPE ) F=F/2;
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex /= ParEnv % myPE ) RETURN
           ELSE IF ( ASSOCIATED(P2) ) THEN
@@ -4864,22 +5305,22 @@ CONTAINS
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-     
+
      CALL UpdateGlobalForce( Solver % Matrix % RHS, &
          F, n, x % DOFs, x % Perm(Indexes(1:n)), UElement=Element)
 
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-     
+
 
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateForceR
 !------------------------------------------------------------------------------
 
-  
 
-!> Adds the elementwise contribution the right-hand-side of the complex valued matrix equation 
+
+!> Adds the elementwise contribution the right-hand-side of the complex valued matrix equation
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultUpdateForceC( FC, UElement, USolver )
 !------------------------------------------------------------------------------
@@ -4899,7 +5340,7 @@ CONTAINS
     Solver => CurrentModel % Solver
     IF ( PRESENT(USolver) ) Solver => USolver
 
-    Element => GetCurrentElement( UElement ) 
+    Element => GetCurrentElement( UElement )
 
     x => Solver % Variable
     DOFs = x % DOFs
@@ -4915,7 +5356,7 @@ CONTAINS
                  P2 % PartIndex/=ParEnv % myPE )RETURN
 
             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
-                 P2 % PartIndex/=ParEnv % myPE ) FC=FC/2; 
+                 P2 % PartIndex/=ParEnv % myPE ) FC=FC/2;
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex/=ParEnv % myPE ) RETURN
           ELSE IF ( ASSOCIATED(P2) ) THEN
@@ -4936,11 +5377,11 @@ CONTAINS
     IF( Solver % PeriodicFlipActive ) THEN
       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
     END IF
-            
+
     CALL UpdateGlobalForce( Solver % Matrix % RHS, &
         F, n, x % DOFs, x % Perm(Indexes(1:n)) )
 
-    DEALLOCATE( F ) 
+    DEALLOCATE( F )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateForceC
 !------------------------------------------------------------------------------
@@ -4952,18 +5393,18 @@ CONTAINS
      REAL(KIND=dp) :: F(:)
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
- 
+
      TYPE(Solver_t), POINTER :: Solver
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
- 
+
      INTEGER :: n
      INTEGER, POINTER :: Indexes(:)
 
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      x => Solver % Variable
      Indexes => GetIndexStore()
@@ -4978,7 +5419,7 @@ CONTAINS
                  P2 % PartIndex/=ParEnv % myPE )RETURN
 
             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
-                 P2 % PartIndex/=ParEnv % myPE ) F=F/2; 
+                 P2 % PartIndex/=ParEnv % myPE ) F=F/2;
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex /= ParEnv % myPE ) RETURN
           ELSE IF ( ASSOCIATED(P2) ) THEN
@@ -4992,14 +5433,14 @@ CONTAINS
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-          
+
      CALL UpdateTimeForce( Solver % Matrix,Solver % Matrix % RHS, &
          F, n, x % DOFs, x % Perm(Indexes(1:n)) )
 
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
-     END IF     
-     
+     END IF
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateTimeForceR
 !------------------------------------------------------------------------------
@@ -5016,7 +5457,7 @@ CONTAINS
      TYPE(Solver_t), POINTER :: Solver
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
- 
+
      REAL(KIND=dp), ALLOCATABLE :: F(:)
 
     INTEGER :: i,n,DOFs
@@ -5025,7 +5466,7 @@ CONTAINS
      Solver => CurrentModel % Solver
      IF ( PRESENT(USolver) ) Solver => USolver
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
       x => Solver % Variable
       DOFs = x % DOFs
@@ -5039,9 +5480,9 @@ CONTAINS
            IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
              IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
                   P2 % PartIndex/=ParEnv % myPE )RETURN
- 
+
              IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
-                  P2 % PartIndex/=ParEnv % myPE ) FC=FC/2; 
+                  P2 % PartIndex/=ParEnv % myPE ) FC=FC/2;
            ELSE IF ( ASSOCIATED(P1) ) THEN
              IF ( P1 % PartIndex/=ParEnv % myPE ) RETURN
            ELSE IF ( ASSOCIATED(P2) ) THEN
@@ -5057,25 +5498,25 @@ CONTAINS
          F( 2*(i-1) + 1 ) =   REAL(FC(i))
          F( 2*(i-1) + 2 ) = -AIMAG(FC(i))
       END DO
-      
+
       IF( Solver % PeriodicFlipActive ) THEN
         CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
-      END IF      
-      
+      END IF
+
       CALL UpdateTimeForce( Solver % Matrix,Solver % Matrix % RHS, &
                F, n, x % DOFs, x % Perm(Indexes(1:n)) )
 
-      DEALLOCATE( F ) 
+      DEALLOCATE( F )
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateTimeForceC
 !------------------------------------------------------------------------------
 
 
 
-  
+
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdatePrecR( M, UElement, USolver ) 
+  SUBROUTINE DefaultUpdatePrecR( M, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,TARGET   :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5097,7 +5538,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
@@ -5142,17 +5583,17 @@ CONTAINS
      CASE DEFAULT
        CALL FATAL( 'DefaultUpdatePrecR', 'Unexpected matrix format')
      END SELECT
- 
+
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
      END IF
-          
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdatePrecR
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdatePrecC( MC, UElement, USolver ) 
+  SUBROUTINE DefaultUpdatePrecC( MC, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,TARGET   :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5176,7 +5617,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -5189,7 +5630,7 @@ CONTAINS
            IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
              IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
                   P2 % PartIndex/=ParEnv % myPE )RETURN
- 
+
              IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
                   P2 % PartIndex/=ParEnv % myPE ) MC=MC/2
            ELSE IF ( ASSOCIATED(P1) ) THEN
@@ -5204,7 +5645,7 @@ CONTAINS
 
 !$OMP CRITICAL
        IF ( .NOT. ASSOCIATED( A % PrecValues ) ) THEN
-         CALL Info('DefaultUpdatePrecC','Allocating for separate preconditioning matrix!',Level=20)         
+         CALL Info('DefaultUpdatePrecC','Allocating for separate preconditioning matrix!',Level=20)
          ALLOCATE( A % PrecValues(SIZE(A % Values)) )
          A % PrecValues = 0.0d0
        END IF
@@ -5239,7 +5680,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateMassR( M, UElement, USolver ) 
+  SUBROUTINE DefaultUpdateMassR( M, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,TARGET   :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5265,7 +5706,7 @@ CONTAINS
         x => Solver % Variable
      END IF
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      Indexes => GetIndexStore()
      n = GetElementDOFs( Indexes, Element, Solver )
@@ -5293,7 +5734,7 @@ CONTAINS
               ALLOCATE(A % HaloMassValues(SIZE(A % Values))); A % HaloMassValues=0._dp
             END IF
             CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
-                               A % HaloMassValues ) 
+                               A % HaloMassValues )
           END IF
           RETURN
        END IF
@@ -5311,10 +5752,10 @@ CONTAINS
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
      END IF
-                
+
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
-         A % MassValues ) 
-     
+         A % MassValues )
+
      ! backflip to be on the safe side
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % Dofs, M )
@@ -5326,7 +5767,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateMassC( MC, UElement, USolver ) 
+  SUBROUTINE DefaultUpdateMassC( MC, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,TARGET   :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5352,7 +5793,7 @@ CONTAINS
         x => Solver % Variable
      END IF
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -5365,7 +5806,7 @@ CONTAINS
            IF ( ASSOCIATED(P1) .AND. ASSOCIATED(P2) ) THEN
              IF ( P1 % PartIndex/=ParEnv % myPE .AND. &
                   P2 % PartIndex/=ParEnv % myPE )RETURN
- 
+
              IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
                   P2 % PartIndex/=ParEnv % myPE ) MC=MC/2
            ELSE IF ( ASSOCIATED(P1) ) THEN
@@ -5398,7 +5839,7 @@ CONTAINS
      ! flip mass matrix for periodic elimination
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, M )
-     END IF                
+     END IF
 
      CALL UpdateMassMatrix( A, M, n, x % DOFs, x % Perm(Indexes(1:n)), &
                     A % MassValues )
@@ -5410,7 +5851,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  RECURSIVE SUBROUTINE DefaultUpdateDampR( B, UElement, USolver ) 
+  RECURSIVE SUBROUTINE DefaultUpdateDampR( B, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,  TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5433,7 +5874,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      Indexes => GetIndexStore()
      n =  GetElementDOFs( Indexes, Element, Solver )
@@ -5460,7 +5901,7 @@ CONTAINS
 
 !$OMP CRITICAL
      IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
-       ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
+       ALLOCATE( A % DampValues(SIZE(A % Values)) )
        A % DampValues = 0.0d0
      END IF
 !$OMP END CRITICAL
@@ -5468,14 +5909,14 @@ CONTAINS
      ! flip damp matrix for periodic elimination
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
-     END IF                
-     
+     END IF
+
      CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
               A  % DampValues )
 
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
-     END IF                
+     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateDampR
 !------------------------------------------------------------------------------
@@ -5483,7 +5924,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateDampC( BC, UElement, USolver ) 
+  SUBROUTINE DefaultUpdateDampC( BC, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,  TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5508,7 +5949,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -5536,7 +5977,7 @@ CONTAINS
 
 !$OMP CRITICAL
        IF ( .NOT. ASSOCIATED( A % DampValues ) ) THEN
-        ALLOCATE( A % DampValues(SIZE(A % Values)) ) 
+        ALLOCATE( A % DampValues(SIZE(A % Values)) )
         A % DampValues = 0.0d0
        END IF
 !$OMP END CRITICAL
@@ -5553,8 +5994,8 @@ CONTAINS
 
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
-     END IF                
-     
+     END IF
+
      CALL UpdateMassMatrix( A, B, n, x % DOFs, x % Perm(Indexes(1:n)), &
                  A % DampValues )
      DEALLOCATE( B )
@@ -5563,9 +6004,9 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  
+
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateBulkR( B, F, UElement, USolver ) 
+  SUBROUTINE DefaultUpdateBulkR( B, F, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,  TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5588,7 +6029,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      Indexes => GetIndexStore()
      n =  GetElementDOFs( Indexes, Element, Solver )
@@ -5603,7 +6044,7 @@ CONTAINS
 
             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
                  P2 % PartIndex/=ParEnv % myPE ) THEN
-              B=B/2; F=F/2; 
+              B=B/2; F=F/2;
             END IF
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex /= ParEnv % myPE ) RETURN
@@ -5617,33 +6058,33 @@ CONTAINS
 
 !$OMP CRITICAL
      IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-       ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+       ALLOCATE( A % BulkValues(SIZE(A % Values)) )
        A % BulkValues = 0.0_dp
      END IF
 !$OMP END CRITICAL
 
 !$OMP CRITICAL
      IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) )
        A % BulkRHS = 0.0_dp
      END IF
 !$OMP END CRITICAL
 
-       
+
      ! If we have any antiperiodic entries we need to check them all!
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-     
+
      CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)),  &
          GlobalValues=A % BulkValues )
-     
+
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-      
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultUpdateBulkR
 !------------------------------------------------------------------------------
@@ -5651,7 +6092,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateBulkC( BC, FC, UElement, USolver ) 
+  SUBROUTINE DefaultUpdateBulkC( BC, FC, UElement, USolver )
 !------------------------------------------------------------------------------
      TYPE(Solver_t), OPTIONAL,  TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
@@ -5676,7 +6117,7 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
 
-     Element => GetCurrentElement( UElement ) 
+     Element => GetCurrentElement( UElement )
 
      DOFs = x % DOFs
      Indexes => GetIndexStore()
@@ -5707,14 +6148,14 @@ CONTAINS
 
 !$OMP CRITICAL
      IF ( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
-       ALLOCATE( A % BulkValues(SIZE(A % Values)) ) 
+       ALLOCATE( A % BulkValues(SIZE(A % Values)) )
        A % BulkValues = 0.0_dp
      END IF
 !$OMP END CRITICAL
 
 !$OMP CRITICAL
      IF ( .NOT. ASSOCIATED( A % BulkRHS ) ) THEN
-       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) ) 
+       ALLOCATE( A % BulkRHS(SIZE(A % RHS)) )
        A % BulkRHS = 0.0_dp
      END IF
 !$OMP END CRITICAL
@@ -5736,7 +6177,7 @@ CONTAINS
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, B )
        CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
-      
+
      CALL UpdateGlobalEquations( A,B,A % BulkRHS,f,n,x % DOFs,x % Perm(Indexes(1:n)), &
                  GlobalValues=A % BulkValues )
 
@@ -5746,42 +6187,42 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-  SUBROUTINE DefaultUpdateDirichlet( Dvals, UElement, USolver, UIndexes, Dset ) 
+  SUBROUTINE DefaultUpdateDirichlet( Dvals, UElement, USolver, UIndexes, Dset )
 !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Dvals(:)
     TYPE(Solver_t), OPTIONAL,TARGET :: USolver
     TYPE(Element_t), OPTIONAL, TARGET :: UElement
     INTEGER, OPTIONAL, TARGET :: UIndexes(:)
     LOGICAL, OPTIONAL :: Dset(:)
-    
+
     TYPE(Solver_t), POINTER   :: Solver
     TYPE(Matrix_t), POINTER   :: A
     TYPE(Variable_t), POINTER :: x
     TYPE(Element_t), POINTER  :: Element
-    
+
     INTEGER :: i,j,n
     INTEGER, POINTER :: Indexes(:)
 
-    
+
     IF ( PRESENT( USolver ) ) THEN
       Solver => USolver
     ELSE
       Solver => CurrentModel % Solver
     END IF
-    
+
     A => Solver % Matrix
     x => Solver % Variable
-    
-    Element => GetCurrentElement( UElement ) 
+
+    Element => GetCurrentElement( UElement )
 
     IF( PRESENT( UIndexes ) ) THEN
       Indexes => Uindexes
-      n = SIZE( Uindexes ) 
+      n = SIZE( Uindexes )
     ELSE
       Indexes => GetIndexStore()
       n =  GetElementDOFs( Indexes, Element, Solver )
     END IF
-      
+
     DO i=1,n
       IF( PRESENT( Dset ) ) THEN
         IF( .NOT. Dset(i) ) CYCLE
@@ -5790,9 +6231,9 @@ CONTAINS
     END DO
 
   END SUBROUTINE DefaultUpdateDirichlet
-  
-       
- 
+
+
+
 
 !> Sets the Dirichlet conditions related to the variables of the active solver.
 !------------------------------------------------------------------------------------------
@@ -5806,7 +6247,7 @@ CONTAINS
      LOGICAL, OPTIONAL :: OffDiagonalMatrix
      TYPE(Variable_t), OPTIONAL, TARGET :: Ux
      TYPE(Solver_t), OPTIONAL, TARGET :: USolver
-!--------------------------------------------------------------------------------------------     
+!--------------------------------------------------------------------------------------------
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Solver_t), POINTER :: Solver
@@ -5833,11 +6274,11 @@ CONTAINS
      LOGICAL :: ReleaseAny, NodalBCsWithBraces,AllConstrained
      LOGICAL :: CheckRight, AugmentedEigenSystem
      LOGICAL :: GradVersion
-     
+
      CHARACTER(:), ALLOCATABLE :: Name
 
      SAVE gInd, lInd, STIFF, Work
-!-------------------------------------------------------------------------------------------- 
+!--------------------------------------------------------------------------------------------
 
 
      IF ( PRESENT( USolver ) ) THEN
@@ -5870,7 +6311,7 @@ CONTAINS
          A % ConstrainedDOF = .FALSE.
        END IF
      END IF
-       
+
      IF(.NOT.ALLOCATED(A % Dvalues)) THEN
        ALLOCATE(A % Dvalues(A % NumberOfRows))
        A % Dvalues = 0._dp
@@ -5881,32 +6322,32 @@ CONTAINS
          A % Dvalues = 0._dp
        END IF
      END IF
-     
+
      ! Create soft limiters to be later applied by the Dirichlet conditions
-     ! This is done only once for each solver, hence the complex logic. 
+     ! This is done only once for each solver, hence the complex logic.
      !---------------------------------------------------------------------
      IF( ListGetLogical( Params,'Apply Limiter',Found) ) THEN
-       IF( ListGetLogical( Params,'Linear System Limiter',Found) ) THEN               
-         ! This is intended for cases when the linear solver comes with limiters. 
-         CALL PopulateLimiterValues( Solver )	
+       IF( ListGetLogical( Params,'Linear System Limiter',Found) ) THEN
+         ! This is intended for cases when the linear solver comes with limiters.
+         CALL PopulateLimiterValues( Solver )
        ELSE
-         CALL DetermineSoftLimiter( Solver )	
+         CALL DetermineSoftLimiter( Solver )
 
          ! It is difficult to determine whether loads should be computed before or after setting the limiter.
          ! There are cases where both alternative are needed.
-         IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN         
+         IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) THEN
            DO DOF=1,x % DOFs
              name = TRIM(x % name)
-             IF (x % DOFs>1) name=ComponentName(name,DOF)              
+             IF (x % DOFs>1) name=ComponentName(name,DOF)
              CALL SetNodalLoads( CurrentModel,A,A % rhs, &
-                 Name,DOF,x % DOFs,x % Perm ) 
+                 Name,DOF,x % DOFs,x % Perm )
            END DO
          END IF
        END IF
      END IF
-         
 
-     
+
+
      Offset = 0
      IF(PRESENT(UOffset)) Offset=UOffset
 
@@ -5950,10 +6391,10 @@ CONTAINS
 
      CALL Info('DefUtils::DefaultDirichletBCs', &
             'Setting Dirichlet boundary conditions', Level=10)
-     
+
 
      ! ----------------------------------------------------------------------
-     ! Perform some preparations if BCs for p-approximation will be handled: 
+     ! Perform some preparations if BCs for p-approximation will be handled:
      ! ----------------------------------------------------------------------
      IF (.NOT. NodalBCsWithBraces) THEN
        DO DOF=1,x % DOFs
@@ -5962,10 +6403,10 @@ CONTAINS
 
          IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
 
-         SaveElement => GetCurrentElement() 
+         SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
-           
+
            ! Get parent element:
            ! -------------------
            Parent => Element % BoundaryInfo % Left
@@ -6004,7 +6445,7 @@ CONTAINS
              END DO
            ELSE
              ! To do: Check whether BCs for edge/face elements must be set via L2 projection.
-             CYCLE 
+             CYCLE
            END IF
          END DO
 
@@ -6013,7 +6454,7 @@ CONTAINS
      END IF
 
      IF (NodalBCsWithBraces) THEN
-       CALL Info('DefaultDirichletBCs','Setting nodal dofs with {n} construct', Level=15) 
+       CALL Info('DefaultDirichletBCs','Setting nodal dofs with {n} construct', Level=15)
        !
        ! NOTE:  This is still simplistic implementation and lacks many options which work
        !        in the case of standard BCs for nodal (Lagrange) interpolation approximations.
@@ -6030,9 +6471,9 @@ CONTAINS
            END IF
 
            ! When the component names are created for example from E[E Re:1 E Im:1], we now have name = "E Re {n}" or "E Im {n}".
-           ! Finally, we append this by the field index, so that we may seek values for "E Re {n} m" and "E Im {n} m", where 
-           ! m = 1,...,NDOFs when an element definition "n:NDOFs e:..." is given. 
-           
+           ! Finally, we append this by the field index, so that we may seek values for "E Re {n} m" and "E Im {n} m", where
+           ! m = 1,...,NDOFs when an element definition "n:NDOFs e:..." is given.
+
            IF (NDOFs > 1) name = name//' '//I2S(m)
 
 !           print *, '====== m is ', m
@@ -6064,7 +6505,7 @@ CONTAINS
                k = (j-1) * NDOFs + m
                l = x % Perm(gInd(k))
                IF (l <= 0) CYCLE
-          
+
                l = x % DOFs * (l-1) + DOF
 
                A % ConstrainedDOF(l) = .TRUE.
@@ -6077,9 +6518,9 @@ CONTAINS
 
      ELSE
        ! -------------------------------------------------------------------------------------
-       ! Set BCs for fields which are approximated using H1-conforming basis functions 
-       ! (either Lagrange basis or hierarchic p-basis): 
-       ! -------------------------------------------------------------------------------------    
+       ! Set BCs for fields which are approximated using H1-conforming basis functions
+       ! (either Lagrange basis or hierarchic p-basis):
+       ! -------------------------------------------------------------------------------------
        DO DOF=1,x % DOFs
          name = TRIM(x % name)
          IF (x % DOFs>1) name=ComponentName(name,DOF)
@@ -6110,7 +6551,7 @@ CONTAINS
            END IF
            IF ( .NOT. ASSOCIATED( Parent ) ) CYCLE
 
-           ! Here set constraints for p-approximation only: 
+           ! Here set constraints for p-approximation only:
            ! -----------------------------------------------------
            IF (.NOT.isActivePElement(Parent, Solver)) CYCLE
 
@@ -6181,7 +6622,7 @@ CONTAINS
                  IF ( nb <= 0 ) CYCLE
                  nb = Offset + x % DOFs * (nb-1) + DOF
                  IF(.NOT.A % ConstrainedDOF(nb)) THEN
-                   A % RHS(nb) = A % RHS(nb) + Work(k) 
+                   A % RHS(nb) = A % RHS(nb) + Work(k)
                    DO l=n+1,nd
                      mb = x % Perm( gInd(l) )
                      IF ( mb <= 0 ) CYCLE
@@ -6237,7 +6678,7 @@ CONTAINS
                nb = Offset + x % DOFs * (nb-1) + DOF
 
                IF(.NOT.A % ConstrainedDOF(nb)) THEN
-                 A % RHS(nb) = A % RHS(nb) + Work(k) 
+                 A % RHS(nb) = A % RHS(nb) + Work(k)
                  DO l=n+1,nd
                    mb = x % Perm( gInd(l) )
                    IF ( mb <= 0 ) CYCLE
@@ -6262,7 +6703,7 @@ CONTAINS
      !------------------------------------
      DO DOF=1,x % DOFs
        IF(.NOT. ReleaseAny) CYCLE
-       
+
        name = TRIM(x % name)
        IF (x % DOFs>1) name=ComponentName(name,DOF)
 
@@ -6273,11 +6714,11 @@ CONTAINS
        SaveElement => GetCurrentElement()
        DO i=1,Solver % Mesh % NumberOfBoundaryElements
          Element => GetBoundaryElement(i)
-         
+
          BC => GetBC()
          IF ( .NOT.ASSOCIATED(BC) ) CYCLE
          IF ( .NOT. ListGetLogical(BC, 'release '//TRIM(Name)//' {e}', Found ) ) CYCLE
-         
+
          ! Get parent element:
          ! -------------------
          Parent => Element % BoundaryInfo % Left
@@ -6286,10 +6727,10 @@ CONTAINS
          END IF
          IF ( .NOT. ASSOCIATED( Parent ) )   CYCLE
          np = Parent % TYPE % NumberOfNodes
-         
+
          IF(.NOT. ASSOCIATED( Solver % Mesh % Edges ) ) CYCLE
          SELECT CASE(GetElementFamily(Element))
-             
+
          CASE(3,4)
            CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
 
@@ -6323,8 +6764,8 @@ CONTAINS
        END DO
        SaveElement => SetCurrentElement(SaveElement)
      END DO
-     
-     
+
+
      !
      ! Apply special couple loads for 3-D models of solids:
      !
@@ -6336,11 +6777,11 @@ CONTAINS
      ! ----------------------------------------------------------------------------
      CALL EdgeElementStyle(Params, PiolaTransform, SecondKindBasis, BasisDegree = BasisDegree, &
          GradientVersion = GradVersion)
-     
+
      DO DOF=1,x % DOFs
         name = TRIM(x % name)
         IF (x % DOFs>1) name=ComponentName(name,DOF)
-        
+
         IF ( .NOT. ListCheckPrefixAnyBC(CurrentModel, Name//' {e}') .AND. &
              .NOT. ListCheckPrefixAnyBC(CurrentModel, Name//' {f}') ) CYCLE
 
@@ -6370,7 +6811,7 @@ CONTAINS
            ELSE
              CheckRight = .TRUE.
            END IF
-             
+
            IF (CheckRight) THEN
              Parent => Element % BoundaryInfo % Right
              IF ( ASSOCIATED( Parent ) ) THEN
@@ -6385,25 +6826,25 @@ CONTAINS
 
            IF ( ListCheckPrefix(BC, Name//' {e}') ) THEN
              !--------------------------------------------------------------------------------
-             ! We now devote this branch for handling edge (curl-conforming) finite elements 
-             ! which, in addition to edge DOFs, may also have DOFs associated with faces. 
+             ! We now devote this branch for handling edge (curl-conforming) finite elements
+             ! which, in addition to edge DOFs, may also have DOFs associated with faces.
              !--------------------------------------------------------------------------------
              IF ( ASSOCIATED( Solver % Mesh % Edges ) ) THEN
                BLOCK
                  INTEGER :: NoEdges = 0
                  INTEGER :: BCMode = 0
 
-                 AugmentedEigenSystem = .FALSE.                      
+                 AugmentedEigenSystem = .FALSE.
                  BCMode = 0
-                 
+
                  SELECT CASE(GetElementFamily(Element))
-                 CASE(2)                    
+                 CASE(2)
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
                    IF ( .NOT. ASSOCIATED(Edge) ) CYCLE
                    Edge % BodyId = Parent % BodyId
-                   IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                                      
+                   IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE
 
-                   AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found) 
+                   AugmentedEigenSystem = ListGetLogical(Params, 'Eigen System Augmentation', Found)
                    BCMode = 1
                    NoEdges = 1
 
@@ -6411,7 +6852,7 @@ CONTAINS
                    CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, j)
                    IF (.NOT. ASSOCIATED(Face)) CYCLE
                    NoEdges = Face % TYPE % NumberOfEdges
-		   Face % BodyId = Parent % BodyId                      
+                   Face % BodyId = Parent % BodyId
 
                    IF ( ActiveBoundaryElement(Face) ) THEN
                      BCMode = 2
@@ -6454,7 +6895,7 @@ CONTAINS
                    n = Edge % TYPE % NumberOfNodes
                    CALL VectorElementEdgeDOFs(BC, Edge, n, Parent, np, Name//' {e}', &
                        Work(i0+1:i0+EDOFs), EDOFs, SecondKindBasis, &
-                       BasisDegree = BasisDegree, GradientVersion = GradVersion)                    
+                       BasisDegree = BasisDegree, GradientVersion = GradVersion)
 
                    n = GetElementDOFs(gInd,Edge)
 
@@ -6475,7 +6916,7 @@ CONTAINS
                      nb = Offset + x % DOFs*(nb-1) + DOF
 
                      A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = Work(i0+j) 
+                     A % Dvalues(nb) = Work(i0+j)
                    END DO
                    i0 = i0 + EDOFs
                  END DO
@@ -6486,13 +6927,13 @@ CONTAINS
                  ! ---------------------------------------------------------------------
                  ! Set constraints for face DOFs via seeking the best approximation in L2.
                  ! We use the variational equation (u x n,v') = (g x n - u0 x n,v) where
-                 ! u0 denotes the part of the interpolating function u+u0 which is already 
+                 ! u0 denotes the part of the interpolating function u+u0 which is already
                  ! known and v is a test function for the Galerkin method.
                  ! ---------------------------------------------------------------------
                  IF (Face % BDOFs > 0) THEN
                    EDOFs = i0 ! The count of edge DOFs set so far
                    n = Face % TYPE % NumberOfNodes
-                   
+
                    CALL SolveLocalFaceDOFs(BC, Face, n, Name//' {e}', Work, EDOFs, &
                        Face % BDOFs, SecondKindBasis, BasisDegree, GradVersion )
 
@@ -6505,7 +6946,7 @@ CONTAINS
                      nb = Offset + x % DOFs*(nb-1) + DOF
 
                      A % ConstrainedDOF(nb) = .TRUE.
-                     A % Dvalues(nb) = Work(EDOFs+j) 
+                     A % Dvalues(nb) = Work(EDOFs+j)
                    END DO
                  END IF
                END BLOCK
@@ -6514,17 +6955,17 @@ CONTAINS
              !--------------------------------------------------------------------------
              ! This branch should be able to handle BCs for face (div-conforming)
              ! elements. Now this works only for RT(0), ABF(0) and BMD(1) in 2D and
-             ! for a 48-DOF brick and the Nedelec tetrahedron of the first and second kind 
+             ! for a 48-DOF brick and the Nedelec tetrahedron of the first and second kind
              ! in 3D.
              !--------------------------------------------------------------------------
              SELECT CASE(GetElementFamily())
              CASE(2)
-               
+
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Edge, j)
 
                IF (.NOT. ASSOCIATED(Edge)) CYCLE
                Edge % BodyId = Parent % BodyId
-               IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE                  
+               IF ( .NOT. ActiveBoundaryElement(Edge) ) CYCLE
 
                EDOFs = Edge % BDOFs     ! The number of DOFs associated with edges
 
@@ -6548,11 +6989,11 @@ CONTAINS
                  nb = Offset + x % DOFs*(nb-1) + DOF
 
                  A % ConstrainedDOF(nb) = .TRUE.
-                 A % Dvalues(nb) = Work(j) 
+                 A % Dvalues(nb) = Work(j)
                END DO
 
              CASE(3)
-               
+
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
 
                IF (.NOT. ASSOCIATED(Face)) CYCLE
@@ -6621,12 +7062,12 @@ CONTAINS
                    nb = Offset + x % DOFs*(nb-1) + DOF
 
                    A % ConstrainedDOF(nb) = .TRUE.
-                   A % Dvalues(nb) = Work(j) 
+                   A % Dvalues(nb) = Work(j)
                  END DO
                END IF
 
              CASE(4)
-               
+
                CALL PickActiveFace(Solver % Mesh, Parent, Element, Face, ActiveFaceId)
 
                IF (.NOT. ASSOCIATED(Face)) CYCLE
@@ -6690,7 +7131,7 @@ CONTAINS
                    nb = Offset + x % DOFs*(nb-1) + DOF
 
                    A % ConstrainedDOF(nb) = .TRUE.
-                   A % Dvalues(nb) = Work(j) 
+                   A % Dvalues(nb) = Work(j)
                  END DO
                END IF
 
@@ -6704,27 +7145,27 @@ CONTAINS
 
      IF( ReleaseAny) THEN
        IF( InfoActive(20) ) THEN
-         k = COUNT( A % ConstrainedDOF ) 
+         k = COUNT( A % ConstrainedDOF )
          CALL Info('DefaultDirichletBCs', &
-             'Original number of of Dirichlet BCs: '//I2S(k))       
+             'Original number of of Dirichlet BCs: '//I2S(k))
          k = COUNT( ReleaseDir )
          CALL Info('DefaultDirichletBCs',&
-             'Marked number of Dirichlet BCs not to set: '//I2S(k))       
+             'Marked number of Dirichlet BCs not to set: '//I2S(k))
          k = COUNT( ReleaseDir .AND. A % ConstrainedDOF )
          CALL Info('DefaultDirichletBCs',&
              'Ignoring number of Dirichlet BCs: '//I2S(k))
-       END IF         
+       END IF
        WHERE( ReleaseDir )
          A % ConstrainedDOF = .FALSE.
        END WHERE
      END IF
-                
+
      ! Add the possible constraint modes structures
      !----------------------------------------------------------
      IF ( GetLogical(Params,'Constraint Modes Analysis',Found) ) THEN
        CALL SetConstraintModesBoundaries( CurrentModel, Solver, A, b, x % Name, x % DOFs, x % Perm )
      END IF
-     
+
 #ifdef HAVE_FETI4I
      IF(C_ASSOCIATED(A % PermonMatrix)) THEN
        CALL Info('DefUtils::DefaultDirichletBCs','Permon matrix, Dirichlet conditions registered but not set!', Level=5)
@@ -6734,8 +7175,8 @@ CONTAINS
 
      ! This is set outside so that it can be called more flexibilly
      CALL EnforceDirichletConditions( Solver, A, b )
-     
- 
+
+
      CALL Info('DefUtils::DefaultDirichletBCs','Dirichlet boundary conditions set', Level=12)
 !------------------------------------------------------------------------------
   END SUBROUTINE DefaultDirichletBCs
@@ -6743,11 +7184,11 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This subroutine computes the values of DOFs that are associated with 
+!> This subroutine computes the values of DOFs that are associated with
 !> mesh edges in the case of vector-valued (edge or face) finite elements, so that
-!> the vector-valued interpolant of the BC data can be constructed. 
+!> the vector-valued interpolant of the BC data can be constructed.
 !> The values of the DOFs are defined as D = S*(g.e,v)_E where the unit vector e
-!> can be either tangential or normal to the edge, g is vector-valued data, 
+!> can be either tangential or normal to the edge, g is vector-valued data,
 !> v is a polynomial on the edge E, and S reverses sign if necessary.
 !------------------------------------------------------------------------------
   SUBROUTINE VectorElementEdgeDOFs(BC, Element, n, Parent, np, Name, Integral, EDOFs, &
@@ -6781,7 +7222,7 @@ CONTAINS
     INTEGER :: i1,i2,i3
 
     REAL(KIND=dp) :: Basis(n),Load(n),Vload(3,n),VL(3),e(3),d(3)
-    REAL(KIND=dp) :: E21(3),E32(3) 
+    REAL(KIND=dp) :: E21(3),E32(3)
     REAL(KIND=dp) :: u,v,L,s,DetJ,sgn
 !------------------------------------------------------------------------------
     DOFs = 1
@@ -6791,7 +7232,7 @@ CONTAINS
       ELSE
         DOFs = EDOFs
       END IF
-    END IF   
+    END IF
 
     SecondOrder = .FALSE.
     ThirdOrder = .FALSE.
@@ -6799,9 +7240,9 @@ CONTAINS
       SecondOrder = BasisDegree == 2
       IF (.NOT. SecondOrder) ThirdOrder = BasisDegree == 3
     ELSE
-      
+
     END IF
-    
+
     IF (PRESENT(SecondFamily)) THEN
       SecondKindBasis = SecondFamily
       IF (SecondKindBasis) THEN
@@ -6826,7 +7267,7 @@ CONTAINS
     ELSE
       GradVersion = .FALSE.
     END IF
-    
+
     ! Get the nodes of the boundary and parent elements:
     !CALL GetElementNodes(Nodes, Element)
     !CALL GetElementNodes(PNodes, Parent)
@@ -6835,8 +7276,8 @@ CONTAINS
         n, Element % NodeIndexes)
     CALL CopyElementNodesFromMesh(PNodes, CurrentModel % Solver % Mesh, &
         np, Parent % NodeIndexes)
-    
-    
+
+
     ReverseSign = .FALSE.
     sgn = 1.0d0
     EdgeMap => GetEdgeMap(GetElementFamily(Parent))
@@ -6869,8 +7310,8 @@ CONTAINS
     e = e/SQRT(SUM(e**2))
     IF (DivConforming) THEN
       ! The boundary normal is needed instead of the tangent vector.
-      ! First, find the element director d that makes the parent 
-      ! element an oriented surface. 
+      ! First, find the element director d that makes the parent
+      ! element an oriented surface.
       i1 = EdgeMap(1,1)
       i2 = EdgeMap(1,2)
       i3 = EdgeMap(2,2)
@@ -6882,7 +7323,7 @@ CONTAINS
       E32(3) = PNodes % z(i3) - PNodes % z(i2)
       d = CrossProduct(E21, E32)
       d = d/SQRT(SUM(d**2))
-      ! Set e to be the outward normal to the parent element: 
+      ! Set e to be the outward normal to the parent element:
       e = CrossProduct(e, d)
     END IF
 
@@ -6900,7 +7341,7 @@ CONTAINS
 
       L  = SUM(Load(1:n)*Basis(1:n))
       VL = MATMUL(Vload(:,1:n),Basis(1:n))
-      
+
       IF (SecondKindBasis) THEN
         u = IP % u(p)
         IF (SecondOrder) THEN
@@ -6930,7 +7371,7 @@ CONTAINS
           v = -3.0d0 * u
           Integral(2)=Integral(2)+sgn*s*(L+SUM(VL*e))*v
           v = 2.5d0 * (1.0d0 - 3.0d0 * u**2)
-          Integral(3)=Integral(3)+s*(L+SUM(VL*e))*v          
+          Integral(3)=Integral(3)+s*(L+SUM(VL*e))*v
         ELSE IF (SecondOrder .AND. GradVersion) THEN
           ! This is analogous to the case of second-kind basis
           Integral(1)=Integral(1)+s*(L+SUM(VL*e))
@@ -6943,7 +7384,7 @@ CONTAINS
             IF (DOFs>1) THEN
               v = Basis(2)-Basis(1)
               ! The parent element must define the default for the positive tangent associated
-              ! with the edge. Thus, if the boundary element handled has an opposite orientation, 
+              ! with the edge. Thus, if the boundary element handled has an opposite orientation,
               ! the sign must be reversed to get the positive coordinate associated with the
               ! parent element edge.
               IF (ReverseSign) v = -1.0d0*v
@@ -6985,9 +7426,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This subroutine computes the values of DOFs that are associated with 
+!> This subroutine computes the values of DOFs that are associated with
 !> mesh faces in the case of curl-conforming (edge) finite elements, so that
-!> the edge finite element interpolant of the BC data can be constructed. 
+!> the edge finite element interpolant of the BC data can be constructed.
 !> The values of the DOFs are obtained as the best approximation in L2 when
 !> the values of the DOFs associated with edges are given.
 !------------------------------------------------------------------------------
@@ -7003,7 +7444,7 @@ CONTAINS
     REAL(KIND=dp) :: DOFValues(:)        !< The values of DOFs
     INTEGER :: EDOFs                     !< The number of edge DOFs
     INTEGER :: FDOFs                     !< The number of face DOFs
-    LOGICAL :: SecondKindBasis           !< Use Nedelec's second family 
+    LOGICAL :: SecondKindBasis           !< Use Nedelec's second family
     INTEGER :: BasisDegree               !< The polynomial order of basis
     LOGICAL, OPTIONAL :: GradientVersion
 !------------------------------------------------------------------------------
@@ -7024,7 +7465,7 @@ CONTAINS
     ELSE
       GradVersion = .FALSE.
     END IF
-    
+
     Mass = 0.0d0
     Force = 0.0d0
 
@@ -7039,7 +7480,7 @@ CONTAINS
     VLoad(3,1:n)=GetReal(BC,Name(1:i)//' 3',Lstat,element)
 
     IP = GaussPoints(Element, PReferenceElement=.TRUE., EdgeBasisDegree=BasisDegree)
-    
+
     DO p=1,IP % n
 
       Lstat = EdgeElementInfo( Element, Nodes, IP % u(p), IP % v(p), IP % w(p), &
@@ -7071,15 +7512,15 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> This subroutine computes the values of DOFs that are associated with 
+!> This subroutine computes the values of DOFs that are associated with
 !> mesh faces in the case of face (vector-valued) finite elements, so that
-!> the vector-valued interpolant of the BC data can be constructed. 
+!> the vector-valued interpolant of the BC data can be constructed.
 !> The values of the DOFs are defined as D = S*(g.n,v)_F where the unit vector n
-!> is normal to the face, g is vector-valued data, v is a polynomial on the face F, 
-!> and S reverses sign if necessary. This subroutine performs neither sign 
+!> is normal to the face, g is vector-valued data, v is a polynomial on the face F,
+!> and S reverses sign if necessary. This subroutine performs neither sign
 !> reversions nor the permutations of DOFs, i.e. the DOFs are returned in
 !> the default form.
-! TO DO: This may need an update when new 3-D elements are added. 
+! TO DO: This may need an update when new 3-D elements are added.
 !------------------------------------------------------------------------------
   SUBROUTINE FaceElementDOFs(BC, Element, n, Parent, FaceId, Name, Integral, &
       FDOFs, SecondFamily)
@@ -7122,7 +7563,7 @@ CONTAINS
 
       IF (DOFs > 3) CALL Fatal('FaceElementDOFs', &
           'Cannot yet handle more than 3 DOFs per 3-node face')
- 
+
       IF (PRESENT(SecondFamily)) THEN
         SecondKindBasis = SecondFamily
         IF (SecondKindBasis .AND. (DOFs /= 3) ) &
@@ -7136,7 +7577,7 @@ CONTAINS
       IF (SecondKindBasis) THEN
         TetraFaceMap(1,:) = [ 2, 1, 3 ]
         TetraFaceMap(2,:) = [ 1, 2, 4 ]
-        TetraFaceMap(3,:) = [ 2, 3, 4 ] 
+        TetraFaceMap(3,:) = [ 2, 3, 4 ]
         TetraFaceMap(4,:) = [ 3, 1, 4 ]
 
         ActiveFaceMap(1:3) = TetraFaceMap(FaceId,1:3)
@@ -7146,7 +7587,7 @@ CONTAINS
           ! The parent element face is indexed differently than the boundary element.
           ! Create a copy of the boundary element which is indexed as the parent element
           ! face so that we can return the values of DOFs in the default order.
-          ! Reordering is supposed to be done outside this subroutine. 
+          ! Reordering is supposed to be done outside this subroutine.
           !
           ElementCopyCreated = .TRUE.
           ElementCopy => AllocateElement()
@@ -7164,7 +7605,7 @@ CONTAINS
       !CALL GetElementNodes(Nodes, ElementCopy)
       CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
         ElementCopy % Type % NumberOfNodes, ElementCopy % NodeIndexes)
-      
+
       Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
 
       i = LEN_TRIM(Name)
@@ -7182,7 +7623,7 @@ CONTAINS
         ! The following function call should be consistent with this goal
         ! in the case of a volume-vacuum interface provided a target body
         ! for the normal has not been given to blur the situation.
-        ! TO DO: Modify to allow other scenarios 
+        ! TO DO: Modify to allow other scenarios
         !
         Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
 
@@ -7226,7 +7667,7 @@ CONTAINS
         ! The parent element face is indexed differently than the boundary element.
         ! Create a copy of the boundary element which is indexed as the parent element
         ! face so that we can return the values of DOFs in the default order.
-        ! Reordering is supposed to be done outside this subroutine. 
+        ! Reordering is supposed to be done outside this subroutine.
         !
         ElementCopyCreated = .TRUE.
         ElementCopy => AllocateElement()
@@ -7243,7 +7684,7 @@ CONTAINS
       CALL CopyElementNodesFromMesh(Nodes, CurrentModel % Solver % Mesh, &
         ElementCopy % Type % NumberOfNodes, ElementCopy % NodeIndexes)
 
-      
+
       Load(1:n) = GetReal(BC, Name, stat, ElementCopy)
 
       i = LEN_TRIM(Name)
@@ -7264,7 +7705,7 @@ CONTAINS
         ! The following function call should be consistent with this goal
         ! in the case of a volume-vacuum interface provided a target body
         ! for the normal has not been given to blur the situation.
-        ! TO DO: Modify to allow other scenarios 
+        ! TO DO: Modify to allow other scenarios
         !
         Normal = NormalVector(ElementCopy, Nodes, IP % u(p), IP % v(p), .TRUE.)
 
@@ -7374,24 +7815,24 @@ CONTAINS
       PSolver => CurrentModel % Solver
     END IF
 
-    Params => GetSolverParams( PSolver ) 
-    
-    IF( ListGetLogical( Params,'Bulk Assembly Timing',Found ) ) THEN 
-      CALL CheckTimer('BulkAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. ) 
+    Params => GetSolverParams( PSolver )
+
+    IF( ListGetLogical( Params,'Bulk Assembly Timing',Found ) ) THEN
+      CALL CheckTimer('BulkAssembly'//GetVarName(PSolver % Variable), Level=5, Delete=.TRUE. )
     END IF
-        
-    ! Reset colouring 
+
+    ! Reset colouring
     PSolver % CurrentColour = 0
 
     IF ( PRESENT(RHSUpdate) ) THEN
       UpdateRHS = RHSUpdate
-    ELSE  
+    ELSE
       UpdateRHS = .TRUE.
     END IF
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
-      BUpd = BulkUpdate 
+      BUpd = BulkUpdate
     ELSE
       BUpd = GetLogical( Params,'Calculate Loads', Found )
       IF( BUpd ) THEN
@@ -7403,7 +7844,7 @@ CONTAINS
       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk System', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Save Bulk System', Found )
       BUpd = BUpd .OR. GetLogical( Params,'Constant Bulk Matrix', Found )
-      BUpd = BUpd .OR. GetLogical( Params,'Constraint Modes Analysis',Found) 
+      BUpd = BUpd .OR. GetLogical( Params,'Constraint Modes Analysis',Found)
       BUpd = BUpd .OR. GetLogical( Params,'Control Use Loads',Found )
     END IF
 
@@ -7411,14 +7852,14 @@ CONTAINS
       str = GetString( Params,'Equation',Found)
       CALL Info('DefaultFinishBulkAssembly','Saving bulk values for: '//str, Level=8 )
       IF( GetLogical( Params,'Constraint Modes Mass Lumping',Found) ) THEN
-        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE., BulkRHS = UpdateRHS ) 
+        CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = .TRUE., BulkRHS = UpdateRHS )
       ELSE
         CALL CopyBulkMatrix( PSolver % Matrix, BulkMass = ASSOCIATED(PSolver % Matrix % MassValues), &
-            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues), BulkRHS = UpdateRHS ) 
+            BulkDamp = ASSOCIATED(PSolver % Matrix % DampValues), BulkRHS = UpdateRHS )
       END IF
     END IF
 
-    IF( GetLogical( Params,'Bulk System Multiply',Found ) ) THEN	
+    IF( GetLogical( Params,'Bulk System Multiply',Found ) ) THEN
       CALL Info('DefaultFinishBulkAssembly','Multiplying matrix equation',Level=10)
       CALL LinearSystemMultiply( PSolver )
     END IF
@@ -7426,18 +7867,18 @@ CONTAINS
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       str = GetString( Params,'Linear System Save Slot', Found )
       IF(Found .AND. str == 'bulk assembly') THEN
-        CALL SaveLinearSystem( PSolver ) 
+        CALL SaveLinearSystem( PSolver )
       END IF
     END IF
 
-    IF( ListGetLogical( PSolver % Values,'Boundary Assembly Timing',Found ) ) THEN 
-      CALL ResetTimer('BoundaryAssembly'//GetVarName(PSolver % Variable) ) 
+    IF( ListGetLogical( PSolver % Values,'Boundary Assembly Timing',Found ) ) THEN
+      CALL ResetTimer('BoundaryAssembly'//GetVarName(PSolver % Variable) )
     END IF
 
     IF( InfoActive( 30 ) ) THEN
       A => PSolver % Matrix
       IF(ASSOCIATED(A)) THEN
-        CALL VectorValuesRange(A % Values,SIZE(A % Values),'A_bulk')       
+        CALL VectorValuesRange(A % Values,SIZE(A % Values),'A_bulk')
         IF(ASSOCIATED(A % rhs)) THEN
           CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b_bulk')
         END IF
@@ -7462,7 +7903,7 @@ CONTAINS
     CHARACTER(:), ALLOCATABLE :: str, name
     TYPE(Variable_t), POINTER ::  x
     INTEGER :: dof
-    
+
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
     ELSE
@@ -7472,9 +7913,9 @@ CONTAINS
     Params => GetSolverParams(PSolver)
     A => PSolver % Matrix
     x => PSolver % Variable
-   
+
     ! Set the nodal loads. This needs to be done before any contacts or limiters since otherwise
-    ! the given nodal loads will not be considered properly.         
+    ! the given nodal loads will not be considered properly.
     DoIt = .TRUE.
     IF( ListGetLogical( Params,'Apply Limiter',Found ) ) THEN
       IF(ListGetLogical( Params,'Apply Limiter Loads After',Found) ) DoIt = .FALSE.
@@ -7482,22 +7923,22 @@ CONTAINS
     IF( DoIt ) THEN
       DO DOF=1,x % DOFs
         name = TRIM(x % name)
-        IF (x % DOFs>1) name=ComponentName(name,DOF)              
+        IF (x % DOFs>1) name=ComponentName(name,DOF)
         CALL SetNodalLoads( CurrentModel,A,A % rhs, &
-            Name,DOF,x % DOFs,x % Perm ) 
+            Name,DOF,x % DOFs,x % Perm )
       END DO
     END IF
-    
-    IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN 
-      CALL CheckTimer('BoundaryAssembly'//GetVarName(x), Level=5, Delete=.TRUE. ) 
+
+    IF( ListGetLogical( Params,'Boundary Assembly Timing',Found ) ) THEN
+      CALL CheckTimer('BoundaryAssembly'//GetVarName(x), Level=5, Delete=.TRUE. )
     END IF
 
-    ! Reset colouring 
+    ! Reset colouring
     PSolver % CurrentBoundaryColour = 0
 
     BUpd = .FALSE.
     IF ( PRESENT(BulkUpdate) ) THEN
-      BUpd = BulkUpdate 
+      BUpd = BulkUpdate
       IF ( .NOT. BUpd ) RETURN
     ELSE
       BUpd = GetLogical( Params,'Calculate Loads', Found )
@@ -7508,32 +7949,36 @@ CONTAINS
         ELSE
           BUpd = .FALSE.
         END IF
-        BUpd = BUpd .OR. GetLogical( Params,'Constant System', Found )
       END IF
+      ! Outside the test above, as the corresponding chain in
+      ! DefaultFinishBulkAssembly is. Nested inside it, this asked for "Constant
+      ! System" only where "Calculate Loads" had already been set, so on its own
+      ! the keyword saved nothing and no solver's reuse could ever engage.
+      BUpd = BUpd .OR. GetLogical( Params,'Constant System', Found )
     END IF
 
     IF( BUpd ) THEN
       CALL Info('DefaultFinishBoundaryAssembly','Saving system values for Solver: '&
           //TRIM(x % Name), Level=8)
-      CALL CopyBulkMatrix( PSolver % Matrix ) 
+      CALL CopyBulkMatrix( PSolver % Matrix )
     END IF
 
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       str=GetString( Params,'Linear System Save Slot', Found )
       IF(Found .AND. str == 'boundary assembly') THEN
-        CALL SaveLinearSystem( PSolver ) 
+        CALL SaveLinearSystem( PSolver )
       END IF
     END IF
-       
+
     ! Create contact BCs using mortar conditions.
     !---------------------------------------------------------------------
     IF( ListGetLogical( Params,'Apply Contact BCs',Found) ) THEN
-      CALL DetermineContact( PSolver )	
+      CALL DetermineContact( PSolver )
     END IF
 
     IF( InfoActive( 30 ) ) THEN
       IF(ASSOCIATED(A)) THEN
-        CALL VectorValuesRange(A % Values,SIZE(A % Values),'A0')       
+        CALL VectorValuesRange(A % Values,SIZE(A % Values),'A0')
         IF( ASSOCIATED( A % rhs) ) THEN
           CALL VectorValuesRange(A % rhs,SIZE(A % rhs),'b0')
         END IF
@@ -7548,7 +7993,7 @@ CONTAINS
 !> Finished the assembly of the matrix equation, mainly effects in transient simulation
 !> Also may be used to set implicit relaxation on the linear system before
 !> applying Dirichlet conditions. If flux corrected transport is applied then
-!> make the initial linear system to be of low order. 
+!> make the initial linear system to be of low order.
 !------------------------------------------------------------------------------
   SUBROUTINE DefaultFinishAssembly( Solver )
 !------------------------------------------------------------------------------
@@ -7563,22 +8008,22 @@ CONTAINS
     TYPE(ElementType_t), POINTER :: et
     REAL(KIND=dp) :: sscond
     CHARACTER(:), ALLOCATABLE :: str
-    
+
     IF( PRESENT( Solver ) ) THEN
       PSolver => Solver
     ELSE
       PSolver => CurrentModel % Solver
     END IF
     A => PSolver % Matrix
-    
+
     Params => GetSolverParams(PSolver)
 
     ! Nonlinear timestepping needs a copy of the linear system from previous
-    ! timestep. Hence the saving of the linear system is enforced. 
+    ! timestep. Hence the saving of the linear system is enforced.
     IF( ListGetLogical( Params,'Nonlinear Timestepping', Found ) ) THEN
       CALL Info('DefaultFinishAssembly','Saving system values for Solver: '&
           //TRIM(PSolver % Variable % Name), Level=8)
-      CALL CopyBulkMatrix( A ) 
+      CALL CopyBulkMatrix( A )
     END IF
 
     ! Makes a low order matrix of the initial one saving original values
@@ -7590,7 +8035,7 @@ CONTAINS
         CALL Fatal('DefaultFinishAssembly','FCT scheme implemented only for one dof')
       END IF
     END IF
-    
+
     IF(GetLogical(Params,'Use Global Mass Matrix',Found)) THEN
 
       Transient = GetString( CurrentModel % Simulation, 'Simulation Type') == 'transient'
@@ -7604,8 +8049,8 @@ CONTAINS
         IF(.NOT.Found) Order = PSolver % TimeOrder
 
         SELECT CASE(order)
-          
-        CASE(1)  
+
+        CASE(1)
           CALL Default1stOrderTimeGlobal(PSolver)
 
         CASE(2)
@@ -7613,7 +8058,7 @@ CONTAINS
         END SELECT
       END IF
     END IF
- 
+
     CALL FinishAssembly( PSolver, A % RHS )
 
     IF( GetLogical( Params,'Linear System Multiply',Found ) ) THEN
@@ -7622,13 +8067,13 @@ CONTAINS
     END IF
 
     IF( ListCheckPrefix( Params,'Linear System Diagonal Min') ) THEN
-      CALL LinearSystemMinDiagonal( PSolver )      
+      CALL LinearSystemMinDiagonal( PSolver )
     END IF
 
     IF ( ListGetLogical( Params,'Linear System Save',Found )) THEN
       str = GetString( Params,'Linear System Save Slot', Found )
       IF(Found .AND. str == 'assembly') THEN
-        CALL SaveLinearSystem( PSolver ) 
+        CALL SaveLinearSystem( PSolver )
       END IF
     END IF
 
@@ -7651,7 +8096,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    FUNCTION GaussPointsBoundary(Element, boundary, np) RESULT(gaussP)
 !------------------------------------------------------------------------------
-     USE PElementMaps, ONLY : getElementBoundaryMap 
+     USE PElementMaps, ONLY : getElementBoundaryMap
      USE Integration
      IMPLICIT NONE
 
@@ -7660,13 +8105,13 @@ CONTAINS
      INTEGER, INTENT(IN) :: boundary, np
 
      TYPE( GaussIntegrationPoints_t ) :: gaussP
-     TYPE(Nodes_t) :: bNodes 
+     TYPE(Nodes_t) :: bNodes
      TYPE(Element_t) :: mapElement
      TYPE(Element_t), POINTER :: RefElement
      INTEGER :: i, n, eCode, bMap(4)
      REAL(KIND=dp), TARGET :: x(4), y(4), z(4)
      REAL(KIND=dp), POINTER CONTIG :: xP(:), yP(:), zP(:)
-     
+
      SELECT CASE(Element % TYPE % ElementCode / 100)
      ! Triangle and Quadrilateral
      CASE (3,4)
@@ -7713,13 +8158,13 @@ CONTAINS
      zP => z
      CALL GetRefPElementNodes( Element % Type,xP,yP,zP )
      ALLOCATE(bNodes % x(n), bNodes % y(n), bNodes % z(n))
-        
+
      ! Set coordinate points of destination
      DO i=1,n
-        IF (bMap(i) == 0) CYCLE  
-        bNodes % x(i) = x(bMap(i)) 
+        IF (bMap(i) == 0) CYCLE
+        bNodes % x(i) = x(bMap(i))
         bNodes % y(i) = y(bMap(i))
-        bNodes % z(i) = z(bMap(i))   
+        bNodes % z(i) = z(bMap(i))
      END DO
 
      ! Get element to map from
@@ -7728,9 +8173,9 @@ CONTAINS
 
      ! Get gauss points and map them to given element
      gaussP = GaussPoints( mapElement, np )
-     
+
      CALL MapGaussPoints( mapElement, mapElement % TYPE % NumberOfNodes, gaussP, bNodes )
-     
+
      ! Deallocate memory
      DEALLOCATE(bNodes % x, bNodes % y, bNodes % z, MapElement % NodeIndexes)
 !------------------------------------------------------------------------------
@@ -7752,7 +8197,7 @@ CONTAINS
      REAL(KIND=dp) :: xh,yh,zh,sh, DetJ
      REAL(KIND=dp) :: Basis(n)
      LOGICAL :: stat
-     
+
      ! Map each gauss point from reference element to given nodes
      DO i=1,gaussP % n
         stat = ElementInfo( Element, Nodes, gaussP % u(i), gaussP % v(i), gaussP % w(i), &
@@ -7779,7 +8224,7 @@ CONTAINS
 
 
 !>     Calculate global AND local indexes of boundary dofs for given p-element
-!>     lying on a boundary. 
+!>     lying on a boundary.
 !------------------------------------------------------------------------------
    SUBROUTINE getBoundaryIndexesGL( Mesh, Element, BElement, lIndexes, gIndexes, indSize )
 !------------------------------------------------------------------------------
@@ -7796,13 +8241,13 @@ CONTAINS
 !      INPUT: Boundary element to get indexes for
 !
 !    INTEGER :: lIndexes(:), gIndexes(:)
-!      OUTPUT: Calculated indexes of boundary element in local and 
+!      OUTPUT: Calculated indexes of boundary element in local and
 !        global system
-! 
+!
 !    INTEGER :: indSize
 !      OUTPUT: Size of created index vector, i.e. how many indexes were created
 !        starting from index 1
-!    
+!
 !------------------------------------------------------------------------------
      IMPLICIT NONE
 
@@ -7820,7 +8265,7 @@ CONTAINS
      ! Clear indexes
      lIndexes = 0
      gIndexes = 0
-     
+
      ! Get boundary map and number of nodes on boundary
      localBoundary = BElement % PDefs % localNumber
      nNodes = BElement % TYPE % NumberOfNodes
@@ -7843,7 +8288,7 @@ CONTAINS
 
         DO i=1,Element % TYPE % NumberOfEdges
            Edge => Mesh % Edges( Element % EdgeIndexes(i) )
-           
+
            ! For boundary edge add local and global indexes
            IF (localBoundary == i) THEN
               DO j=1,Edge % BDOFs
@@ -7854,10 +8299,10 @@ CONTAINS
               END DO
               EXIT
            END IF
-           
-           edgeDofSum = edgeDofSum + Edge % BDOFs 
+
+           edgeDofSum = edgeDofSum + Edge % BDOFs
         END DO
-        
+
         indSize = n - 1
      CASE (3)
         IF (SIZE(lIndexes) < nNodes + (Mesh % MaxEdgeDOFs * BElement % TYPE % NumberOfEdges) +&
@@ -7884,7 +8329,7 @@ CONTAINS
         Face => Mesh % Faces( Element % FaceIndexes(localBoundary) )
         DO i=1,Face % TYPE % NumberOfEdges
            Edge => Mesh % Edges( Face % EdgeIndexes(i) )
-           
+
            IF (Edge % BDOFs <= 0) CYCLE
 
            DO j=1,Edge % BDOFs
@@ -7897,12 +8342,12 @@ CONTAINS
 
         DO i=1,Element % TYPE % NumberOfFaces
            Face => Mesh % Faces( Element % FaceIndexes(i) )
-           
+
            IF (Face % BDOFs <= 0) CYCLE
 
            ! For boundary face add local and global indexes
            IF (localBoundary == i) THEN
-              DO j=1,Face % BDOFs 
+              DO j=1,Face % BDOFs
                  lIndexes(n) = Element % TYPE % NumberOfNodes + faceOffSet + j
                  gIndexes(n) = Mesh % NumberOfNodes + &
                       Mesh % NumberOfEdges * Mesh % MaxEdgeDOFs + &
@@ -7914,7 +8359,7 @@ CONTAINS
 
            faceOffSet = faceOffSet + Face % BDOFs
         END DO
-        
+
         indSize = n - 1
      END SELECT
    END SUBROUTINE getBoundaryIndexesGL
@@ -7975,7 +8420,7 @@ CONTAINS
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
-    Mesh => GetMesh()    
+    Mesh => GetMesh()
     n = FindBoundaryEdgeIndex(Mesh,Boundary,nedge)
 !------------------------------------------------------------------------------
   END FUNCTION GetBoundaryEdgeIndex
@@ -7990,13 +8435,13 @@ CONTAINS
     TYPE(Element_t) :: Boundary
 !------------------------------------------------------------------------------
     TYPE(Mesh_t), POINTER :: Mesh
-    Mesh => GetMesh()    
+    Mesh => GetMesh()
     n = FindBoundaryFaceIndex(Mesh,Boundary)
 !------------------------------------------------------------------------------
   END FUNCTION GetBoundaryFaceIndex
 !------------------------------------------------------------------------------
 
-  FUNCTION GetNOFColours(USolver) RESULT( ncolours ) 
+  FUNCTION GetNOFColours(USolver) RESULT( ncolours )
     IMPLICIT NONE
     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
     INTEGER :: ncolours
@@ -8009,7 +8454,7 @@ CONTAINS
       END IF
     ELSE
       IF( ASSOCIATED( CurrentModel % Solver % ColourIndexList ) ) THEN
-        ncolours = CurrentModel % Solver % ColourIndexList % n 
+        ncolours = CurrentModel % Solver % ColourIndexList % n
         CurrentModel % Solver % CurrentColour = 0
       END IF
     END IF
@@ -8017,7 +8462,7 @@ CONTAINS
     CALL Info('GetNOFColours','Number of colours: '//I2S(ncolours),Level=12)
   END FUNCTION GetNOFColours
 
-  FUNCTION GetNOFBoundaryColours(USolver) RESULT( ncolours ) 
+  FUNCTION GetNOFBoundaryColours(USolver) RESULT( ncolours )
     IMPLICIT NONE
     TYPE(Solver_t), TARGET, OPTIONAL :: USolver
     INTEGER :: ncolours
@@ -8030,35 +8475,35 @@ CONTAINS
       END IF
     ELSE
       IF( ASSOCIATED( CurrentModel % Solver % BoundaryColourIndexList ) ) THEN
-        ncolours = CurrentModel % Solver % BoundaryColourIndexList % n 
+        ncolours = CurrentModel % Solver % BoundaryColourIndexList % n
         CurrentModel % Solver % CurrentBoundaryColour = 0
       END IF
     END IF
 
     CALL Info('GetNOFBoundaryColours','Number of colours: '//I2S(ncolours),Level=12)
   END FUNCTION GetNOFBoundaryColours
-  
-  ! Check given colourings are valid and see if they are free of race conditions. 
+
+  ! Check given colourings are valid and see if they are free of race conditions.
   SUBROUTINE CheckColourings(Solver)
     IMPLICIT NONE
     TYPE(Solver_t) :: Solver
-    
+
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Graph_t), POINTER :: Colours
     TYPE(Graph_t), POINTER :: BoundaryColours
 
     TYPE(Element_t), POINTER :: Element
-    
+
     INTEGER, ALLOCATABLE :: Indexes(:), DOFIndexes(:)
     INTEGER :: col, elem, belem, NDOF, dof
     LOGICAL :: errors
 
     errors = .FALSE.
-    
+
     Mesh => Solver % Mesh
     Colours => Solver % ColourIndexList
     BoundaryColours => Solver % BoundaryColourIndexList
-    
+
     ! Allocate workspace and initialize it
     ALLOCATE(Indexes(MAX(Mesh % NumberOfNodes,&
           Mesh % NumberOfBulkElements*Mesh % MaxElementDOFs,&
@@ -8079,7 +8524,7 @@ CONTAINS
              errors = .TRUE.
           END IF
        END DO
-       
+
        Indexes = 0
        ! Check that colouring is free of race conditions
        DO col=1,Colours % N
@@ -8103,7 +8548,7 @@ CONTAINS
 
     ! Check that every boundary element has a colour
     IF (ASSOCIATED(BoundaryColours)) THEN
-       
+
        DO col=1,BoundaryColours % N
           DO elem=BoundaryColours % Ptr(col), BoundaryColours%Ptr(col+1)-1
              Indexes(BoundaryColours % Ind(elem))=Indexes(BoundaryColours % Ind(elem))+1
@@ -8116,7 +8561,7 @@ CONTAINS
              errors = .TRUE.
           END IF
        END DO
-       
+
        Indexes = 0
        ! Check that colouring is free of race conditions
        DO col=1,BoundaryColours % N
@@ -8145,7 +8590,7 @@ CONTAINS
     IF (errors) THEN
       CALL Warn('CheckColourings','Mesh colouring contained errors')
     END IF
-    
+
     DEALLOCATE(Indexes, DOFIndexes)
   END SUBROUTINE CheckColourings
 

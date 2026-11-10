@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -36,8 +36,8 @@
 
 #include <../config.h>
 
-#define lua_upvalueindex(i)	(LUA_GLOBALSINDEX-(i))
-#define LUA_GLOBALSINDEX	(-10002)
+#define lua_upvalueindex(i)  (LUA_GLOBALSINDEX-(i))
+#define LUA_GLOBALSINDEX     (-10002)
 !-------------------------------------------------------------------------------
 module Lua ! {{{
 !-------------------------------------------------------------------------------
@@ -63,9 +63,10 @@ public :: lua_init, lua_close, lua_addfun, luaL_checkinteger, luaL_checknumber, 
     luaL_checkstring, lua_eval_f, lua_popnumber, lua_getnumber, lua_tolstring, &
     check_error, lua_getusertable, lua_poptensor, lua_popstring, lua_exec_fun, &
     lua_popvector
+! NOTE: lua_set_type removed — it patched internal Lua state to mask nil lookups
 
 !-Interfaces-{{{----------------------------------------------------------------
-interface ! 
+interface !
   type(c_ptr) function lua_touserdata(L, n) bind(C)
     import
     type(c_ptr), value :: L
@@ -114,12 +115,6 @@ interface !
     type(c_ptr) :: s
   end function
 
-  subroutine lua_set_type(L, n) bind(C, name="lua_set_type_c")
-    import
-    type(c_ptr), value :: L
-    integer(kind=c_int), value :: n
-  end subroutine
-
   function luaL_checkinteger(L, n) result(r) bind(C, name="luaL_checkinteger")
     import
     type(c_ptr), value :: L
@@ -133,7 +128,7 @@ interface !
   end subroutine
 
   function lua_init_c() result(L) bind(C, name="lua_init")
-    import 
+    import
     type(c_ptr) :: L
   end function
 
@@ -206,15 +201,15 @@ interface !
     integer(kind=c_int) :: len
   end subroutine
 
-end interface 
+end interface
 
-abstract interface 
+abstract interface
 function luafun(L) result(n)
   import
   type(c_ptr), value :: L
   integer(kind=c_int) :: n
 end function
-end interface 
+end interface
 !-}}}---------------------------------------------------------------------------
 
 CONTAINS
@@ -245,6 +240,12 @@ function lua_tolstring(L, n, slen) result(sp)
   integer(kind=c_int) :: slen
 
   sp => null()
+
+  ! C lua_tolstring leaves *len untouched when the value at n is not a string
+  ! (e.g. nil, as produced by a '#var=value' statement line). Initialize so a
+  ! non-string yields length 0 instead of stack garbage — otherwise callers
+  ! (lua_popstring -> TrimLuaExpression) copy matcstr(1:garbage) and corrupt memory.
+  slen = 0
 
   c_s = lua_tolstring_c(L, n, slen)
   if ( slen <= 0 ) return
@@ -344,11 +345,8 @@ subroutine lua_eval_f(L, fname, X, y)
   end do
   lstat = lua_pcall(L%L, nx, ny, 0)
   call check_error(L, lstat)
-  if (lua_pcall(L%L, nx, ny, 0) /= 0) then
-    CALL luaL_error(L%L, "error running '"//fname(1:len(fname))//"': ")
-  end if
   do i = ny,1,-1
-    Y(i) = lua_tonumber(L%L, -1) 
+    Y(i) = lua_tonumber(L%L, -1)
     CALL lua_pop(L%L,1)
   end do
 end subroutine
@@ -361,7 +359,6 @@ subroutine lua_exec_fun(L, fname, nin, nout)
   integer :: lstat
 
   CALL lua_getfield(L%L, LUA_GLOBALSINDEX, fname)
-  CALL lua_set_type(L%L, nin)
   lstat = lua_pcall(L%L, nin, nout, 0)
   call check_error(L, lstat)
 end subroutine
@@ -403,8 +400,13 @@ subroutine check_error(L, lstat)
   integer(kind=c_int) :: slen
   if (lstat /= 0) then
     s => lua_tolstring(L%L, -1, slen)
-    print *, 'Caught LUA error:', s(1:slen)
-    call lua_pop(L%L,1);
+    if (slen > 0) then
+      print *, 'FATAL Lua error: ', s(1:slen)
+    else
+      print *, 'FATAL Lua error (no message available)'
+    end if
+    call lua_pop(L%L, 1)
+    ERROR STOP 1
   end if
 end subroutine
 

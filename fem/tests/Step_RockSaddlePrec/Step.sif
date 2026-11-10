@@ -41,7 +41,7 @@ End
 Solver 1
    Equation = "ns"
 
-   Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+   Procedure = "IncompressibleNS" "IncompressibleNSSolver"
 
    Linear System Solver = Iterative
    Linear System Max Iterations = 5000

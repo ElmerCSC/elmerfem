@@ -119,7 +119,7 @@ End
 Solver 1
   Equation = HeatSolver
   Variable = Temperature
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
 
   Nonlinear System Max Iterations = 1
 

@@ -89,7 +89,7 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: NodeCost(Model % MaxElementNodes)
   REAL(KIND=dp) :: Basis(Model % MaxElementNodes), dBasisdx(Model % MaxElementNodes,3)
   REAL(KIND=dp) :: NodeCostb(Model % MaxElementNodes),NodeCost_der(3,Model %MaxElementNodes)
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
   save Firsttime,Parallel 
   save SolverName,CostSolName,CostFile
@@ -199,7 +199,7 @@ SUBROUTINE AdjointSSA_CostContSolver( Model,Solver,dt,TransientSimulation )
                 'It is not possible to compute SSA problems with DOFs=',&
                 DIM, ' . Aborting'
            CALL Fatal( SolverName, Message)
-           STOP
+           ERROR STOP
         END IF
 
       BodyForce => GetBodyForce()

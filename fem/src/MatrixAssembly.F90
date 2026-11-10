@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -32,7 +32,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 28 Sep 1998
 ! *
@@ -40,7 +40,7 @@
 
 !> Basic utilities for creating and manipulating the global matrix.
 !> These routines should only have dependence on the CRS, List, and Band matrix
-!> routines. 
+!> routines.
 !------------------------------------------------------------------------------
 
 !> \ingroup ElmerLib
@@ -57,7 +57,7 @@ MODULE MatrixAssembly
    USE BandMatrix
    USE PElementMaps, ONLY : isActivePElement, getEdgeDOFs, getFaceDOFs, getBubbleDOFs
 
-   
+
    IMPLICIT NONE
 
    INTERFACE CondensateP
@@ -65,8 +65,8 @@ MODULE MatrixAssembly
    END INTERFACE CondensateP
 
 CONTAINS
-   
-!> Sets the matrix element to a desired value. 
+
+!> Sets the matrix element to a desired value.
 !------------------------------------------------------------------------------
    SUBROUTINE SetMatrixElement( A, i, j, val )
 !------------------------------------------------------------------------------
@@ -94,7 +94,7 @@ CONTAINS
    END SUBROUTINE SetMatrixElement
 !------------------------------------------------------------------------------
 
-!> Gets a matrix element. 
+!> Gets a matrix element.
 !------------------------------------------------------------------------------
    FUNCTION GetMatrixElement( A, i, j ) RESULT ( val )
 !------------------------------------------------------------------------------
@@ -196,7 +196,7 @@ CONTAINS
 
      val = ChangeMatrixElement(A, i1, j1, 0.0_dp)
      CALL AddToMatrixElement(A, i2, j2, val )
-     
+
 !------------------------------------------------------------------------------
    END SUBROUTINE MoveMatrixElement
 !------------------------------------------------------------------------------
@@ -206,7 +206,7 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE ZeroRow( A, n )
 !------------------------------------------------------------------------------
-     TYPE(Matrix_t) :: A  !< Structure holding the matrix 
+     TYPE(Matrix_t) :: A  !< Structure holding the matrix
      INTEGER :: n         !< Row to be zeroed.
 !------------------------------------------------------------------------------
 
@@ -224,7 +224,7 @@ CONTAINS
    END SUBROUTINE ZeroRow
 !------------------------------------------------------------------------------
 
-!> Moves a row and and sums it with the values of a second one, optionally 
+!> Moves a row and and sums it with the values of a second one, optionally
 !> multiplying with a constant.
 !------------------------------------------------------------------------------
    SUBROUTINE MoveRow( A, n1, n2, Coeff, StayCoeff, MoveCoeff )
@@ -242,13 +242,13 @@ CONTAINS
          IF( A % FORMAT == MATRIX_LIST ) THEN
            CALL CRS_MoveRow( A,n1,n2,Coeff,StayCoeff ) ! does this make sense?
          END IF
-         
+
        CASE( MATRIX_LIST )
          CALL List_MoveRow( A % ListMatrix,n1,n2,Coeff,StayCoeff )
 
        CASE DEFAULT
          CALL Warn('MoveRow','Not implemented for this type')
-         
+
      END SELECT
 !------------------------------------------------------------------------------
    END SUBROUTINE MoveRow
@@ -270,10 +270,10 @@ CONTAINS
 
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
 
-     PerFlip => Solver % Mesh % PeriodicFlip           
+     PerFlip => Solver % Mesh % PeriodicFlip
 
      IF( .NOT. ANY( PerFlip( Indexes(1:n) ) ) ) RETURN
-     
+
      IF( dofs == 1 ) THEN
        DO i=1,n
          DO j=1,n
@@ -293,9 +293,9 @@ CONTAINS
              END DO
            END IF
          END DO
-       END DO       
+       END DO
      END IF
-              
+
    END SUBROUTINE FlipPeriodicLocalMatrix
 
 
@@ -308,16 +308,16 @@ CONTAINS
      INTEGER :: n, dofs
      INTEGER :: Indexes(:)
      REAL(KIND=dp) :: F(:)
-     
+
      LOGICAL, POINTER :: PerFlip(:)
      INTEGER :: i,j
 
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
 
-     PerFlip => Solver % Mesh % PeriodicFlip           
-     
+     PerFlip => Solver % Mesh % PeriodicFlip
+
      IF( .NOT. ANY( PerFlip( Indexes(1:n) ) ) ) RETURN
-     
+
      IF( dofs == 1 ) THEN
        DO i=1,n
          IF( PerFlip(Indexes(i))) F(i) = -F(i)
@@ -331,25 +331,25 @@ CONTAINS
          END IF
        END DO
      END IF
-          
+
    END SUBROUTINE FlipPeriodicLocalForce
 
 
 !---------------------------------------------------------------------------
 !> Check if there is something to flip.
 !---------------------------------------------------------------------------
-   FUNCTION AnyFlipPeriodic( Solver, n, Indexes ) RESULT ( DoFlip ) 
+   FUNCTION AnyFlipPeriodic( Solver, n, Indexes ) RESULT ( DoFlip )
      TYPE(Solver_t), POINTER :: Solver
      INTEGER :: n
      INTEGER :: Indexes(:)
-     LOGICAL :: DoFlip 
-     
+     LOGICAL :: DoFlip
+
      LOGICAL, POINTER :: PerFlip(:)
 
      DoFlip = .FALSE.
      IF( .NOT. Solver % PeriodicFlipActive ) RETURN
-    
-     PerFlip => Solver % Mesh % PeriodicFlip                
+
+     PerFlip => Solver % Mesh % PeriodicFlip
      DoFlip = ANY( PerFlip(Indexes(1:n)))
 
    END FUNCTION AnyFlipPeriodic
@@ -358,16 +358,16 @@ CONTAINS
 !---------------------------------------------------------------------------
 !> Skip matrix assembly because the elements are similar.
 !---------------------------------------------------------------------------
-   FUNCTION UseLocalMatrixCopy( Solver, elemind, activeind) RESULT ( Skip ) 
+   FUNCTION UseLocalMatrixCopy( Solver, elemind, activeind) RESULT ( Skip )
      TYPE(Solver_t) :: Solver
      INTEGER, OPTIONAL :: elemind, activeind
-     LOGICAL :: Skip 
-     
+     LOGICAL :: Skip
+
      INTEGER :: eind, vind
-     
+
      Skip = .FALSE.
      IF( Solver % LocalSystemMode <= 0 ) RETURN
-     
+
      IF( PRESENT(activeind) ) THEN
        eind = activeind
      ELSE
@@ -378,20 +378,20 @@ CONTAINS
 
      vind = Solver % LocalSystem(eind) % eind
      IF( vind > 0 .AND. vind /= eind) Skip = .TRUE.
-     
-   END FUNCTION UseLocalMatrixCopy
-     
 
-   
+   END FUNCTION UseLocalMatrixCopy
+
+
+
 !---------------------------------------------------------------------------
 !> Store local matrix, e.g. for topology optimization.
 !---------------------------------------------------------------------------
-   SUBROUTINE UseLocalMatrixStorage( Solver, n, K, F, elemind, activeind) 
+   SUBROUTINE UseLocalMatrixStorage( Solver, n, K, F, elemind, activeind)
      TYPE(Solver_t) :: Solver
      INTEGER :: n
      REAL(KIND=dp) :: K(:,:), F(:)
      INTEGER, OPTIONAL :: elemind, activeind
-     
+
      TYPE(LocalSystemStorage_t), POINTER :: pLocal
      TYPE(Variable_t), POINTER :: cVar => NULL(), rVar => NULL()
      CHARACTER(:), ALLOCATABLE :: multname
@@ -400,13 +400,13 @@ CONTAINS
      INTEGER :: eind, vind
      LOGICAL :: Found
      LOGICAL :: DoMultiply = .FALSE., DoMultiplyRhs = .FALSE., DoInvert = .FALSE.
-     
+
      SAVE cVar, DoMultiply, DoMultiplyRhs, DoInvert, prevSolverId
-     
+
      IF( PRESENT(activeind) ) THEN
        eind = activeind
      ELSE IF( PRESENT( elemind ) ) THEN
-       ! This is probably related to boundary elements for which we haven't saved stuff. 
+       ! This is probably related to boundary elements for which we haven't saved stuff.
        IF( elemind > SIZE(Solver % InvActiveElements ) ) RETURN
        !IF( elemind < 1 .OR. elemind > SIZE(Solver % InvActiveElements ) ) THEN
        !  CALL Fatal('GetLocalMatrixStorage','Parameter "elemind" is out of bounds!')
@@ -418,31 +418,52 @@ CONTAINS
        CALL Fatal('UseLocalMatrixStorage','Give element index as a parameter in some way!')
      END IF
 
-     ! Size of local system is same as size of ActiveElements table. 
-     pLocal => Solver % LocalSystem(eind) 
+     ! Size of local system is same as size of ActiveElements table.
+     pLocal => Solver % LocalSystem(eind)
      IF( pLocal % eind == eind .OR. pLocal % eind < 1 ) THEN
        ! Save local system for this element.
        IF(pLocal % n < n ) THEN
-         ! The size of local system allocated. 
+         ! The size of local system allocated.
          IF( plocal % n > 0 ) THEN
-           DEALLOCATE(pLocal % K, pLocal % F) 
+           DEALLOCATE(pLocal % K, pLocal % F)
          END IF
          pLocal % n = n
-         ALLOCATE(pLocal % K(n,n), pLocal % F(n)) 
+         ALLOCATE(pLocal % K(n,n), pLocal % F(n))
        END IF
-       ! This elements is saved in its location. 
+       ! This elements is saved in its location.
        pLocal % eind = eind
        pLocal % K(1:n,1:n) = K(1:n,1:n)
        pLocal % F(1:n) = F(1:n)
      ELSE
        ! Obtain local system for this element which is copy of some other element
        pLocal => Solver % LocalSystem(pLocal % eind)
-       K(1:n,1:n) = pLocal % K(1:n,1:n) 
-       F(1:n) = pLocal % F(1:n)        
+       K(1:n,1:n) = pLocal % K(1:n,1:n)
+       F(1:n) = pLocal % F(1:n)
      END IF
 
+     ! Obtain the (solver-constant) matrix multiplier configuration once. The
+     ! cVar/DoMultiply/DoMultiplyRhs/DoInvert/rVar/prevSolverId state below is
+     ! SAVEd (implicitly, via their declaration initializers) and therefore
+     ! shared across threads, but this routine is called per element from the
+     ! *threaded* vectorized assembly (DefaultUpdateEquations -> here) whenever
+     ! "Local Matrix Storage" is combined with "Vector Assembly" (e.g. topology
+     ! optimization with "Matrix Multiplier Name"). The bare "SolverId /=
+     ! PrevSolverId" check was an unsynchronized double-checked lock: on the
+     ! first parallel assembly several threads pass it together and all run the
+     ! init concurrently. One thread's transient "cvar => NULL()" (below) then
+     ! races against another thread that has already published DoMultiply=.TRUE.
+     ! and reaches "cvar % Perm(eind)" further down -> NULL dereference / SIGSEGV
+     ! (the intermittent TopoOptHeat2DCompMin2 crash). Guard the init with an
+     ! unnamed CRITICAL and re-check inside it (real double-checked locking):
+     ! only one thread initializes, prevSolverId is published last so the
+     ! unlocked fast path stays valid, and the lock is skipped entirely once
+     ! initialized. NOTE: this MUST stay an unnamed CRITICAL -- a named variant
+     ! deterministically SIGSEGVs several MPI tests on the Windows MSYS2/UCRT
+     ! MinGW gomp runtime (see the identical note in GaussPointsAdapt).
      IF(Solver % SolverId /= PrevSolverId) THEN
-       ! For the 1st element obtain the multiplier vector, for other elements it will be the same. 
+       !$OMP CRITICAL
+       IF(Solver % SolverId /= PrevSolverId) THEN
+       ! For the 1st element obtain the multiplier vector, for other elements it will be the same.
        cvar => NULL()
        DoMultiply = .FALSE.
        DoMultiplyRhs = .FALSE.
@@ -458,8 +479,8 @@ CONTAINS
          DoMultiply = .TRUE.
 
          DoInvert = ListGetLogical( Solver % Values,'Matrix Multiplier Invert',Found )
-         
-         ! We may multiply the r.h.s. with a different multiplier. 
+
+         ! We may multiply the r.h.s. with a different multiplier.
          multname = ListGetString( Solver % Values,'Rhs Multiplier Name',Found )
          IF(Found ) THEN
            rvar => VariableGet( Solver % Mesh % Variables, multname, UnfoundFatal = .TRUE.)
@@ -472,10 +493,12 @@ CONTAINS
            DoMultiplyRhs = .TRUE.
          END IF
        END IF
-       prevSolverId = Solver % SolverId       
+       prevSolverId = Solver % SolverId
+       END IF
+       !$OMP END CRITICAL
      END IF
 
-     ! Multiply locally stored matrix. Possible use is, for example, density in topology optimization. 
+     ! Multiply locally stored matrix. Possible use is, for example, density in topology optimization.
      IF( DoMultiply ) THEN
        vind = cvar % Perm(eind)
        IF(vind > 0 ) THEN
@@ -492,24 +515,24 @@ CONTAINS
            rmult = rvar % Values(vind)
            F(1:n) = rmult * F(1:n)
          END IF
-       END IF         
+       END IF
      END IF
-           
+
    END SUBROUTINE UseLocalMatrixStorage
 
-   
+
 !---------------------------------------------------------------------------
 !> Obtain local matrix, e.g. for topology optimization.
 !> If the elements are alike, the element index may point to a different
-!> element than itself. 
+!> element than itself.
 !---------------------------------------------------------------------------
-   SUBROUTINE GetLocalMatrixStorage( Solver, n, K, F, Found, elemind, activeind ) 
+   SUBROUTINE GetLocalMatrixStorage( Solver, n, K, F, Found, elemind, activeind )
      TYPE(Solver_t) :: Solver
      INTEGER :: n
      REAL(KIND=dp) :: K(:,:), F(:)
      LOGICAL :: Found
      INTEGER, OPTIONAL :: elemind, activeind
-  
+
      TYPE(LocalSystemStorage_t), POINTER :: pLocal
      INTEGER :: eind
 
@@ -523,24 +546,24 @@ CONTAINS
      ELSE
        CALL Fatal('GetLocalMatrixStorage','Give element index as a parameter in some way!')
      END IF
-     
-     pLocal => Solver % LocalSystem(eind) 
+
+     pLocal => Solver % LocalSystem(eind)
      IF(eind /= pLocal % eind ) THEN
        pLocal => Solver % LocalSystem(pLocal % eind)
      END IF
      IF(pLocal % eind < 1 ) RETURN
-     
+
      IF(pLocal % n == n ) THEN
        K(1:n,1:n) = pLocal % K(1:n,1:n)
        F(1:n) = pLocal % F(1:n)
        Found = .TRUE.
      END IF
-       
+
    END SUBROUTINE GetLocalMatrixStorage
 
-   
-   
-   
+
+
+
 !> Glues a local matrix to the global one.
 !------------------------------------------------------------------------------
    SUBROUTINE GlueLocalSubMatrix( A,row0,col0,Nrow,Ncol,RowInds,ColInds,&
@@ -553,14 +576,14 @@ CONTAINS
 
      SELECT CASE( A % FORMAT )
 
-       CASE( MATRIX_CRS )       
+       CASE( MATRIX_CRS )
          CALL CRS_GlueLocalSubMatrix( A,row0,col0,Nrow,Ncol,RowInds,ColInds,&
              RowDofs,ColDofs,LocalMatrix )
-      
+
        CASE( MATRIX_LIST )
          CALL List_GlueLocalSubMatrix( A % ListMatrix,row0,col0,Nrow,Ncol,RowInds,ColInds,&
              RowDofs,ColDofs,LocalMatrix )
-        
+
        CASE DEFAULT
          CALL Warn('GlueLocalSubMatrix','Not implemented for this type')
 
@@ -570,10 +593,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!> Create a copy of the matrix entries A % Values to A % BulkValues. 
+!> Create a copy of the matrix entries A % Values to A % BulkValues.
 !> Optionally the entries of the RHS vector, the mass matrix and the damping matrix
 !> may also be copied. The RHS vector is copied by default, while the mass and
-!> damping matrices are copied only if asked. 
+!> damping matrices are copied only if asked.
 !------------------------------------------------------------------------------
    SUBROUTINE CopyBulkMatrix( A, BulkMass, BulkDamp, BulkRHS )
 !------------------------------------------------------------------------------
@@ -588,12 +611,12 @@ CONTAINS
      ELSE
        CopyRHS = .TRUE.
      END IF
-     
+
      IF (CopyRHS) THEN
        n = SIZE( A % Rhs )
        IF( ASSOCIATED( A % BulkRhs ) ) THEN
          IF( SIZE( A % BulkRhs ) /= n ) THEN
-           DEALLOCATE( A % BulkRhs ) 
+           DEALLOCATE( A % BulkRhs )
            A % BulkRHS => NULL()
          END IF
        END IF
@@ -604,11 +627,11 @@ CONTAINS
          A % BulkRHS(i) = A % Rhs(i)
        END DO
      END IF
-     
+
      n = SIZE( A % Values )
      IF( ASSOCIATED( A % BulkValues ) ) THEN
        IF( SIZE( A % BulkValues ) /= n ) THEN
-          DEALLOCATE( A % BulkValues ) 
+          DEALLOCATE( A % BulkValues )
           A % BulkValues => NULL()
        END IF
      END IF
@@ -625,7 +648,7 @@ CONTAINS
          n = SIZE( A % MassValues )
          IF( ASSOCIATED( A % BulkMassValues ) ) THEN
            IF( SIZE( A % BulkMassValues ) /= n ) THEN
-             DEALLOCATE( A % BulkMassValues ) 
+             DEALLOCATE( A % BulkMassValues )
              A % BulkMassValues => NULL()
            END IF
          END IF
@@ -644,7 +667,7 @@ CONTAINS
          n = SIZE( A % DampValues )
          IF( ASSOCIATED( A % BulkDampValues ) ) THEN
            IF( SIZE( A % BulkDampValues ) /= n ) THEN
-             DEALLOCATE( A % BulkDampValues ) 
+             DEALLOCATE( A % BulkDampValues )
              A % BulkDampValues => NULL()
            END IF
          END IF
@@ -657,7 +680,7 @@ CONTAINS
          END DO
        END IF
      END IF
-     
+
    END SUBROUTINE CopyBulkMatrix
 !------------------------------------------------------------------------------
 
@@ -669,7 +692,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      TYPE(Matrix_t) :: A
      INTEGER :: i,n
-     
+
      IF( ASSOCIATED( A % BulkRhs ) ) THEN
        n = SIZE( A % Rhs )
        IF( SIZE( A % BulkRhs ) /= n ) THEN
@@ -677,7 +700,7 @@ CONTAINS
        END IF
        A % Rhs(1:n) = A % BulkRhs(1:n)
      END IF
-     
+
      IF( ASSOCIATED( A % BulkValues ) ) THEN
        n = SIZE( A % Values )
        IF( SIZE( A % BulkValues ) /= n ) THEN
@@ -707,12 +730,12 @@ CONTAINS
          A % DampValues(i) = A % BulkDampValues(i)
        END DO
      END IF
-     
+
    END SUBROUTINE RestoreBulkMatrix
 !------------------------------------------------------------------------------
 
 
-   
+
 
 !> Create a child matrix of same toopology but optioanally different size than the
 !> parent matrix.
@@ -745,10 +768,10 @@ CONTAINS
 
 
 
-   
+
 !------------------------------------------------------------------------------
 !> Eliminates bubble degrees of freedom from a local linear system.
-!> This version is suitable for flow models with velocity and pressure as 
+!> This version is suitable for flow models with velocity and pressure as
 !> unknowns.
 !------------------------------------------------------------------------------
 SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
@@ -799,6 +822,94 @@ END SUBROUTINE NSCondensate
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> Transient counterpart of NSCondensate: eliminates velocity bubble degrees
+!> of freedom from a local Navier-Stokes system while giving the bubble part
+!> a BDF(1) time derivative, using the caller's own record of the bubble's
+!> previous-timestep value (there is no pressure bubble, so only the velocity
+!> block of the retained+bubble system is bubble-augmented). Mirrors
+!> IncompressibleNSVec's LCondensate; see CondensatePTransient above for the
+!> general reasoning on why a condensed bubble needs this at all.
+!>
+!> The caller owns the per-element bubble history: this routine only reads
+!> the slice handed to it as BubblePrev and writes the newly recovered bubble
+!> part into BubbleCur.
+!>
+!> xprev/x carry the retained block's velocity AND pressure (shape (dim+1,N)),
+!> matching the (dim+1)-per-node convention NSCondensate already uses; the
+!> previous-pressure row is never read against a nonzero mass entry
+!> (incompressible continuity has no dp/dt), so callers may pass anything
+!> (e.g. zero) there.
+!------------------------------------------------------------------------------
+SUBROUTINE NSCondensateTransient( N, Nb, dim, dt, M, K, F, xprev, x, BubblePrev, BubbleCur )
+!------------------------------------------------------------------------------
+    USE LinearAlgebra, ONLY : InvertMatrix
+    INTEGER :: N, Nb, dim
+    REAL(KIND=dp) :: dt
+    REAL(KIND=dp) :: M(:,:)        !< Local mass matrix.
+    REAL(KIND=dp) :: K(:,:)        !< Local stiffness matrix. Modified in place.
+    REAL(KIND=dp) :: F(:)          !< Local force vector. Modified in place.
+    REAL(KIND=dp) :: xprev(:,:)    !< Retained velocity+pressure, previous timestep. Shape (dim+1,N).
+    REAL(KIND=dp) :: x(:,:)        !< Retained velocity+pressure, current iterate. Shape (dim+1,N).
+    REAL(KIND=dp) :: BubblePrev(:) !< Bubble velocity dofs, previous timestep. Size dim*Nb.
+    REAL(KIND=dp) :: BubbleCur(:)  !< OUTPUT: recovered bubble velocity dofs. Size dim*Nb.
+
+    REAL(KIND=dp) :: Kbb(nb*dim,nb*dim)
+    REAL(KIND=dp) :: Kbl(nb*dim,n*(dim+1)), Klb(n*(dim+1),nb*dim), Fb(nb*dim)
+    REAL(KIND=dp) :: xl(n*(dim+1)), xlfull((n+nb)*(dim+1))
+
+    INTEGER :: i, p, q, nt, Cdofs((dim+1)*n), Bdofs(dim*nb)
+
+    IF ( nb <= 0 ) RETURN
+
+    ! Total width of the retained+bubble block actually assembled -- (n+nb)
+    ! node-like entities at dim+1 dofs each, even though a bubble "node"'s
+    ! own dim+1'th (pressure) slot is never touched (no pressure bubble).
+    ! M, K and F may be handed in oversized (a caller reusing one fixed-size
+    ! buffer across elements of varying size, as FlowSolve does) with
+    ! everything beyond this block zero, so operate only within it -- a bare
+    ! whole-array "K = K + M/dt" would size-mismatch MATMUL(M,xlfull) against
+    ! such a buffer, and would otherwise just be adding zero to zero anyway.
+    nt = (n+nb)*(dim+1)
+    xlfull = 0._dp
+
+    q = 0
+    DO p = 1,n
+      DO i = 1,dim+1
+        q = q + 1
+        Cdofs(q) = (dim+1)*(p-1) + i
+        xl(q) = x(i,p)
+        xlfull(Cdofs(q)) = xprev(i,p)
+      END DO
+    END DO
+
+    q = 0
+    DO p = 1,nb
+      DO i = 1,dim
+        q = q + 1
+        Bdofs(q) = (dim+1)*(p-1) + i + n*(dim+1)
+        xlfull(Bdofs(q)) = BubblePrev(q)
+      END DO
+    END DO
+
+    K(1:nt,1:nt) = K(1:nt,1:nt) + M(1:nt,1:nt)/dt
+    F(1:nt) = F(1:nt) + MATMUL(M(1:nt,1:nt),xlfull)/dt
+
+    Kbb = K(Bdofs,Bdofs)
+    Kbl = K(Bdofs,Cdofs)
+    Klb = K(Cdofs,Bdofs)
+    Fb  = F(Bdofs)
+
+    CALL InvertMatrix( Kbb,nb*dim )
+
+    F(Cdofs) = F(Cdofs) - MATMUL( Klb, MATMUL( Kbb, Fb ) )
+    K(Cdofs,Cdofs) = K(Cdofs,Cdofs) - MATMUL( Klb, MATMUL( Kbb,Kbl ) )
+
+    BubbleCur(1:dim*nb) = MATMUL( Kbb, Fb - MATMUL(Kbl,xl) )
+!------------------------------------------------------------------------------
+END SUBROUTINE NSCondensateTransient
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Subroutine for the static condensation of element bubbles when there are
 !> as many bubbles as DOFs left in the matrix (historically this convention
 !> was used; now the count of elementwise bubble functions can be chosen
@@ -809,7 +920,7 @@ SUBROUTINE Condensate( N, K, F, F1 )
     INTEGER :: N
     REAL(KIND=dp) :: K(:,:),F(:)
     REAL(KIND=dp), OPTIONAL :: F1(:)
-!------------------------------------------------------------------------------    
+!------------------------------------------------------------------------------
     IF ( PRESENT(F1) ) THEN
       CALL CondensateP( N, N, K, F, F1 )
     ELSE
@@ -821,7 +932,7 @@ END SUBROUTINE Condensate
 
 !------------------------------------------------------------------------------
 !> Subroutine for condensation of p element bubbles from linear problem.
-!> Modifies given stiffness matrix and force vector(s) 
+!> Modifies given stiffness matrix and force vector(s)
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePR( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
@@ -859,8 +970,8 @@ END SUBROUTINE CondensatePR
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Subroutine for condensation of p element bubbles from complex-valued linear 
-!> problem. Modifies given stiffness matrix and force vector(s) 
+!> Subroutine for condensation of p element bubbles from complex-valued linear
+!> problem. Modifies given stiffness matrix and force vector(s)
 !------------------------------------------------------------------------------
 SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
 !------------------------------------------------------------------------------
@@ -897,5 +1008,218 @@ SUBROUTINE CondensatePC( N, Nb, K, F, F1 )
   END SUBROUTINE CondensatePC
 !------------------------------------------------------------------------------
 
+!------------------------------------------------------------------------------
+!> Subroutine for condensation of p element bubbles from a TRANSIENT linear
+!> problem, generalizing IncompressibleNSVec's LCondensate (see that module's
+!> "IncompressibleLocalForms") to an arbitrary number of interleaved scalar
+!> fields ("Dofs"), all of which are bubble-augmented -- unlike the
+!> Navier-Stokes saddle point case, where the pressure field carries no bubble.
+!>
+!> Condensing a bubble out of a transient system loses more than an ordinary
+!> static condensation: the bubble's own value from the previous timestep is
+!> needed to form its BDF(1) time derivative, but that value is nowhere in the
+!> global solution vector once the bubble has been eliminated from it. Calling
+!> the generic Default1stOrderTime on the retained block alone would silently
+!> treat the previous bubble part as zero -- a wrong answer that only shows up
+!> as a slow, wrong drift, not a crash. This routine instead forms M/dt and the
+!> M*xprev/dt load over the FULL (retained+bubble) block, using the caller's own
+!> record of the bubble's previous value, and only then eliminates the bubble
+!> rows/columns.
+!>
+!> The caller owns the per-element bubble history: this routine only reads the
+!> slice handed to it as BubblePrev and writes the newly recovered bubble part
+!> into BubbleCur. It is the caller's responsibility to store BubbleCur (keyed
+!> by the element, e.g. Element % ElementIndex) into its own history array and
+!> to copy that array into "previous" once per timestep -- exactly as
+!> IncompressibleNSVec's bx/bxprev pair does; see the comments there.
+!>
+!> This assumes the local numbering used to build M, K and F has the N
+!> retained basis functions first and the Nb bubble ones after, with the Dofs
+!> fields interleaved per basis function (index 2*(p-1)+i for field i of basis
+!> p) -- the same convention CondensateP already relies on.
+!------------------------------------------------------------------------------
+SUBROUTINE CondensatePTransient( N, Nb, Dofs, dt, M, K, F, xprev, x, BubblePrev, BubbleCur )
+!------------------------------------------------------------------------------
+    USE LinearAlgebra, ONLY : InvertMatrix
+    INTEGER :: N      !< The count of retained (e.g. nodal) basis functions.
+    INTEGER :: Nb     !< The count of bubble basis functions.
+    INTEGER :: Dofs   !< The count of interleaved scalar fields per basis function.
+    REAL(KIND=dp) :: dt        !< Timestep size.
+    REAL(KIND=dp) :: M(:,:)    !< Local mass matrix.
+    REAL(KIND=dp) :: K(:,:)    !< Local stiffness matrix. Modified in place.
+    REAL(KIND=dp) :: F(:)      !< Local force vector. Modified in place.
+    REAL(KIND=dp) :: xprev(:)  !< Retained dofs, previous timestep. Size Dofs*N.
+    REAL(KIND=dp) :: x(:)      !< Retained dofs, current iterate. Size Dofs*N.
+    REAL(KIND=dp) :: BubblePrev(:) !< Bubble dofs, previous timestep. Size Dofs*Nb.
+    REAL(KIND=dp) :: BubbleCur(:)  !< OUTPUT: recovered bubble dofs. Size Dofs*Nb.
+!------------------------------------------------------------------------------
+    INTEGER :: DN, DNb, nt
+    REAL(KIND=dp) :: Kbb(Dofs*Nb,Dofs*Nb), Kbl(Dofs*Nb,Dofs*N), &
+        Klb(Dofs*N,Dofs*Nb), Fb(Dofs*Nb)
+    REAL(KIND=dp) :: xlfull(Dofs*(N+Nb))
+!------------------------------------------------------------------------------
+    IF ( Nb <= 0 ) RETURN
+
+    DN  = Dofs*N
+    DNb = Dofs*Nb
+    nt  = DN + DNb
+
+    xlfull(1:DN)       = xprev(1:DN)
+    xlfull(DN+1:DN+DNb) = BubblePrev(1:DNb)
+
+    ! M, K and F may be handed in oversized (a caller reusing one fixed-size
+    ! buffer across elements of varying size, as every solver using this
+    ! routine does) with everything beyond this element's own nt = DN+DNb
+    ! zero, so operate only within it -- a bare whole-array "K = K + M/dt"
+    ! would size-mismatch MATMUL(M,xlfull) against such a buffer whenever
+    ! this element's own retained+bubble count is smaller than the mesh-wide
+    ! maximum the buffer was sized for.
+    K(1:nt,1:nt) = K(1:nt,1:nt) + M(1:nt,1:nt)/dt
+    F(1:nt) = F(1:nt) + MATMUL(M(1:nt,1:nt),xlfull)/dt
+
+    Kbb = K(DN+1:DN+DNb, DN+1:DN+DNb)
+    Kbl = K(DN+1:DN+DNb, 1:DN)
+    Klb = K(1:DN, DN+1:DN+DNb)
+    Fb  = F(DN+1:DN+DNb)
+
+    CALL InvertMatrix( Kbb, DNb )
+
+    F(1:DN)     = F(1:DN)     - MATMUL( Klb, MATMUL(Kbb,Fb) )
+    K(1:DN,1:DN) = K(1:DN,1:DN) - MATMUL( Klb, MATMUL(Kbb,Kbl) )
+
+    BubbleCur(1:DNb) = MATMUL( Kbb, Fb - MATMUL(Kbl, x(1:DN)) )
+!------------------------------------------------------------------------------
+END SUBROUTINE CondensatePTransient
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Ensures Var % BubbleValues/BubblePrevValues are allocated to hold
+!> Stride*NumElements reals each (a one-time allocation: a no-op on every
+!> later call, same as the ".NOT. ALLOCATED(bx)" guard it replaces -- if the
+!> mesh changes, e.g. adaptive remeshing, the caller must instead free Var's
+!> bubble history first (see DeallocateVariableEntries, Lists.F90), since
+!> there is no way to tell that case apart from an ordinary repeat call from
+!> here), and once per NewTimestep, shifts the recovered bubble values into
+!> "previous" -- mirroring the caller-side "GetTimestep() /= BubbleTimestep"
+!> guard this replaces, so it must likewise only be called once per solver
+!> invocation (not once per element), with NewTimestep = the caller's own
+!> GetTimestep().
+!>
+!> The history lives on Var (normally the caller's own Solver % Variable)
+!> rather than in a separate free-standing type: a locally condensed
+!> bubble's value is conceptually part of that same field's solution, it
+!> just never gets a row in Var % Values/PrevValues (via Var % Perm) because
+!> it is eliminated before the global system is assembled. See
+!> CondensatePTransientH/NSCondensateTransientH below and the BubbleValues/
+!> BubblePrevValues/BubbleStride/BubbleTimestep fields on Variable_t
+!> (Types.F90).
+!------------------------------------------------------------------------------
+SUBROUTINE BubbleHistoryUpdate( Var, Stride, NumElements, NewTimestep )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: Stride         !< Reals reserved per element (Dofs*max bubble dofs).
+    INTEGER :: NumElements    !< Bulk + boundary element count to cover.
+    INTEGER :: NewTimestep    !< The caller's own GetTimestep().
+!------------------------------------------------------------------------------
+    IF( .NOT. ASSOCIATED( Var % BubbleValues ) ) THEN
+      Var % BubbleStride = Stride
+      ALLOCATE( Var % BubbleValues(Stride*NumElements), Var % BubblePrevValues(Stride*NumElements) )
+      Var % BubbleValues = 0.0_dp
+      Var % BubblePrevValues = 0.0_dp
+    END IF
+
+    IF( NewTimestep /= Var % BubbleTimestep ) THEN
+      Var % BubblePrevValues = Var % BubbleValues
+      Var % BubbleTimestep = NewTimestep
+    END IF
+!------------------------------------------------------------------------------
+END SUBROUTINE BubbleHistoryUpdate
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> CondensatePTransient, taking the per-element BubblePrev/BubbleCur slices
+!> out of Var's bubble history (keyed by ElementIndex, e.g.
+!> Element % ElementIndex) instead of requiring the caller to slice its own
+!> bx/bxprev arrays by hand.
+!------------------------------------------------------------------------------
+SUBROUTINE CondensatePTransientH( Var, ElementIndex, N, Nb, Dofs, dt, M, K, F, xprev, x )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex
+    INTEGER :: N, Nb, Dofs
+    REAL(KIND=dp) :: dt, M(:,:), K(:,:), F(:), xprev(:), x(:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+
+    CALL CondensatePTransient( N, Nb, Dofs, dt, M, K, F, xprev, x, &
+        Var % BubblePrevValues(boff+1:boff+Dofs*Nb), Var % BubbleValues(boff+1:boff+Dofs*Nb) )
+!------------------------------------------------------------------------------
+END SUBROUTINE CondensatePTransientH
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> NSCondensateTransient, taking the per-element BubblePrev/BubbleCur velocity
+!> slices out of Var's bubble history instead of requiring the caller to
+!> slice its own bx/bxprev arrays by hand. Mirrors CondensatePTransientH,
+!> but keyed by "dim" (velocity components only -- there is no pressure
+!> bubble) rather than by Var's own DOFs (velocity+pressure).
+!------------------------------------------------------------------------------
+SUBROUTINE NSCondensateTransientH( Var, ElementIndex, N, Nb, dim, dt, M, K, F, xprev, x )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex
+    INTEGER :: N, Nb, dim
+    REAL(KIND=dp) :: dt, M(:,:), K(:,:), F(:), xprev(:,:), x(:,:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+
+    CALL NSCondensateTransient( N, Nb, dim, dt, M, K, F, xprev, x, &
+        Var % BubblePrevValues(boff+1:boff+dim*Nb), Var % BubbleValues(boff+1:boff+dim*Nb) )
+!------------------------------------------------------------------------------
+END SUBROUTINE NSCondensateTransientH
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Fetches this element's Width-wide slice of Var's PREVIOUS-timestep bubble
+!> history. For callers like IncompressibleNS.F90's LCondensate that build
+!> the bubble-augmented time derivative and eliminate the bubble by hand
+!> (rather than through CondensatePTransientH/NSCondensateTransientH), so
+!> they still need direct read/write access to the slice.
+!------------------------------------------------------------------------------
+SUBROUTINE BubbleHistoryGetPrev( Var, ElementIndex, Width, Prev )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex, Width
+    REAL(KIND=dp) :: Prev(:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+    Prev(1:Width) = Var % BubblePrevValues(boff+1:boff+Width)
+!------------------------------------------------------------------------------
+END SUBROUTINE BubbleHistoryGetPrev
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Writes this element's Width-wide slice of Var's CURRENT bubble history,
+!> i.e. the just-recovered bubble value. See BubbleHistoryGetPrev.
+!------------------------------------------------------------------------------
+SUBROUTINE BubbleHistorySetCur( Var, ElementIndex, Width, Cur )
+!------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex, Width
+    REAL(KIND=dp) :: Cur(:)
+!------------------------------------------------------------------------------
+    INTEGER :: boff
+!------------------------------------------------------------------------------
+    boff = (ElementIndex-1)*Var % BubbleStride
+    Var % BubbleValues(boff+1:boff+Width) = Cur(1:Width)
+!------------------------------------------------------------------------------
+END SUBROUTINE BubbleHistorySetCur
+!------------------------------------------------------------------------------
 
 END MODULE MatrixAssembly

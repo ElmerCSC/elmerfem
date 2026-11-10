@@ -185,6 +185,7 @@ VARIABLE *fil_fscanf(VARIABLE *var)
 
   char *fmt = var_to_string(NEXT(var));
   int i, ind, got;
+  double str_p[STR_MAXVALS];
 
   ind = *MATR(var);
   if (ind < 0 || ind >= MAXFILES)
@@ -242,6 +243,7 @@ VARIABLE *fil_fgets(VARIABLE *var)
 
   int i, ind;
   char *ioptr;
+  char str_pstr[STR_MAXLEN];
 
   ind = *MATR(var);
   if (ind < 0 || ind >= MAXFILES)

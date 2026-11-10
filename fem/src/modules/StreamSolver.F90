@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,16 +13,16 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !-------------------------------------------------------------------------------
 !> Solve the StreamFunction of a two-dimensional steady state flow field.
-!> The intended usage of the solver is mainly for postprocessing purposes. 
+!> The intended usage of the solver is mainly for postprocessing purposes.
 !> \ingroup Solvers
 !-------------------------------------------------------------------------------
 SUBROUTINE StreamSolver( Model,Solver,dt,TransientSimulation )
@@ -88,7 +88,7 @@ SUBROUTINE StreamSolver( Model,Solver,dt,TransientSimulation )
      NSDOFs = FlowSol % DOFs
   ELSE
      CALL Warn( 'StreamSolver', 'No variable for velocity associated.' )
-     CALL Warn( 'StreamSolver', 'Quitting execution of StreamSolver.' ) 
+     CALL Warn( 'StreamSolver', 'Quitting execution of StreamSolver.' )
      RETURN
   END IF
 
@@ -142,14 +142,14 @@ SUBROUTINE StreamSolver( Model,Solver,dt,TransientSimulation )
   ELSE
     StokesStream = IsAxis
   END IF
-  
+
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
   IF ( .NOT. AllocationsDone ) THEN
      N = Solver % Mesh % MaxElementNodes ! just big enough for elemental arrays
 
-     ALLOCATE( FORCE( N ),   LOAD( 2*N ), STIFF(N,N), STAT=istat ) 
+     ALLOCATE( FORCE( N ),   LOAD( 2*N ), STIFF(N,N), STAT=istat )
 
      IF ( istat /= 0 ) CALL Fatal( 'PoissonSolve', 'Memory allocation error.' )
      AllocationsDone = .TRUE.
@@ -158,7 +158,7 @@ SUBROUTINE StreamSolver( Model,Solver,dt,TransientSimulation )
 ! Initialize the system and do the assembly
 !------------------------------------------------------------------------------
   CALL DefaultInitialize()
-  
+
   DO t=1,Solver % NumberOfActiveElements
      CurrentElement => GetActiveElement(t)
      n = GetElementNOFNodes()
@@ -213,9 +213,9 @@ SUBROUTINE StreamSolver( Model,Solver,dt,TransientSimulation )
      k = Solver % Variable % Perm( FirstNode )
      CALL UpdateDirichletDof( StiffMatrix, k, 0.0_dp )
 
-     !val =  MAXVAL( ABS( StiffMatrix % Values) ) 
+     !val =  MAXVAL( ABS( StiffMatrix % Values) )
      !IF( DirichletPoint ) THEN
-       
+
 
      !CALL ZeroRow( StiffMatrix, k )
      !StiffMatrix % RHS(k) = 0.0_dp
@@ -237,7 +237,7 @@ SUBROUTINE StreamSolver( Model,Solver,dt,TransientSimulation )
   END IF
 
   IF ( Scaling ) THEN
-    coeff = MAXVAL( StreamFunction ) - MINVAL( StreamFunction ) 
+    coeff = MAXVAL( StreamFunction ) - MINVAL( StreamFunction )
     IF ( coeff < AEPS ) THEN
       CALL Warn( 'StreamSolver', &
           'Maximum absolute value smaller than machine epsilon; cannot scale.' )
@@ -273,19 +273,19 @@ CONTAINS
 !   Numerical integration
 !------------------------------------------------------------------------------
     IntegStuff = GaussPoints( Element )
-    
+
     DO t=1,IntegStuff % n
        U = IntegStuff % u(t)
        V = IntegStuff % v(t)
        W = IntegStuff % w(t)
        S = IntegStuff % s(t)
-       
+
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
        stat = ElementInfo( Element, Nodes, U, V, W, DetJ, Basis, dBasisdx )
        s = s * DetJ
-       
+
 !------------------------------------------------------------------------------
 !      Load at the integration point
 !------------------------------------------------------------------------------
@@ -302,7 +302,7 @@ CONTAINS
        END IF
 !------------------------------------------------------------------------------
 !      Finally, the elemental matrix & vector
-!------------------------------------------------------------------------------       
+!------------------------------------------------------------------------------
        STIFF(1:n,1:n) = STIFF(1:n,1:n) &
            + s * MATMUL( dBasisdx, TRANSPOSE(dBasisdx) )
 
@@ -313,7 +313,7 @@ CONTAINS
        END DO
 
        FORCE(1:n) = FORCE(1:n) + s * SUM(LoadAtIp(1:dim)) * Basis(1:n)
-       
+
     END DO! <- t eli integraatiopisteet
 
 !------------------------------------------------------------------------------
@@ -350,7 +350,7 @@ CONTAINS
        V = IntegStuff % v(t)
        W = IntegStuff % w(t)
        S = IntegStuff % s(t)
-       
+
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
@@ -358,7 +358,7 @@ CONTAINS
             Basis, dBasisdx )
        s = s * DetJ
        IF ( StokesStream ) s = s * SUM(Nodes % x(1:n)*Basis(1:n))
-       
+
 !------------------------------------------------------------------------------
 !      Load at the integration point
 !------------------------------------------------------------------------------
@@ -366,7 +366,7 @@ CONTAINS
        LoadAtIP(2) = SUM( Basis(1:n) * LOAD(2:2*n:2) )
 !------------------------------------------------------------------------------
 !      Finally, the elemental matrix & vector
-!------------------------------------------------------------------------------       
+!------------------------------------------------------------------------------
        Normal = NormalVector( Element, Nodes, u, v, .TRUE. )
        L = SUM( LoadAtIp(1:2) * Normal(1:2) )
 

@@ -1,0 +1,148 @@
+! One circuit solver whose mesh is swapped under it mid-run.
+!
+! The same geometry is meshed at two densities. The run does two steady state
+! iterations, and "Mesh Name Index" makes the solver loop swap the coarse mesh
+! for the fine one between them: the old mesh is released, every solver on it is
+! re-initialized on the new one, and the matrices are reallocated. The circuit
+! structures built on the first iteration then no longer describe the problem -
+! they were built for the row count and the elements of a mesh that no longer
+! exists.
+!
+! CircuitsCheckStale() is what has to notice that. It compares the A solver's
+! current mesh and matrix size against what the circuits were built for, tears
+! the structures down when they differ, and the build block reruns on that same
+! entry. If it does not fire, the second iteration either addresses circuit rows
+! past the end of the new matrix or integrates over released elements.
+!
+! Exercised here:
+!   - the stale check, on both of its triggers at once (mesh and row count)
+!   - rebuilding a circuit model in place, with no leaks of the old one
+!   - the Lagrange multiplier being picked up again from the new mesh
+!
+! The reference norm is from the second iteration, i.e. on the fine mesh. It is
+! the norm the same case gives when the fine mesh is the only mesh in the run,
+! which is the real check here: after the swap the answer must not remember the
+! coarse mesh.
+!
+! See circuits2D_two_meshes for the other half of the same question: two circuit
+! solvers on two meshes that are both live at once.
+
+Check Keywords "Warn"
+INCLUDE sif/circuits.definitions
+
+Header 1
+   Mesh DB "." "coarse"
+End
+
+Simulation 1
+   Max Output Level = 5
+   Coordinate System = Cartesian 2D
+   Simulation Type = Steady
+   Steady State Max Iterations = 2
+   Angular Frequency = 314.159265359
+
+! In a steady run the "timestep" is the steady state iteration, so this keeps
+! the mesh of the header on the first one - index 0 is "no swap" - and swaps to
+! the fine mesh on the second.
+   Mesh Name Index = Variable "timestep"
+     Real
+       1 0
+       2 1
+     End
+
+   Mesh Name 1 = File "fine"
+End
+
+Solver 1
+   Equation = Circuits
+   Variable = X
+   No Matrix = Logical True
+   Master Solver = 2
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 2
+   Equation = "Mag"
+   Variable = A[A re:1 A im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor = 1
+   Linear System Solver = Direct
+   Linear System Direct Method = UMFPACK
+   Linear System Complex = Logical True
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 3
+   Equation = Circuits Output
+   Master Solver = 2
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Equation 1
+   Name = "air"
+   Active Solvers(1) = 2
+End
+
+Equation 2
+   Name = "coil"
+   Active Solvers(3) = 1 2 3
+End
+
+Material 1
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+
+Material 2
+   Name = copper
+   Relative Permeability = 1
+   Electric Conductivity = 5.8e7
+End
+
+Body 1
+   Name = air
+   Target Bodies = 1
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = coil
+   Target Bodies = 2
+   Equation = 2
+   Material = 2
+End
+
+! The second coil of the grid is left as plain air here: this case has one
+! circuit, and a coil body with no component would only add a warning.
+Body 3
+   Name = air, second coil region
+   Target Bodies = 3
+   Equation = 1
+   Material = 1
+End
+
+Component 1
+   Name = String coil
+   Master Bodies = Integer 2
+   Coil Type = String stranded
+   Number of Turns = Real 100
+End
+
+Body Force 1
+   Name = "Circuit source"
+   testsource Re = Real 1.41421356237
+   testsource Im = Real 0.0
+End
+
+Boundary Condition 1
+   Target Boundaries = 1
+   Name = "far field"
+   A re = Real 0
+   A im = Real 0
+End
+
+Solver 2 :: Reference Norm = 9.81409840E-06

@@ -1,0 +1,102 @@
+! "Gravitational Prestress Advection" through both solvers on one problem against one
+! reference value: the restoring stiffness that arises when a body under its own
+! weight is displaced vertically, so a column of material of density rho is advected
+! through gravity. "GPA Coeff" is that rho*g. The only tests that used it before are
+! the two elmer_earth_2d_2layer cases, which need a Maxwell material as well and so
+! cannot say which of the two capabilities an answer came from; here it is alone.
+!
+! WHAT THE TEST IS REALLY FOR. The term is genuinely not symmetric: it couples the
+! gradient of the vertical displacement to every test component, so its transpose is
+! a different operator. StressSolveLegacy symmetrises its whole local stiffness
+! before gluing it in, and since every other term it assembles is symmetric already,
+! that blanket operation only ever changed this one -- silently halving it and adding
+! its transpose. ElasticSolver assembles the term in full, which is the model; this
+! test is what pins that, and the difference is loud here. The symmetric half gives
+! 2.61E-01 against this 9.16E-02. On the earth cases the same difference is worth
+! only 2.6%, which is why this case exists rather than relying on them.
+!
+! The sign is a check in its own right. Without the keyword at all the norm is
+! 1.93E-01, so the full term STIFFENS the body -- a smaller displacement than no
+! advection -- as a restoring force should, while the symmetric half softened it to
+! 2.61E-01. If a future change makes this norm exceed 1.93E-01 the term has changed
+! sign or lost half of itself again.
+!
+! The load is vertical, since a term coupling to the vertical displacement cannot be
+! exercised by shear alone.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = Real 0
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.3
+End
+
+Body Force 1
+  Stress BodyForce 2 = Real -0.1
+  Gravitational Prestress Advection = Logical True
+  GPA Coeff = Real 2.0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Stress Analysis"
+  Procedure = "StressSolve" "StressSolver"
+  Variable = String "sDisp[sDisp:2]"
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Solver 2
+  Equation = "Elasticity Analysis"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = String "eDisp[eDisp:2]"
+  Large Deflection = False
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  sDisp 1 = Real 0
+  sDisp 2 = Real 0
+  eDisp 1 = Real 0
+  eDisp 2 = Real 0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Force 2 = Real -0.05
+End
+
+Solver 1 :: Reference Norm = Real 9.16218950E-02
+Solver 2 :: Reference Norm = Real 9.16218950E-02

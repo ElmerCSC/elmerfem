@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,14 +28,14 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *
 ! ******************************************************************************/
 
 
 !------------------------------------------------------------------------------
-!> Map results from mesh to mesh. The from-mesh is stored in an octree from 
+!> Map results from mesh to mesh. The from-mesh is stored in an octree from
 !> which it is relatively fast to find the to-nodes. When the node is found
 !> interpolation is performed. Optionally there may be an existing projector
 !> that speeds up the interpolation.
@@ -114,7 +114,7 @@
            n = COUNT(.NOT. FoundNodes )
            IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in serial: '//I2S(n))
          END IF
-                    
+
          IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
          RETURN
       END IF
@@ -123,19 +123,19 @@
       ! for the bounding box checks.
       !---------------------------------------------------------------------------
       PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
-          'Interpolation Passive Coordinate', Stat ) 
+          'Interpolation Passive Coordinate', Stat )
       IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
         PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
-            'Interpolation Passive Coordinate', Stat ) 
+            'Interpolation Passive Coordinate', Stat )
       END IF
-            
+
       ! Interpolate within our own partition, flag the points we found:
-      ! ---------------------------------------------------------------      
+      ! ---------------------------------------------------------------
       CALL InterpolateMeshToMeshQ( OldMesh, NewMesh, OldVariables, &
          NewVariables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodes )
 
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
-      
+
       ! special case "all found":
       !--------------------------
       n = COUNT(.NOT.FoundNodes); dn = n
@@ -143,7 +143,7 @@
       IF( InfoActive(20) ) THEN
         IF(n>0) CALL Info('InterpolateMeshToMesh','Number of unfound nodes in own partition: '//I2S(n))
       END IF
-      
+
       AL = .FALSE.
       IF (.NOT.ASSOCIATED(ParEnv % Active) ) THEN
         ALLOCATE(Parenv % Active(PArEnv % PEs))
@@ -273,7 +273,7 @@
         DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
       END IF
 
-       
+
       ! receive points from others:
       ! ----------------------------
       ALLOCATE(ProcRecv(Parenv % Pes))
@@ -297,13 +297,13 @@
                1004, ELMER_COMM_WORLD, status, ierr )
       END DO
 
-      ! Count variables and received nodes, and check MPI buffer is 
+      ! Count variables and received nodes, and check MPI buffer is
       ! sufficiently large:
       ! -----------------------------------------------------------
       Var => OldVariables
       nvars = 0
       DO WHILE(ASSOCIATED(Var))
-        IF(LegitInterpVar(Var)) THEN         
+        IF(LegitInterpVar(Var)) THEN
           nvars = nvars + 1
           IF ( ASSOCIATED(Var % PrevValues) ) THEN
             j = SIZE(Var % PrevValues,2)
@@ -317,13 +317,13 @@
       DO i=1,SIZE(ProcRecv)
          maxrecv = MAX(maxrecv, ProcRecv(i) % n)
       END DO
-      
-      !For each node, we send a single integer perm and 
+
+      !For each node, we send a single integer perm and
       !a real(dp) per variable. Also sending two counts
       CALL CheckBuffer(SIZE(ProcRecv) * maxrecv * ((2 * nvars) + 1) + 2)
 
       ! Check the received points and extract values for the to-be-interpolated-
-      ! variables, if we have the points within our domain: 
+      ! variables, if we have the points within our domain:
       ! ------------------------------------------------------------------------
       DO i=1,ParEnv % PEs
         IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
@@ -335,7 +335,7 @@
           CALL MPI_BSEND( n, 1, MPI_INTEGER, proc, 2001, ELMER_COMM_WORLD, ierr )
           CYCLE
         END IF
-      
+
         ! Construct temporary mesh structure for the received points:
         ! -----------------------------------------------------------
         Nmesh => AllocateMesh()
@@ -352,7 +352,7 @@
         Var => OldVariables
         nvars = 0
         DO WHILE(ASSOCIATED(Var))
-          IF(LegitInterpVar(Var)) THEN         
+          IF(LegitInterpVar(Var)) THEN
             ALLOCATE(store(n)); store=0
             nvars = nvars+1
             CALL VariableAdd(nMesh % Variables,nMesh,Var % Solver, &
@@ -371,7 +371,7 @@
         ! try interpolating values for the points:
         ! ----------------------------------------
         ALLOCATE( FoundNodesPar(n) ); FoundNodesPar=.FALSE.
-        
+
         CALL InterpolateMeshToMeshQ( OldMesh, nMesh, OldVariables, &
            nMesh % Variables, UseQuadrantTree, MaskName=MaskName, FoundNodes=FoundNodesPar )
 
@@ -385,7 +385,7 @@
           ALLOCATE(vstore(nfound,nvars), vperm(nfound)); vstore=0
           k = 0
           DO j=1,n
-            IF ( .NOT.FoundNodesPar(j)) CYCLE   
+            IF ( .NOT.FoundNodesPar(j)) CYCLE
             k = k + 1
             vperm(k) = j
             Var => OldVariables
@@ -453,12 +453,12 @@
         CALL MPI_RECV( vperm, n, MPI_INTEGER, proc, &
               2002, ELMER_COMM_WORLD, status, ierr )
 
-        !Mark nodes as found 
+        !Mark nodes as found
         DO j=1,n
-          k=perm(ProcSend(proc+1) % Perm(vperm(j)))          
+          k=perm(ProcSend(proc+1) % Perm(vperm(j)))
           FoundNodes(k) = .TRUE.
         END DO
-                
+
         ! recv values and store:
         ! ----------------------
         Var => OldVariables
@@ -516,14 +516,14 @@
         ParEnv % Active => NULL()
       END IF
 
-      n = COUNT(.NOT. FoundNodes )           
+      n = COUNT(.NOT. FoundNodes )
       IF(n>0) CALL Info('InterpolateMeshToMesh',&
-	'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
-      
+       'Number of unfound nodes in all partitions: '//I2S(n),Level=6)
+
       IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
-      DEALLOCATE( FoundNodes ) 
-      
-      
+      DEALLOCATE( FoundNodes )
+
+
 CONTAINS
 
   ! Collect here all the historical ways how a variable might be not good for interpolation.
@@ -537,12 +537,12 @@ CONTAINS
       RETURN
     END IF
 
-    ! Only nodal and discontinuous galerkin fields can be interpolated as for now. 
-    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes ) 
-    ! Even for vectors the interpolation is done for each scalar component. 
+    ! Only nodal and discontinuous galerkin fields can be interpolated as for now.
+    IsLegit = ( Var % TYPE == Variable_on_nodes_on_elements .OR. Var % Type == Variable_on_nodes )
+    ! Even for vectors the interpolation is done for each scalar component.
     IF( Var % Dofs > 1 ) IsLegit = .FALSE.
     !IF( Var % Secondary ) IsLegit = .FALSE.
-    ! Coordinates are special and should not be interpolated. 
+    ! Coordinates are special and should not be interpolated.
     IF(LEN(Var % Name) >= 10) THEN
       IF( Var % Name(1:10) == 'coordinate' ) IsLegit = .FALSE.
     END IF
@@ -552,10 +552,10 @@ CONTAINS
        IF (SIZE(Var % Values)==1 ) IsLegit = .FALSE.
      END IF
     END IF
-    
+
   END FUNCTION LegitInterpVar
 
-  
+
 !------------------------------------------------------------------------------
    FUNCTION AllocateMesh() RESULT(Mesh)
 !------------------------------------------------------------------------------
@@ -612,7 +612,7 @@ CONTAINS
      NULLIFY( Mesh % ParallelInfo % GlobalDOFs )
      NULLIFY( Mesh % ParallelInfo % GInterface )
      NULLIFY( Mesh % ParallelInfo % NeighbourList )
-         
+
   END FUNCTION AllocateMesh
 !-------------------------------------------------------------------------------
 END SUBROUTINE InterpolateMeshToMesh
@@ -649,35 +649,35 @@ END SUBROUTINE InterpolateMeshToMesh
        REAL(KIND=dp), POINTER :: ElementValues(:)
        TYPE(Quadrant_t), POINTER :: LeafQuadrant
        TYPE(Element_t),POINTER :: Element, Parent
-       
+
        REAL(KIND=dp), ALLOCATABLE :: Basis(:),Vals(:),dVals(:,:), &
                           RotWBasis(:,:), WBasis(:,:)
        REAL(KIND=dp) :: BoundingBox(6), detJ, u,v,w,s,val,rowsum, F(3,3), G(3,3)
-       
+
        LOGICAL :: UseQTree, TryQTree, Stat, UseProjector, EdgeBasis, PiolaT, Parallel, &
            TryLinear, KeepUnfoundNodesL, InterpolatePartial
        TYPE(Quadrant_t), POINTER :: RootQuadrant
-       
+
        INTEGER, POINTER   CONTIG :: Rows(:), Cols(:)
        INTEGER, POINTER    :: Diag(:), OldPerm(:), NewPerm(:)
 
        TYPE Epntr_t
          TYPE(Element_t), POINTER :: Element
        END TYPE Epntr_t
-       
+
        TYPE(Epntr_t), ALLOCATABLE :: ElemPtrs(:)
-       
+
        INTEGER, ALLOCATABLE, TARGET :: RInd(:), Unitperm(:)
        LOGICAL :: Found, EpsAbsGiven,EpsRelGiven, MaskExists, CylProject, ProjectorAllocated
        INTEGER :: eps_tries, nrow, PassiveCoordinate
        REAL(KIND=dp) :: eps1 = 0.1_dp, eps2, eps_global, eps_local, eps_basis,eps_numeric
-       REAL(KIND=dp), POINTER CONTIG :: Values(:) 
+       REAL(KIND=dp), POINTER CONTIG :: Values(:)
        REAL(KIND=dp), POINTER :: LocalU(:), LocalV(:), LocalW(:)
 
-       TYPE(Nodes_t), SAVE :: Nodes
+       TYPE(Nodes_t) :: Nodes
        INTEGER, ALLOCATABLE :: OneDGIndex(:)
-              
-       !$OMP THREADPRIVATE(eps1,Nodes)
+
+       !$OMP THREADPRIVATE(eps1)
 
 !------------------------------------------------------------------------------
 
@@ -692,7 +692,7 @@ END SUBROUTINE InterpolateMeshToMesh
 !      ------------------------------------------------
        IF ( PRESENT(Projector) ) THEN
          Projector => NewMesh % Projector
-         
+
          DO WHILE( ASSOCIATED( Projector ) )
            IF ( ASSOCIATED(Projector % Mesh, OldMesh) ) THEN
               CALL Info('InterpolateMesh2Mesh','Applying exiting projector in interpolation',Level=12)
@@ -716,13 +716,13 @@ END SUBROUTINE InterpolateMeshToMesh
        dim = CoordinateSystemDimension()
 
        dim = MAX(dim,OldMesh % MeshDim)
-       
+
        IF ( .NOT. PRESENT( UseQuadrantTree ) ) THEN
          UseQTree = .TRUE.
        ELSE
          UseQTree = UseQuadrantTree
        ENDIF
-    
+
        IF ( UseQTree ) THEN
          IF ( .NOT.ASSOCIATED( RootQuadrant ) ) THEN
            BoundingBox(1) = MINVAL(OldMesh % Nodes % x)
@@ -731,7 +731,7 @@ END SUBROUTINE InterpolateMeshToMesh
            BoundingBox(4) = MAXVAL(OldMesh % Nodes % x)
            BoundingBox(5) = MAXVAL(OldMesh % Nodes % y)
            BoundingBox(6) = MAXVAL(OldMesh % Nodes % z)
-           
+
            eps2 = 0.1_dp * MAXVAL(BoundingBox(4:6)-BoundingBox(1:3))
            BoundingBox(1:3) = BoundingBox(1:3) - eps2
            BoundingBox(4:6) = BoundingBox(4:6) + eps2
@@ -741,7 +741,7 @@ END SUBROUTINE InterpolateMeshToMesh
            RootQuadrant => OldMesh % RootQuadrant
          END IF
        END IF
-       
+
 ! Use mask or not
 !---------------------------------------
        MaskExists = PRESENT( MaskName )
@@ -751,11 +751,11 @@ END SUBROUTINE InterpolateMeshToMesh
        n = OldMesh % MaxElementNodes
        ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), &
            ElementNodes % z(n), ElementValues(n) )
-       
+
        eps_global = ListGetConstReal( CurrentModel % Simulation,  &
            'Interpolation Global Epsilon', Stat)
        IF(.NOT. Stat) eps_global = 2.0d-10
-       
+
        eps_local = ListGetConstReal( CurrentModel % Simulation,  &
            'Interpolation Local Epsilon', Stat )
        IF(.NOT. Stat) eps_local = 1.0d-10
@@ -766,26 +766,26 @@ END SUBROUTINE InterpolateMeshToMesh
 
        eps_numeric = ListGetConstReal( CurrentModel % Simulation, &
            'Interpolation Numeric Epsilon', Stat)
-       IF(.NOT. Stat) eps_numeric = 1.0e-10
+       IF(.NOT. Stat) eps_numeric = 1.0d-10
 
        PassiveCoordinate = ListGetInteger( CurrentModel % Simulation, &
-            'Interpolation Passive Coordinate', Stat ) 
+            'Interpolation Passive Coordinate', Stat )
        IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
          PassiveCoordinate = ListGetInteger( CurrentModel % Solver % Values, &
-               'Interpolation Passive Coordinate', Stat ) 
+               'Interpolation Passive Coordinate', Stat )
        END IF
-              
+
        CylProject = ListGetLogical( CurrentModel % Simulation, &
-            'Interpolation Cylindric', Stat )                     
+            'Interpolation Cylindric', Stat )
        IF (.NOT. Stat .AND. ASSOCIATED(CurrentModel % Solver)) THEN
          CylProject = ListGetLogical( CurrentModel % Solver % Values, &
-               'Interpolation Cylindric', Stat ) 
+               'Interpolation Cylindric', Stat )
        END IF
 
        InterpolatePartial = ListGetLogical( CurrentModel % Simulation, &
-            'Interpolation Partial Hit', Stat )                     
+            'Interpolation Partial Hit', Stat )
 
-       
+
        QTreeFails = 0
        TotFails = 0
 
@@ -807,8 +807,8 @@ END SUBROUTINE InterpolateMeshToMesh
          KeepUnfoundNodesL = KeepUnfoundNodes
        ELSE
          KeepUnfoundNodesL = .TRUE.
-       END IF        
-       
+       END IF
+
        FoundCnt = 0
 
        i = MAX(NewMesh % NumberOfNodes,OldMesh % NumberOfNodes)
@@ -838,12 +838,12 @@ END SUBROUTINE InterpolateMeshToMesh
            Point(2) = Point(3)
            Point(3) = 0.0_dp
          END IF
-         
+
 !------------------------------------------------------------------------------
 ! Find in which old mesh bulk element the point belongs to
 !------------------------------------------------------------------------------
          Found = .FALSE.
-         TryQTree = ASSOCIATED(RootQuadrant) .AND. UseQTree 
+         TryQTree = ASSOCIATED(RootQuadrant) .AND. UseQTree
 
          IF( TryQTree ) THEN
 !------------------------------------------------------------------------------
@@ -851,7 +851,7 @@ END SUBROUTINE InterpolateMeshToMesh
 !------------------------------------------------------------------------------
            Element => NULL()
            CALL FindLeafElements(Point, dim, RootQuadrant, LeafQuadrant)
-           
+
            IF ( ASSOCIATED(LeafQuadrant) ) THEN
              ! Go through the bulk elements in the last ChildQuadrant
              ! only.  Try to find matching element with progressively
@@ -859,11 +859,11 @@ END SUBROUTINE InterpolateMeshToMesh
              ! -------------------------------------------------------
              Eps1 = eps_global
              Eps2 = eps_local
-             
+
              DO j=1,eps_tries
                DO k=1, LeafQuadrant % NElemsInQuadrant
                  Element => OldMesh % Elements(LeafQuadrant % Elements(k))
-                 
+
                  IF( MaskExists ) THEN
                    bf_id = ListGetInteger( CurrentModel % Bodies(Element % BodyId) % Values, &
                        'Body Force', Found )
@@ -871,10 +871,10 @@ END SUBROUTINE InterpolateMeshToMesh
                    IF(.NOT. ListCheckPresent( &
                        CurrentModel % BodyForces(bf_id) % Values,MaskName) ) CYCLE
                  END IF
-                  
+
                  Indexes => Element % NodeIndexes
                  n = Element % TYPE % NumberOfNodes
-                 
+
                  ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
                  ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
                  ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
@@ -888,30 +888,30 @@ END SUBROUTINE InterpolateMeshToMesh
                      ElementNodes % z(1:n) = 0.0_dp
                    END IF
                  END IF
-                 
+
                  Found = PointInElement( Element, ElementNodes, &
                      Point, LocalCoordinates, Eps1, Eps2, NumericEps=eps_numeric,EdgeBasis=PiolaT)
                  IF ( Found ) EXIT
                END DO
-               IF ( Found ) EXIT  
-               
+               IF ( Found ) EXIT
+
                Eps1 = 10 * Eps1
-               Eps2 = 10 * Eps2               
+               Eps2 = 10 * Eps2
                IF( Eps1 > 1.0_dp ) EXIT
              END DO
            END IF
          END IF
-         
+
          IF( .NOT. TryQTree .OR. (.NOT. Found .AND. .NOT. Parallel .AND. TryLinear ) ) THEN
            !------------------------------------------------------------------------------
            ! Go through all old mesh bulk elements
            !------------------------------------------------------------------------------
            DO k=1,OldMesh % NumberOfBulkElements
              Element => OldMesh % Elements(k)
-             
+
              n = Element % TYPE % NumberOfNodes
              Indexes => Element % NodeIndexes
-             
+
              ElementNodes % x(1:n) = OldMesh % Nodes % x(Indexes)
              ElementNodes % y(1:n) = OldMesh % Nodes % y(Indexes)
              ElementNodes % z(1:n) = OldMesh % Nodes % z(Indexes)
@@ -925,21 +925,21 @@ END SUBROUTINE InterpolateMeshToMesh
                  ElementNodes % z(1:n) = 0.0_dp
                END IF
              END IF
-             
+
              Found =  PointInElement( Element, ElementNodes, &
-                 Point, LocalCoordinates  ) 
+                 Point, LocalCoordinates  )
              IF( Found ) THEN
                IF( TryQTree ) QTreeFails = QtreeFails + 1
                EXIT
              END IF
            END DO
          END IF
-         
+
          IF (.NOT.Found) THEN
            Element => NULL()
            IF (.NOT. Parallel ) THEN
              WRITE( Message,'(A,I0,A,3ES10.2,A)' ) 'Point ',i,' at ',Point,' not found!'
-             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )             
+             CALL Info( 'InterpolateMeshToMesh', Message, Level=30 )
              TotFails = TotFails + 1
            END IF
            CYCLE
@@ -976,8 +976,8 @@ END SUBROUTINE InterpolateMeshToMesh
           Var => OldVariables
           DO WHILE( ASSOCIATED( Var ) )
 
-            IF(LegitInterpVar(Var)) THEN                         
-               
+            IF(LegitInterpVar(Var)) THEN
+
 !------------------------------------------------------------------------------
 !
 !               Interpolate variable at Point in Element:
@@ -997,8 +997,8 @@ END SUBROUTINE InterpolateMeshToMesh
                 IF( .NOT. ASSOCIATED( OldSol ) ) THEN
                   CALL Fatal('InterpolateMeshToMesh','Variable not associated: '//TRIM(Var % Name))
                 END IF
-                  
-                
+
+
                 ! Check that the node was found in the old mesh:
                 ! ----------------------------------------------
                 IF ( ASSOCIATED (Element) ) THEN
@@ -1019,10 +1019,10 @@ END SUBROUTINE InterpolateMeshToMesh
                    IF (.NOT.ASSOCIATED(NewPerm)) NewPerm => Unitperm
 
                    k = COUNT( OldPerm(Indexes) > 0 )
-                   
+
                    IF ( k == SIZE(Indexes) .OR. (InterpolatePartial .AND. k>0) ) THEN
                     IF( NewSol % TYPE == Variable_on_nodes_on_elements ) THEN
-                      IF(.NOT. ALLOCATED(OneDGIndex) ) THEN                        
+                      IF(.NOT. ALLOCATED(OneDGIndex) ) THEN
                         CALL CreateOneDGIndex()
                       END IF
                       IF( OneDGIndex(i) > 0 ) THEN
@@ -1033,26 +1033,26 @@ END SUBROUTINE InterpolateMeshToMesh
                     ELSE
                       k = NewPerm(i)
                     END IF
-                      
+
                     IF ( k /= 0 ) THEN
-                      WHERE( OldPerm(Indexes(1:n)) > 0 ) 
+                      WHERE( OldPerm(Indexes(1:n)) > 0 )
                         ElementValues(1:n) = OldSol % Values(OldPerm(Indexes))
                       ELSE WHERE
                         ElementValues(1:n) = 0.0_dp
                       END WHERE
-                        
+
                       val = InterpolateInElement( Element, ElementValues, &
                           LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
-                      
+
                       NewSol % Values(k) = val
 
                       IF ( ASSOCIATED( OldSol % PrevValues ) ) THEN
                         DO j=1,SIZE(OldSol % PrevValues,2)
 
-                          WHERE( OldPerm(Indexes(1:n)) > 0 )                           
+                          WHERE( OldPerm(Indexes(1:n)) > 0 )
                             ElementValues(1:n) = OldSol % PrevValues(OldPerm(Indexes),j)
                           END WHERE
-                            
+
                           val = InterpolateInElement( Element, ElementValues, &
                               LocalCoordinates(1), LocalCoordinates(2), LocalCoordinates(3) )
 
@@ -1077,7 +1077,7 @@ END SUBROUTINE InterpolateMeshToMesh
              WRITE( Message,'(A,I0)' ) 'Number of points not found in quadtree: ',QtreeFails
              CALL Info( 'InterpolateMeshToMesh', Message )
              IF( TotFails == 0 ) THEN
-               CALL Info( 'InterpolateMeshToMesh','All nodes still found by N^2 dummy search!' )               
+               CALL Info( 'InterpolateMeshToMesh','All nodes still found by N^2 dummy search!' )
              END IF
            END IF
            IF( TotFails == 0 ) THEN
@@ -1106,9 +1106,9 @@ END SUBROUTINE InterpolateMeshToMesh
           END IF
           ALLOCATE( Basis(100),Vals(100), Indexes(100))
 
-          ! The critical value of basis function that is accepted to the 
+          ! The critical value of basis function that is accepted to the
           ! projector. Note that the sum of weights is one, so this
-          ! we know the scale for this one. 
+          ! we know the scale for this one.
           eps_basis = ListGetConstReal( CurrentModel % Simulation,  &
                  'Interpolation Basis Epsilon', Stat )
           IF(.NOT. Stat) eps_basis = 0.0d-12
@@ -1134,8 +1134,8 @@ END SUBROUTINE InterpolateMeshToMesh
             ELSE
               Element => ElemPtrs(i) % Element
             END IF
-            Found = ASSOCIATED( Element ) 
-            
+            Found = ASSOCIATED( Element )
+
             IF( .NOT. Found ) THEN
              ! It seems unnecessary to make a matrix entry in case no target element is found!
               IF(.FALSE.) THEN
@@ -1157,9 +1157,9 @@ END SUBROUTINE InterpolateMeshToMesh
                 CALL GetElementNodes(Nodes,Element,UMesh=OldMesh)
               END IF
 
-              np = GetElementNOFNodes(Element)              
+              np = GetElementNOFNodes(Element)
               IF (EdgeBasis) THEN
-                k = GetElementDOFs( Indexes, Element, NotDG=.TRUE.)                
+                k = GetElementDOFs( Indexes, Element, NotDG=.TRUE.)
               ELSE
                 !
                 ! In this case calling GetElementDOFs appears to generate warnings
@@ -1169,7 +1169,7 @@ END SUBROUTINE InterpolateMeshToMesh
                 k = np
                 Indexes(1:k) = Element % NodeIndexes(1:k)
               END IF
-              
+
               IF (ANY(Indexes(1:np)>Element % NodeIndexes)) np=0
 
               IF( EdgeBasis) THEN
@@ -1180,7 +1180,7 @@ END SUBROUTINE InterpolateMeshToMesh
                   ALLOCATE(dVals(k,3),WBasis(k,3),RotWBasis(k,3))
                 END IF
 
-                IF(PiolaT) THEN 
+                IF(PiolaT) THEN
                   stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals,EdgeBasis=WBasis )
                 ELSE
                   stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals,dVals)
@@ -1189,7 +1189,7 @@ END SUBROUTINE InterpolateMeshToMesh
               ELSE
                 stat = ElementInfo(Element,Nodes,u,v,w,detJ,Vals)
               END IF
-              
+
 
               rowsum = 0.0_dp
               DO j=1,k
@@ -1203,7 +1203,7 @@ END SUBROUTINE InterpolateMeshToMesh
                   END IF
                 END IF
               END DO
-              
+
 
               IF( ProjectorAllocated ) THEN
                 DO j=1,k
@@ -1214,20 +1214,20 @@ END SUBROUTINE InterpolateMeshToMesh
                   IF (.NOT.EdgeBasis.OR.(EdgeBasis.AND.j<=np)) THEN
                     Cols(nrow) = Indexes(j)
                     Values(nrow) = vals(j) / rowsum
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                   ELSE
                     Cols(nrow) = -Indexes(j)
                     Values(nrow) = WBasis(j-np,1)
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                     Cols(nrow) = -Indexes(j)
                     Values(nrow) = WBasis(j-np,2)
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                     Cols(nrow) = -Indexes(j)
                     Values(nrow) = WBasis(j-np,3)
-                    nrow = nrow + 1                  
+                    nrow = nrow + 1
                   END IF
                 END DO
-              END IF                
+              END IF
             END IF
 
             Rows(i+1) = nrow
@@ -1237,18 +1237,18 @@ END SUBROUTINE InterpolateMeshToMesh
             ALLOCATE( Cols(Rows(n+1)-1), Values(Rows(n+1)-1) )
             Cols   = 0
             Values = 0
-            
+
             ALLOCATE( Projector )
             Projector % Matrix => AllocateMatrix()
             Projector % Matrix % NumberOfRows = n
             Projector % Matrix % Rows   => Rows
-            Projector % Matrix % Cols   => Cols 
+            Projector % Matrix % Cols   => Cols
             Projector % Matrix % Values => Values
-            
+
             Projector % Next => NewMesh % Projector
             NewMesh % Projector => Projector
             NewMesh % Projector % Mesh => OldMesh
-            
+
             IF( .NOT.EdgeBasis) THEN
               ALLOCATE(Rind(OldMesh % NumberOfNodes)); Rind = 0
             END IF
@@ -1261,7 +1261,7 @@ END SUBROUTINE InterpolateMeshToMesh
           DEALLOCATE( Basis, Vals, ElemPtrs, LocalU, LocalV, LocalW, Indexes )
 
 !         Store also the transpose of the projector:
-!         ------------------------------------------ 
+!         ------------------------------------------
           Projector % TMatrix => NULL()
           IF(.NOT.EdgeBasis) THEN
             IF ( FoundCnt > 0 ) THEN
@@ -1279,7 +1279,7 @@ END SUBROUTINE InterpolateMeshToMesh
               Projector % TMatrix => AllocateMatrix()
               Projector % TMatrix % NumberOfRows = n
               Projector % TMatrix % Rows   => Rows
-              Projector % TMatrix % Cols   => Cols 
+              Projector % TMatrix % Cols   => Cols
               Projector % TMatrix % Values => Values
 
               RInd = 0
@@ -1319,23 +1319,23 @@ CONTAINS
 
   END FUNCTION LegitInterpVar
 
-  
+
 
   ! Create a representative dg index to be used for interpolation.
   ! This is cheating since it does not work in general. It does work
   ! for the reduced basis DG. Even there it works only at intersections
   ! if there is an additional mask that is used to pick the correct element.
-  ! For generic cases we would need a table to all DG indexes. 
+  ! For generic cases we would need a table to all DG indexes.
   !------------------------------------------------------------------------
   SUBROUTINE CreateOneDGIndex()
     INTEGER :: i,j,k,t,n
     TYPE(Element_t), POINTER :: Element,Parent
     INTEGER, TARGET :: TmpIndexes(20)
     INTEGER, POINTER :: pIndexes(:)
-    
+
 
     CALL Info('InterpolateMesh2Mesh','Creating representative DG reindexing table!',Level=12)
-    
+
     ALLOCATE(OneDGIndex(NewMesh % NumberOfNodes))
     OneDGIndex = 0
 
@@ -1343,11 +1343,11 @@ CONTAINS
       Element => NewMesh % Elements(t)
 
       ! This might take away all bulk elements so we need to be able to deal with
-      ! boundary elements as well. 
+      ! boundary elements as well.
       IF( PRESENT( NewMaskPerm ) ) THEN
         IF( ANY( NewMaskPerm(Element % NodeIndexes) == 0 ) ) CYCLE
       END IF
-      
+
       n = Element % Type % NumberOfNodes
       IF( ASSOCIATED( Element % DGIndexes ) ) THEN
         pIndexes => Element % DGIndexes
@@ -1374,18 +1374,18 @@ CONTAINS
       ELSE
         CYCLE
       END IF
-      
+
       DO i=1,n
         j = Element % NodeIndexes(i)
         IF( OneDGIndex(j) > 0) CYCLE
         OneDGIndex(j) = pIndexes(i)
-      END DO      
+      END DO
     END DO
 
-    
+
   END SUBROUTINE CreateOneDGIndex
 
-  
+
 
 !------------------------------------------------------------------------------
      SUBROUTINE ApplyProjector
@@ -1416,8 +1416,8 @@ CONTAINS
               END IF
            END IF
            Var => Var % Next
-         END DO         
-         
+         END DO
+
 !------------------------------------------------------------------------------
      END SUBROUTINE ApplyProjector
 !------------------------------------------------------------------------------
@@ -1428,14 +1428,14 @@ CONTAINS
 
   !---------------------------------------------------------------------------
   !> Create a projector for mapping between interfaces using the Galerkin method
-  !> A temporal mesh structure with a node for each Gaussian integration point is 
+  !> A temporal mesh structure with a node for each Gaussian integration point is
   !> created. This projector matrix is transferred to a projector on the nodal
   !> coordinates.
   !> Note that this approach is very suboptimal compared to the version where
-  !> a temporal supermesh is used for in the integration. 
+  !> a temporal supermesh is used for in the integration.
   !---------------------------------------------------------------------------
    FUNCTION WeightedProjector(BMesh2, BMesh1, InvPerm2, InvPerm1, &
-       UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, & 
+       UseQuadrantTree, Repeating, AntiRepeating, PeriodicScale, &
        NodalJump ) &
       RESULT ( Projector )
   !---------------------------------------------------------------------------
@@ -1491,7 +1491,7 @@ CONTAINS
         'Projector Relative Integration Order', Found, minv=-1,maxv=1)
 
     ! Calculate the total number of Gaussian integration points
-    ! and allocate space for the node structures. 
+    ! and allocate space for the node structures.
     !----------------------------------------------------------
     NoGaussPoints = 0
     DO i=1, BMesh1 % NumberOfBulkElements
@@ -1499,7 +1499,7 @@ CONTAINS
       IntegStuff = GaussPoints( Element, RelOrder=RelOrder, EdgeBasis=PiolaT )
       NoGaussPoints = NoGaussPoints + IntegStuff % n
     END DO
-    
+
     WRITE( Message,'(A,I0,A,I0)') 'Number of nodes and gauss points:'&
         ,NoNodes,' and ',NoGaussPoints
     CALL Info('WeightedProjector',Message,Level=10)
@@ -1567,16 +1567,16 @@ CONTAINS
 
 
     ! Create the nodal coordinates for all Gaussian integration points
-    !-----------------------------------------------------------------    
+    !-----------------------------------------------------------------
     NoGaussPoints = 0
     DO i=1, BMesh1 % NumberOfBulkElements
       Element => BMesh1 % Elements(i)
-      n = Element % TYPE % NumberOfNodes        
+      n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
       ElementNodes % x(1:n) = RealNodes % x(NodeIndexes(1:n))
       ElementNodes % y(1:n) = RealNodes % y(NodeIndexes(1:n))
       ElementNodes % z(1:n) = RealNodes % z(NodeIndexes(1:n))
-      
+
       IntegStuff = GaussPoints( Element, RelOrder=RelOrder, EdgeBasis=PiolaT )
       DO j=1,IntegStuff % n
         NoGaussPoints = NoGaussPoints + 1
@@ -1598,8 +1598,8 @@ CONTAINS
     BMesh1 % Nodes => GaussNodes
     BMesh1 % NumberOfNodes = NoGaussPoints
 
-    ! Create the mirror node flag and map the nodes of Mesh1 to be 
-    ! in the interval of Mesh2.    
+    ! Create the mirror node flag and map the nodes of Mesh1 to be
+    ! in the interval of Mesh2.
     !-----------------------------------------------------------------
     IF( Repeating ) THEN
       IF( AntiRepeating ) THEN
@@ -1611,7 +1611,7 @@ CONTAINS
 
     ! Create the projector for Gaussian integration points
     !-----------------------------------------------------------------
-    GaussProjector => MeshProjector( BMesh2, BMesh1, UseQuadrantTree )    
+    GaussProjector => MeshProjector( BMesh2, BMesh1, UseQuadrantTree )
     Rows => GaussProjector % Rows
     Cols => GaussProjector % Cols
     Values => GaussProjector % Values
@@ -1620,7 +1620,7 @@ CONTAINS
     !-----------------------------------------------------------------------------
     IF( AntiRepeating ) THEN
       CALL PostRotationalProjector( GaussProjector, MirrorNode )
-      IF( ALLOCATED( MirrorNode) ) DEALLOCATE( MirrorNode ) 
+      IF( ALLOCATED( MirrorNode) ) DEALLOCATE( MirrorNode )
     END IF
 
     ! Transfer the projector on the Gaussian points to that on
@@ -1648,7 +1648,7 @@ CONTAINS
         CALL GetElementNodes(Nodes,Element)
       ELSE
         Element => BMesh1 % Elements(i)
-        n = Element % TYPE % NumberOfNodes        
+        n = Element % TYPE % NumberOfNodes
         np = n
         Indexes(1:n) = Element % NodeIndexes
         ElementNodes % x(1:n) = RealNodes % x(Indexes(1:n))
@@ -1687,8 +1687,8 @@ CONTAINS
 
 
         ! Do the numbering of new dofs
-        ! This needs to be done here because the nodal jump 
-        ! needs the index related to (p,q) pair.  
+        ! This needs to be done here because the nodal jump
+        ! needs the index related to (p,q) pair.
         DO p=1,np
           IF (EQind(Indexes(p))==0) THEN
             Ind = Ind+1
@@ -1703,17 +1703,17 @@ CONTAINS
 
         DO p=1,np
           val = weight * Basis(p)
- 
+
           DO q=1,np
             qq = Indexes(q)
             IF(.NOT.EdgeBasis) qq=InvPerm1(qq)
-            CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)), qq, Basis(q) * val ) 
+            CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)), qq, Basis(q) * val )
 
             ! Add a diagonal entry to the future constrained system.
             ! This will enable a jump to the discontinuous boundary.
             ! So far no value is added just the sparse matrix entry.
             !IF( NodalJump ) THEN
-            !  IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN 
+            !  IF( Indexes(p) <= nodesize .AND. Indexes(q) <= nodesize ) THEN
             !    CALL List_AddToMatrixElement(Projector % ListMatrix, EQind(Indexes(p)),&
             !        totsize + EQInd(Indexes(q)), 0.0_dp )
             !  END IF
@@ -1725,7 +1725,7 @@ CONTAINS
             IF (qq<=0) EXIT
             IF(.NOT.EdgeBasis) qq=InvPerm2(qq)
             CALL List_AddToMatrixElement(Projector % ListMatrix, &
-                EQind(Indexes(p)), qq, -PeriodicScale * Values(q) * val ) 
+                EQind(Indexes(p)), qq, -PeriodicScale * Values(q) * val )
           END DO
         END DO
 
@@ -1751,7 +1751,7 @@ CONTAINS
 
 
             DO q = Rows(NoGaussPoints)+np, Rows(NoGaussPoints+1)-1,3
-              IF(Cols(q)>=0) STOP 'q'
+              IF(Cols(q)>=0) ERROR STOP 'q'
 
               vq(1) = Values(q)
               vq(2) = Values(q+1)
@@ -1780,7 +1780,7 @@ CONTAINS
     DEALLOCATE( GaussNodes )
 
     DEALLOCATE( Basis )
-    IF(EdgeBasis) DEALLOCATE( dBasisdx, WBasis, RotWBasis ) 
+    IF(EdgeBasis) DEALLOCATE( dBasisdx, WBasis, RotWBasis )
 
 !------------------------------------------------------------------------------
   END FUNCTION WeightedProjector
@@ -1791,6 +1791,15 @@ CONTAINS
   !> When we have a field defined on IP points we may temporarily swap it to be a field
   !> defined on DG points. This is done by solving small linear system for each element.
   !------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Sample an integration point field and return it as elementwise DG dofs.
+!>
+!> This has to remain an external procedure: it needs Integration and
+!> ElementDescription, while one of its callers is Lists.F90, which is below
+!> both in the module hierarchy. Its interface is therefore declared by hand,
+!> but only once -- in module IpFieldInterface, which every caller USEs.
+!> Change the dummy arguments here and you must change that module too.
+!------------------------------------------------------------------------------
   SUBROUTINE Ip2DgFieldInElement( Mesh, Element, nip, fip, ndg, fdg )
     !------------------------------------------------------------------------------
     USE Types
@@ -1804,20 +1813,65 @@ CONTAINS
     REAL(KIND=dp) :: fip(:), fdg(:)
     !------------------------------------------------------------------------------
     REAL(KIND=dp) :: Weight, DetJ
-    REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
-    INTEGER :: i,t,p,q,n
+    INTEGER :: i,t,p,q,n,tid,nthr
     TYPE(GaussIntegrationPoints_t) :: IP
-    TYPE(Nodes_t) :: Nodes
-    LOGICAL :: Stat, CSymmetry, AllocationsDone = .FALSE.
+    LOGICAL :: Stat
     CHARACTER(*), PARAMETER :: Caller = 'Ip2DgFieldInElement'
-    TYPE(Element_t), POINTER :: PrevElement => NULL()
 
-    SAVE Nodes, Basis, MASS, LOAD, CSymmetry, PrevElement, AllocationsDone
+    ! Per-thread scratch state — NOT THREADPRIVATE (Windows/GCC emutls bug,
+    ! see no-threadprivate branch). Used to be a single SAVE'd workspace
+    ! (Nodes/Basis/MASS/LOAD/PrevElement) shared by all callers; harmless
+    ! while this routine was only ever reached serially, but as soon as a
+    ! caller (e.g. a "-ip" exported variable used in a boundary condition)
+    ! runs from a parallel element loop, threads race on the same Basis/MASS
+    ! allocation and on each other's element data.
+    TYPE :: Ip2DgState_t
+      TYPE(Nodes_t) :: Nodes
+      REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
+      LOGICAL :: CSymmetry = .FALSE.
+      LOGICAL :: AllocationsDone = .FALSE.
+      TYPE(Element_t), POINTER :: PrevElement => NULL()
+    END TYPE Ip2DgState_t
+    TYPE(Ip2DgState_t), ALLOCATABLE, TARGET, SAVE :: States(:)
     !------------------------------------------------------------------------------
+
+    tid = 1
+    !$ tid = omp_get_thread_num() + 1
+
+    ! Unlike bulk assembly, boundary assembly has no serial "warm-up" element
+    ! that resolves shared setup before the parallel loop starts, so every
+    ! thread can reach this function's very first call at once. The unguarded
+    ! "IF (.NOT. ALLOCATED(States))" fast-path read this used to have (before
+    ! ever entering the critical section) is a classic double-checked-locking
+    ! race: one thread can observe States as allocated, from another thread's
+    ! write, before that allocation's contents are actually visible to it —
+    ! especially under -O3 reordering. Always taking the critical section here
+    ! is the safe fix; the cost is negligible next to the ElementInfo/LuSolve
+    ! work this routine already does per call.
+    !$OMP CRITICAL (Ip2DgFieldInElementInit)
+    IF( .NOT. ALLOCATED( States ) ) THEN
+      nthr = 1
+      !$ nthr = omp_get_max_threads()
+      ALLOCATE( States(nthr) )
+    END IF
+    !$OMP END CRITICAL (Ip2DgFieldInElementInit)
+
+    ! Basis/MASS/LOAD are whole-allocatable components that get allocated
+    ! below (first touch per thread) — an ASSOCIATE name never inherits the
+    ! ALLOCATABLE attribute from its selector, and gfortran does not
+    ! reliably track the allocation status through such a name when the
+    ! allocation happens later via a different alias to the same variable,
+    ! so they're referenced as States(tid) % ... directly throughout instead
+    ! of through ASSOCIATE. Nodes/CSymmetry/AllocationsDone are fine to
+    ! ASSOCIATE: Nodes is a plain (non-allocatable) derived-type variable,
+    ! and CSymmetry/AllocationsDone are plain scalars.
+    ASSOCIATE( Nodes => States(tid) % Nodes, &
+        CSymmetry => States(tid) % CSymmetry, &
+        AllocationsDone => States(tid) % AllocationsDone )
 
     IF( .NOT. AllocationsDone ) THEN
       n = Mesh % MaxElementNodes
-      ALLOCATE( Basis(n), LOAD(n), MASS(n,n) )
+      ALLOCATE( States(tid) % Basis(n), States(tid) % LOAD(n), States(tid) % MASS(n,n) )
       CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
           CurrentCoordinateSystem() == CylindricSymmetric
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
@@ -1829,802 +1883,48 @@ CONTAINS
       fdg(1:ndg) = 0.0_dp
       RETURN
     END IF
-    
-    n = Element % TYPE % NumberOfNodes 
+
+    n = Element % TYPE % NumberOfNodes
     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
 
     ! We could probably do more to utilize the previous visit to save resources...
-    IF(.NOT. ASSOCIATED( PrevElement, Element ) ) THEN
+    IF(.NOT. ASSOCIATED( States(tid) % PrevElement, Element ) ) THEN
       Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
       Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
-      PrevElement => Element
+      States(tid) % PrevElement => Element
     END IF
 
-    MASS  = 0._dp
-    LOAD = 0._dp
+    States(tid) % MASS = 0._dp
+    States(tid) % LOAD = 0._dp
 
     ! Numerical integration:
     !-----------------------
     IP = GaussPoints( Element, nip )
 
     DO t=1,IP % n
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )
+      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, States(tid) % Basis )
       Weight = IP % s(t) * DetJ
 
       IF( CSymmetry ) THEN
-        Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+        Weight = Weight * SUM( States(tid) % Basis(1:n) * Nodes % x(1:n) )
       END IF
 
       DO p=1,n
-        LOAD(p) = LOAD(p) + Weight * Basis(p) * fip(t)
+        States(tid) % LOAD(p) = States(tid) % LOAD(p) + Weight * States(tid) % Basis(p) * fip(t)
         DO q=1,n
-          MASS(p,q) = MASS(p,q) + Weight * Basis(q) * Basis(p)
+          States(tid) % MASS(p,q) = States(tid) % MASS(p,q) + &
+              Weight * States(tid) % Basis(q) * States(tid) % Basis(p)
         END DO
       END DO
     END DO
 
-    CALL LuSolve(n,MASS,LOAD) 
+    CALL LuSolve(n, States(tid) % MASS, States(tid) % LOAD)
 
-    fdg(1:n) = LOAD(1:n)
+    fdg(1:n) = States(tid) % LOAD(1:n)
+
+    END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE Ip2DgFieldInElement
 !------------------------------------------------------------------------------
-  
-!------------------------------------------------------------------------------
-!> Given a finite element field expressed in terms of the hierarchic p-basis
-!> find its elementwise Lagrange interpolant of a specified degree. At the moment
-!> this subroutine has limited functionality, since the coordinates of the Lagrange
-!> nodes are not yet defined for all element types in the case of high p.
-!------------------------------------------------------------------------------
-  SUBROUTINE HierarchicPToLagrange(PElement, Degree, PSol, LSol, DOFs, PSolver)
-!------------------------------------------------------------------------------
-    USE MeshBasics, ONLY: AllocateElement
-    USE ElementDescription
-    IMPLICIT NONE
 
-    TYPE(Element_t), TARGET, INTENT(IN) :: PElement          !< An element structure capable for p-approximation
-    INTEGER, INTENT(IN) :: Degree                            !< The desired order of the Lagrange interpolant
-    REAL(KIND=dp), INTENT(IN) :: PSol(:,:)                   !< The DOFs of p-solution
-    REAL(KIND=dp), INTENT(INOUT) :: LSol(:,:)                !< The DOFs for the Lagrange interpolation
-    INTEGER, OPTIONAL, INTENT(IN) :: DOFs                    !< The first dimension of PSol
-    TYPE(Solver_t), POINTER, OPTIONAL, INTENT(IN) :: PSolver !< For seeking p-definitions from this solver
-!------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: MAX_LINE_DEGREE = 8
-    INTEGER, PARAMETER :: MAX_TRIANGLE_DEGREE = 8
-    INTEGER, PARAMETER :: MAX_TRIANGLE_NODES = 45
-    INTEGER, PARAMETER :: MAX_QUAD_DEGREE = 8
-    INTEGER, PARAMETER :: MAX_TETRA_DEGREE = 4
-    INTEGER, PARAMETER :: MAX_TETRA_NODES = 35
-    INTEGER, PARAMETER :: MAX_PYRAMID_DEGREE = 2
-    INTEGER, PARAMETER :: MAX_PYRAMID_NODES = 15
-    INTEGER, PARAMETER :: MAX_PRISM_DEGREE = 4
-    INTEGER, PARAMETER :: MAX_PRISM_NODES = 75
-    INTEGER, PARAMETER :: MAX_BRICK_DEGREE = 8
-    INTEGER, PARAMETER :: MAX_LAGRANGE_NODES = 729
-
-    INTEGER, PARAMETER :: MAX_DEGREE = 8  ! The maximal polynomial degree over any element shape 
-
-    TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(Nodes_t) :: PNodes
-    TYPE(Element_t), POINTER :: LElement => NULL()
-    LOGICAL ::  AllocationsDone = .FALSE.
-    LOGICAL :: PVersion, stat
-    INTEGER, ALLOCATABLE :: BasisDegree(:)
-    INTEGER :: Family, Fields, MaxFields, i, j, k, n, t, nd
-    INTEGER :: i_start, i_end
-    INTEGER :: Offsets(MAX_DEGREE)
-    INTEGER :: Edge(2), Face(4)
-    REAL(KIND=dp), ALLOCATABLE :: PBasis(:)
-    REAL(KIND=dp), POINTER :: NodesU(:), NodesV(:), NodesW(:)
-    REAL(KIND=dp) :: ut, vt, wt, detJ
-    REAL(KIND=dp) :: r(3), delta
-
-    REAL(KIND=dp), TARGET, SAVE :: VTKLineU(MAX_LINE_DEGREE+1,MAX_LINE_DEGREE+1)
-
-    REAL(KIND=dp), TARGET, SAVE :: VTKTriangleU(MAX_TRIANGLE_DEGREE,MAX_TRIANGLE_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKTriangleV(MAX_TRIANGLE_DEGREE,MAX_TRIANGLE_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKTriangleW(MAX_TRIANGLE_NODES)
-    INTEGER, SAVE :: TriangleNodeCounts(MAX_TRIANGLE_DEGREE)
-
-    REAL(KIND=dp), TARGET, SAVE :: VTKQuadU(MAX_QUAD_DEGREE,(MAX_QUAD_DEGREE+1)**2)
-    REAL(KIND=dp), TARGET, SAVE :: VTKQuadV(MAX_QUAD_DEGREE,(MAX_QUAD_DEGREE+1)**2)
-    REAL(KIND=dp), TARGET, SAVE :: VTKQuadW((MAX_QUAD_DEGREE+1)**2)
-    INTEGER, SAVE :: QuadNodeCounts(MAX_QUAD_DEGREE)
-
-    REAL(KIND=dp), TARGET, SAVE :: VTKTetraU(MAX_TETRA_DEGREE,MAX_TETRA_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKTetraV(MAX_TETRA_DEGREE,MAX_TETRA_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKTetraW(MAX_TETRA_DEGREE,MAX_TETRA_NODES)
-    INTEGER, SAVE :: TetraNodeCounts(MAX_TETRA_DEGREE)
-    INTEGER :: VTKTetraFaceMap(4,3)
-
-    REAL(KIND=dp), TARGET, SAVE :: VTKPyramidU(MAX_PYRAMID_DEGREE,MAX_PYRAMID_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKPyramidV(MAX_PYRAMID_DEGREE,MAX_PYRAMID_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKPyramidW(MAX_PYRAMID_DEGREE,MAX_PYRAMID_NODES)
-    INTEGER, SAVE :: PyramidNodeCounts(MAX_PYRAMID_DEGREE)
-
-    REAL(KIND=dp), TARGET, SAVE :: VTKPrismU(MAX_PRISM_DEGREE,MAX_PRISM_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKPrismV(MAX_PRISM_DEGREE,MAX_PRISM_NODES)
-    REAL(KIND=dp), TARGET, SAVE :: VTKPrismW(MAX_PRISM_DEGREE,MAX_PRISM_NODES)
-    INTEGER, SAVE :: PrismNodeCounts(MAX_PRISM_DEGREE)
-
-    REAL(KIND=dp), TARGET, SAVE :: VTKBrickU(MAX_BRICK_DEGREE,(MAX_BRICK_DEGREE+1)**3)
-    REAL(KIND=dp), TARGET, SAVE :: VTKBrickV(MAX_BRICK_DEGREE,(MAX_BRICK_DEGREE+1)**3)
-    REAL(KIND=dp), TARGET, SAVE :: VTKBrickW(MAX_BRICK_DEGREE,(MAX_BRICK_DEGREE+1)**3)
-    INTEGER, SAVE :: BrickNodeCounts(MAX_BRICK_DEGREE)
-    INTEGER :: VTKBrickFaceMap(6,4)
-
-    CHARACTER(*), PARAMETER :: Caller = 'HierarchicPToLagrange'
-
-    SAVE PNodes, LElement, AllocationsDone, PBasis, BasisDegree
-!------------------------------------------------------------------------------
-    LSol = 0.0d0
-
-    MaxFields = MIN(SIZE(PSol,1), SIZE(LSol,1))
-    IF (PRESENT(DOFs)) THEN
-      IF (DOFs > MaxFields) THEN
-        CALL Warn(Caller, 'Too small arrays to write all fields')
-        Fields = MaxFields
-      ELSE
-        Fields = DOFs
-      END IF
-    ELSE
-      Fields = MaxFields ! Write as many fields as seems to be possible
-    END IF
-
-    Family = PElement % TYPE % ElementCode / 100
-
-    IF (Degree == 1) THEN
-      DO k=1,Fields
-        LSol(k,1:Family) = PSol(k,1:Family)
-      END DO
-      RETURN
-    END IF
-
-    Mesh => CurrentModel % Solver % Mesh
-    IF (PRESENT(PSolver)) THEN
-      IF(ASSOCIATED(PSolver)) Mesh => PSolver % Mesh
-    END IF
-
-    IF (.NOT. AllocationsDone) THEN
-      LElement => AllocateElement()
-      n = Mesh % MaxElementDOFs
-      ALLOCATE(PBasis(n), BasisDegree(n), PNodes % x(n), &
-          PNodes % y(n), PNodes % z(n))
-
-      ! --------------------------------------------------------------------------
-      ! Create the nodes for line elements (works for any given degree):
-      ! --------------------------------------------------------------------------
-      VTKLineU(1:MAX_LINE_DEGREE,1) = -1.0d0
-      VTKLineU(1:MAX_LINE_DEGREE,2) = 1.0d0
-      DO k=2,MAX_LINE_DEGREE
-        delta = 2.0d0/k
-        ut = -1.0d0
-        DO i=1,k-1
-          ut = ut + delta 
-          VTKLineU(k,i+2) = ut
-        END DO
-      END DO
-      VTKLineU(MAX_LINE_DEGREE+1,:) = 0.0d0  ! One extra row to get zero values for non-active parameters
-
-      ! --------------------------------------------------------------------------
-      ! Create the nodes for triangles (basically works for any given degree):
-      ! --------------------------------------------------------------------------
-      VTKTriangleU(1:MAX_TRIANGLE_DEGREE,1) = -1.0d0
-      VTKTriangleU(1:MAX_TRIANGLE_DEGREE,2) = 1.0d0
-      VTKTriangleU(1:MAX_TRIANGLE_DEGREE,3) = 0.0d0
-      VTKTriangleV(1:MAX_TRIANGLE_DEGREE,1) = 0.0d0
-      VTKTriangleV(1:MAX_TRIANGLE_DEGREE,2) = 0.0d0
-      VTKTriangleV(1:MAX_TRIANGLE_DEGREE,3) = SQRT(3.0d0)
-      VTKTriangleW = 0.0d0
-
-      ! The edges:
-      TriangleNodeCounts = 3
-      DO k=1,3
-        Edge = GetTriangleEdgeMap(k)
-        Offsets(1:MAX_TRIANGLE_DEGREE) = TriangleNodeCounts(1:MAX_TRIANGLE_DEGREE)
-        CALL NodesOnEdge(VTKTriangleU, VTKTriangleV, Edge(1), Edge(2), MAX_TRIANGLE_DEGREE, &
-            Offsets, TriangleNodeCounts)
-      END DO
-
-      ! The bubbles:
-      VTKTriangleU(3,10) = 0.0d0
-      VTKTriangleV(3,10) = SQRT(3.0d0)/3.0d0
-      TriangleNodeCounts(3) = TriangleNodeCounts(3) + 1
-
-      DO j=4,MAX_TRIANGLE_DEGREE
-        !
-        ! We can reuse the nodes of (j-3)th order triangle:
-        !
-        i_start = 3*j + 1
-        SELECT CASE(j)
-        CASE(4)
-          n = 3
-        CASE(5)
-          n = 6
-        CASE(6)
-          n = 10
-        CASE(7)
-          n = 15
-        CASE(8)
-          n = 21
-        CASE DEFAULT
-          CALL Fatal(Caller, 'Triangle interior nodes supported up to degree 8')
-        END SELECT
-        i_end = 3*j + n
-
-        VTKTriangleU(j,i_start:i_end) = (j-3.0d0)/j * VTKTriangleU(j-3,1:n)
-        vt = SQRT(3.0d0)/j
-        VTKTriangleV(j,i_start:i_end) = vt + (j-3.0d0)/j * VTKTriangleV(j-3,1:n)
-        TriangleNodeCounts(j) = TriangleNodeCounts(j) + n
-      END DO
-
-      ! --------------------------------------------------------------------------
-      ! Create the nodes for quads (works for any given degree):
-      ! --------------------------------------------------------------------------
-      VTKQuadU(1:MAX_QUAD_DEGREE,1) = -1.0d0
-      VTKQuadU(1:MAX_QUAD_DEGREE,2:3) = 1.0d0
-      VTKQuadU(1:MAX_QUAD_DEGREE,4) = -1.0d0
-      VTKQuadV(1:MAX_QUAD_DEGREE,1:2) = -1.0d0
-      VTKQuadV(1:MAX_QUAD_DEGREE,3:4) = 1.0d0
-
-      ! The edges:
-      QuadNodeCounts = 4
-      DO k=1,4
-        Edge = GetQuadEdgeMap(k)
-        Offsets(1:MAX_QUAD_DEGREE) = QuadNodeCounts(1:MAX_QUAD_DEGREE)
-        CALL NodesOnEdge(VTKQuadU, VTKQuadV, Edge(1), Edge(2), MAX_QUAD_DEGREE, &
-            Offsets, QuadNodeCounts)
-      END DO
-
-      ! The bubbles:
-      Offsets(1:MAX_QUAD_DEGREE) = QuadNodeCounts(1:MAX_QUAD_DEGREE)
-      DO k=2,MAX_QUAD_DEGREE
-        delta = 2.0d0/k
-        vt = -1.0d0
-        DO i=1,k-1
-          vt = vt + delta
-          ut = -1.0d0
-          DO j=1,k-1
-            ut = ut + delta 
-            VTKQuadU(k,j+Offsets(k)) = ut
-            VTKQuadV(k,j+Offsets(k)) = vt         
-            QuadNodeCounts(k) = QuadNodeCounts(k) + 1
-          END DO
-          Offsets(k) = QuadNodeCounts(k)
-        END DO
-      END DO
-      VTKQuadW = 0.0d0
-
-      ! --------------------------------------------------------------------------
-      ! Create the nodes for tetrahedra:
-      ! --------------------------------------------------------------------------
-      LElement % Type => GetElementType(504, .FALSE.)
-      CALL GetRefPElementNodes(LElement % Type, VTKTetraU(1,1:4), &
-          VTKTetraV(1,1:4), VTKTetraW(1,1:4)) 
-
-      DO k=2,MAX_TETRA_DEGREE
-        VTKTetraU(k,1:4) = VTKTetraU(1,1:4)
-        VTKTetraV(k,1:4) = VTKTetraV(1,1:4)
-        VTKTetraW(k,1:4) = VTKTetraW(1,1:4)
-      END DO
-
-      ! The edges:
-      TetraNodeCounts = 4
-      DO k=1,6
-        Edge = GetTetraEdgeMap(k)
-        Offsets(1:MAX_TETRA_DEGREE) = TetraNodeCounts(1:MAX_TETRA_DEGREE)
-        IF (k == 3) THEN
-          CALL NodesOnEdge(VTKTetraU, VTKTetraV, Edge(2), Edge(1), MAX_TETRA_DEGREE, &
-              Offsets, TetraNodeCounts, VTKTetraW)
-        ELSE
-          CALL NodesOnEdge(VTKTetraU, VTKTetraV, Edge(1), Edge(2), MAX_TETRA_DEGREE, &
-              Offsets, TetraNodeCounts, VTKTetraW)
-        END IF
-      END DO
-      
-      ! The faces:
-      Offsets(1:MAX_TETRA_DEGREE) = TetraNodeCounts(1:MAX_TETRA_DEGREE)
-      VTKTetraFaceMap(1,:) = (/ 1,2,4 /)
-      VTKTetraFaceMap(2,:) = (/ 3,4,2 /)
-      VTKTetraFaceMap(3,:) = (/ 1,4,3 /)
-      VTKTetraFaceMap(4,:) = (/ 1,3,2 /)
-
-      DO j=3,MAX_TETRA_DEGREE
-        SELECT CASE(j)
-        CASE(3)
-          i_start = 10
-          i_end = 10
-        CASE(4)
-          i_start = 13
-          i_end = 15
-        CASE DEFAULT
-          CALL Fatal(Caller, 'Tetra face nodes supported up to degree 4')
-        END SELECT
-        n = i_end - i_start + 1 ! The number of new nodes per face
-
-        DO k=1,4
-          DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
-            r(1) = VTKTriangleU(j,i+i_start-1)
-            r(2) = VTKTriangleV(j,i+i_start-1)
-            ut = 0.0d0
-            vt = 0.0d0
-            wt = 0.0d0
-            DO t=1,3
-              PBasis(1) = TriangleNodalPBasis(t, r(1), r(2))
-              ut = ut + PBasis(1) * VTKTetraU(1,VTKTetraFaceMap(k,t))
-              vt = vt + PBasis(1) * VTKTetraV(1,VTKTetraFaceMap(k,t))
-              wt = wt + PBasis(1) * VTKTetraW(1,VTKTetraFaceMap(k,t))
-            END DO
-            VTKTetraU(j,i+Offsets(j)) = ut
-            VTKTetraV(j,i+Offsets(j)) = vt
-            VTKTetraW(j,i+Offsets(j)) = wt
-            TetraNodeCounts(j) = TetraNodeCounts(j) + 1
-          END DO
-          Offsets(j) = TetraNodeCounts(j)
-        END DO
-      END DO
-
-      ! Bubbles:
-      !DO j=4,MAX_TETRA_DEGREE
-      r(1) = SUM(VTKTetraU(1,1:4))/4
-      r(2) = SUM(VTKTetraV(1,1:4))/4
-      r(3) = SUM(VTKTetraW(1,1:4))/4
-      VTKTetraU(4,1+Offsets(4)) = r(1)
-      VTKTetraV(4,1+Offsets(4)) = r(2)
-      VTKTetraW(4,1+Offsets(4)) = r(3)
-      TetraNodeCounts(4) = TetraNodeCounts(4) + 1
-      !END DO
-
-      ! --------------------------------------------------------------------------
-      ! Create the nodes for pyramids:
-      ! --------------------------------------------------------------------------
-      LElement % Type => GetElementType(605, .FALSE.)
-      CALL GetRefPElementNodes(LElement % Type, VTKPyramidU(1,1:5), &
-          VTKPyramidV(1,1:5), VTKPyramidW(1,1:5)) 
-
-      DO k=2,MAX_PYRAMID_DEGREE
-        VTKPyramidU(k,1:5) = VTKPyramidU(1,1:5)
-        VTKPyramidV(k,1:5) = VTKPyramidV(1,1:5)
-        VTKPyramidW(k,1:5) = VTKPyramidW(1,1:5)
-      END DO
-
-      ! The edges:
-      PyramidNodeCounts = 5
-      DO k=1,8
-        Edge = GetPyramidEdgeMap(k)
-        Offsets(1:MAX_PYRAMID_DEGREE) = PyramidNodeCounts(1:MAX_PYRAMID_DEGREE)
-        CALL NodesOnEdge(VTKPyramidU, VTKPyramidV, Edge(1), Edge(2), MAX_PYRAMID_DEGREE, &
-            Offsets, PyramidNodeCounts, VTKPyramidW)
-      END DO
-      Offsets(1:MAX_PYRAMID_DEGREE) = PyramidNodeCounts(1:MAX_PYRAMID_DEGREE)
-
-      ! The quad face:
-      Face = GetPyramidFaceMap(1)
-      DO j=2,MAX_PYRAMID_DEGREE
-        SELECT CASE(j)
-        CASE(2)
-          i_start = 9
-          i_end = 9
-        CASE(3)
-          i_start = 13
-          i_end = 16
-        CASE DEFAULT
-          CALL Fatal(Caller, 'Pyramid (quad) face nodes supported up to degree 3')
-        END SELECT
-        n = i_end - i_start + 1 ! The number of new nodes per face
-
-        DO i=1,n
-          ! Pick the positions of face nodes from a lower dimensional element 
-          r(1) = VTKQuadU(j,i+i_start-1)
-          r(2) = VTKQuadV(j,i+i_start-1)
-          ut = 0.0d0
-          vt = 0.0d0
-          wt = 0.0d0
-          DO t=1,4
-            PBasis(1) = QuadNodalPBasis(t, r(1), r(2))
-            ut = ut + PBasis(1) * VTKPyramidU(1,Face(t))
-            vt = vt + PBasis(1) * VTKPyramidV(1,Face(t))
-            wt = wt + PBasis(1) * VTKPyramidW(1,Face(t))
-          END DO
-          VTKPyramidU(j,i+Offsets(j)) = ut
-          VTKPyramidV(j,i+Offsets(j)) = vt
-          VTKPyramidW(j,i+Offsets(j)) = wt
-          PyramidNodeCounts(j) = PyramidNodeCounts(j) + 1
-        END DO
-        Offsets(j) = PyramidNodeCounts(j) 
-      END DO
-
-      ! The triangular faces (TO DO: support for degrees p > 3):
-
-      ! The bubbles (TO DO: support for degrees p > 2):
-      r(1) = SUM(VTKPyramidU(1,1:5))/5
-      r(2) = SUM(VTKPyramidV(1,1:5))/5
-      r(3) = SUM(VTKPyramidW(1,1:5))/5
-      VTKPyramidU(2,1+Offsets(2)) = r(1)
-      VTKPyramidV(2,1+Offsets(2)) = r(2)
-      VTKPyramidW(2,1+Offsets(2)) = r(3)
-      PyramidNodeCounts(2) = PyramidNodeCounts(2) + 1
-
-      ! --------------------------------------------------------------------------
-      ! Create the nodes for prisms:
-      ! --------------------------------------------------------------------------
-      LElement % Type => GetElementType(706, .FALSE.)
-      CALL GetRefPElementNodes(LElement % Type, VTKPrismU(1,1:6), &
-          VTKPrismV(1,1:6), VTKPrismW(1,1:6)) 
-
-      DO k=2,MAX_PRISM_DEGREE
-        VTKPrismU(k,1:6) = VTKPrismU(1,1:6)
-        VTKPrismV(k,1:6) = VTKPrismV(1,1:6)
-        VTKPrismW(k,1:6) = VTKPrismW(1,1:6)
-      END DO
-
-      ! The edges:
-      PrismNodeCounts = 6
-      DO k=1,9
-        Edge = GetWedgeEdgeMap(k)
-        Offsets(1:MAX_PRISM_DEGREE) = PrismNodeCounts(1:MAX_PRISM_DEGREE)
-        CALL NodesOnEdge(VTKPrismU, VTKPrismV, Edge(1), Edge(2), MAX_PRISM_DEGREE, &
-            Offsets, PrismNodeCounts, VTKPrismW)
-      END DO
-      Offsets(1:MAX_PRISM_DEGREE) = PrismNodeCounts(1:MAX_PRISM_DEGREE)
-
-      ! The triangular faces:
-      DO j=3,MAX_PRISM_DEGREE
-        SELECT CASE(j)
-        CASE(3)
-          i_start = 10
-          i_end = 10
-        CASE(4)
-          i_start = 13
-          i_end = 15
-        CASE DEFAULT
-          CALL Fatal(Caller, 'Prism (triangular) face nodes supported up to degree 4')
-        END SELECT
-        n = i_end - i_start + 1 ! The number of new nodes per face
-        DO k=1,2
-          Face = GetWedgeFaceMap(k)
-          DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
-            r(1) = VTKTriangleU(j,i+i_start-1)
-            r(2) = VTKTriangleV(j,i+i_start-1)
-            ut = 0.0d0
-            vt = 0.0d0
-            wt = 0.0d0
-            DO t=1,3
-              PBasis(1) = TriangleNodalPBasis(t, r(1), r(2))
-              ut = ut + PBasis(1) * VTKPrismU(1,Face(t))
-              vt = vt + PBasis(1) * VTKPrismV(1,Face(t))
-              wt = wt + PBasis(1) * VTKPrismW(1,Face(t))
-            END DO
-            VTKPrismU(j,i+Offsets(j)) = ut
-            VTKPrismV(j,i+Offsets(j)) = vt
-            VTKPrismW(j,i+Offsets(j)) = wt
-            PrismNodeCounts(j) = PrismNodeCounts(j) + 1
-          END DO
-          Offsets(j) = PrismNodeCounts(j)
-        END DO
-      END DO
-
-      ! The quad faces:
-      DO j=2,MAX_PRISM_DEGREE
-        i_start = 4*j + 1
-        i_end = (j+1)**2
-        n = (j-1)**2  ! The number of new nodes per face n = i_end - i_start + 1
-
-        DO k=3,5
-          Face = GetWedgeFaceMap(k)
-          DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
-            r(1) = VTKQuadU(j,i+i_start-1)
-            r(2) = VTKQuadV(j,i+i_start-1)
-            ut = 0.0d0
-            vt = 0.0d0
-            wt = 0.0d0
-            DO t=1,4
-              PBasis(1) = QuadNodalPBasis(t, r(1), r(2))
-              ut = ut + PBasis(1) * VTKPrismU(1,Face(t))
-              vt = vt + PBasis(1) * VTKPrismV(1,Face(t))
-              wt = wt + PBasis(1) * VTKPrismW(1,Face(t))
-            END DO
-            VTKPrismU(j,i+Offsets(j)) = ut
-            VTKPrismV(j,i+Offsets(j)) = vt
-            VTKPrismW(j,i+Offsets(j)) = wt
-            PrismNodeCounts(j) = PrismNodeCounts(j) + 1
-          END DO
-          Offsets(j) = PrismNodeCounts(j) 
-        END DO
-      END DO
-
-      DO j=3,MAX_PRISM_DEGREE
-        i_start = 3*j + 1
-        n = (j-1)*(j-2)/2
-        i_end = 3*j + n
-        DO i=1,j-1
-          VTKPrismU(j,Offsets(j)+1:Offsets(j)+n) = VTKTriangleU(j,i_start:i_end)
-          VTKPrismV(j,Offsets(j)+1:Offsets(j)+n) = VTKTriangleV(j,i_start:i_end)
-          VTKPrismW(j,Offsets(j)+1:Offsets(j)+n) = VTKLineU(j,2+i)
-          PrismNodeCounts(j) = PrismNodeCounts(j) + n
-          Offsets(j) = PrismNodeCounts(j)
-        END DO
-      END DO
-
-      ! --------------------------------------------------------------------------
-      ! Create the nodes for hexahedra:
-      ! --------------------------------------------------------------------------
-      LElement % Type => GetElementType(808, .FALSE.)
-      CALL GetRefPElementNodes(LElement % Type, VTKBrickU(1,1:8), &
-          VTKBrickV(1,1:8), VTKBrickW(1,1:8)) 
-
-      DO k=2,MAX_BRICK_DEGREE
-        VTKBrickU(k,1:8) = VTKBrickU(1,1:8)
-        VTKBrickV(k,1:8) = VTKBrickV(1,1:8)
-        VTKBrickW(k,1:8) = VTKBrickW(1,1:8)
-      END DO
-      BrickNodeCounts = 8
-
-      ! The edges:
-      ! It seems that VTK cell types 72 and 12/29 are not interchangeable.
-      ! We first pick the edge map which works for 72 and then re-run
-      ! the same code up to the degree 2 with a different edge map to obtain consistency.
-      DO k=1,12
-        ! The following is needed for 72:
-        SELECT CASE(k)
-        CASE(11)
-          Edge = GetBrickEdgeMap(12)
-        CASE(12)
-          Edge = GetBrickEdgeMap(11)
-        CASE DEFAULT
-          Edge = GetBrickEdgeMap(k)
-        END SELECT
-        Offsets(1:MAX_BRICK_DEGREE) = BrickNodeCounts(1:MAX_BRICK_DEGREE)
-        CALL NodesOnEdge(VTKBrickU, VTKBrickV, Edge(1), Edge(2), MAX_BRICK_DEGREE, &
-            Offsets, BrickNodeCounts, VTKBrickW)
-      END DO
-      ! The re-run needs a reset:
-      BrickNodeCounts(2) = 8
-      DO k=1,12
-        ! The following is needed for 29:
-        Edge = GetBrickEdgeMap(k)
-        Offsets(2) = BrickNodeCounts(2)
-        CALL NodesOnEdge(VTKBrickU, VTKBrickV, Edge(1), Edge(2), 2, &
-            Offsets, BrickNodeCounts, VTKBrickW)
-      END DO
-
-      ! The faces:
-      Offsets(1:MAX_BRICK_DEGREE) = BrickNodeCounts(1:MAX_BRICK_DEGREE)
-      VTKBrickFaceMap(1,:) = (/ 1,4,8,5 /)
-      VTKBrickFaceMap(2,:) = (/ 2,3,7,6 /)
-      VTKBrickFaceMap(3,:) = (/ 1,2,6,5 /)
-      VTKBrickFaceMap(4,:) = (/ 4,3,7,8 /)
-      VTKBrickFaceMap(5,:) = (/ 1,2,3,4 /)
-      VTKBrickFaceMap(6,:) = (/ 5,6,7,8 /)
-
-      DO j=2,MAX_BRICK_DEGREE
-        i_start = 4*j + 1
-        i_end = (j+1)**2
-        n = (j-1)**2  ! The number of new nodes per face n = i_end - i_start + 1
-
-        DO k=1,6
-          DO i=1,n
-            ! Pick the positions of face nodes from a lower dimensional element 
-            r(1) = VTKQuadU(j,i+i_start-1)
-            r(2) = VTKQuadV(j,i+i_start-1)
-            ut = 0.0d0
-            vt = 0.0d0
-            wt = 0.0d0
-            DO t=1,4
-              PBasis(1) = QuadNodalPBasis(t, r(1), r(2))
-              ut = ut + PBasis(1) * VTKBrickU(1,VTKBrickFaceMap(k,t))
-              vt = vt + PBasis(1) * VTKBrickV(1,VTKBrickFaceMap(k,t))
-              wt = wt + PBasis(1) * VTKBrickW(1,VTKBrickFaceMap(k,t))
-            END DO
-            VTKBrickU(j,i+Offsets(j)) = ut
-            VTKBrickV(j,i+Offsets(j)) = vt
-            VTKBrickW(j,i+Offsets(j)) = wt
-            BrickNodeCounts(j) = BrickNodeCounts(j) + 1
-          END DO
-          Offsets(j) = BrickNodeCounts(j)
-        END DO
-      END DO
-
-      ! Bubbles:
-      VTKBrickU(2,1+Offsets(2)) = 0.0d0
-      VTKBrickV(2,1+Offsets(2)) = 0.0d0
-      VTKBrickW(2,1+Offsets(2)) = 0.0d0
-      BrickNodeCounts(2) = BrickNodeCounts(2) + 1
-
-      DO j=3,MAX_BRICK_DEGREE
-        i_start = 4*j + 1
-        i_end = (j+1)**2
-        n = (j-1)**2
-        DO i=1,j-1
-          VTKBrickU(j,Offsets(j)+1:Offsets(j)+n) = VTKQuadU(j,i_start:i_end)
-          VTKBrickV(j,Offsets(j)+1:Offsets(j)+n) = VTKQuadV(j,i_start:i_end)
-          VTKBrickW(j,Offsets(j)+1:Offsets(j)+n) = VTKLineU(j,2+i)
-          BrickNodeCounts(j) = BrickNodeCounts(j) + n
-          Offsets(j) = BrickNodeCounts(j)
-        END DO
-      END DO
-      AllocationsDone = .TRUE.
-    END IF
-
-    IF (PRESENT(PSolver)) THEN
-      PVersion = IsActivePElement(PElement, PSolver)
-    ELSE
-      PVersion = IsPElement(PElement)
-    END IF
-    
-    IF (.NOT. PVersion) THEN
-      CALL Warn(Caller, 'The input element is not a p-element, returning')
-      RETURN
-    END IF
-    
-    PNodes % x(:) = 0.0d0
-    PNodes % y(:) = 0.0d0
-    PNodes % z(:) = 0.0d0
-    !
-    ! NOTE: We shall not need the derivatives of basis functions or
-    ! the determinant of the element mapping. Hence using the following
-    ! nodal coordinates is sufficient, although in principle we
-    ! might disregard some values 
-    !
-    n = PElement % TYPE % NumberOfNodes
-    PNodes % x(1:n) = Mesh % Nodes % x(PElement % NodeIndexes(1:n))
-    PNodes % y(1:n) = Mesh % Nodes % y(PElement % NodeIndexes(1:n))
-    PNodes % z(1:n) = Mesh % Nodes % z(PElement % NodeIndexes(1:n))
-
-    SELECT CASE(Family)
-    CASE(2)
-      IF (Degree > MAX_LINE_DEGREE) THEN
-        CALL Fatal(Caller, 'Lagrange Element Degree (lines) exceeds the supported maximum')
-      END IF
-      n = Degree + 1
-      NodesU => VTKLineU(Degree,1:n)
-      NodesV => VTKLineU(MAX_LINE_DEGREE+1,1:n)
-      NodesW => VTKLineU(MAX_LINE_DEGREE+1,1:n)
-
-    CASE(3)
-      IF (Degree > MAX_TRIANGLE_DEGREE) THEN
-        CALL Fatal(Caller, 'Lagrange Element Degree (triangles) exceeds the supported maximum')
-      END IF
-      n = TriangleNodeCounts(Degree)
-      NodesU => VTKTriangleU(Degree,1:n)
-      NodesV => VTKTriangleV(Degree,1:n)
-      NodesW => VTKTriangleW(1:n)
-
-    CASE(4)
-      IF (Degree > MAX_QUAD_DEGREE) THEN
-        CALL Fatal(Caller, 'Lagrange Element Degree (quads) exceeds the supported maximum')
-      END IF
-      n = QuadNodeCounts(Degree)
-      NodesU => VTKQuadU(Degree,1:n)
-      NodesV => VTKQuadV(Degree,1:n)
-      NodesW => VTKQuadW(1:n)
-
-    CASE(5)
-      IF (Degree > MAX_TETRA_DEGREE) THEN
-        CALL Fatal(Caller, 'Lagrange Element Degree (tetrahedra) exceeds the supported maximum')
-      END IF
-      n = TetraNodeCounts(Degree)
-      NodesU => VTKTetraU(Degree,1:n)
-      NodesV => VTKTetraV(Degree,1:n)
-      NodesW => VTKTetraW(Degree,1:n)
-
-    CASE(6)
-      IF (Degree > MAX_PYRAMID_DEGREE) THEN
-        CALL Fatal(Caller, 'Lagrange Element Degree (pyramids) exceeds the supported maximum')
-      END IF
-      n = PyramidNodeCounts(Degree)
-      NodesU => VTKPyramidU(Degree,1:n)
-      NodesV => VTKPyramidV(Degree,1:n)
-      NodesW => VTKPyramidW(Degree,1:n)
-
-    CASE(7)
-      IF (Degree > MAX_PRISM_DEGREE) THEN
-        CALL Fatal(Caller, 'Lagrange Element Degree (prisms) exceeds the supported maximum')
-      END IF
-      n = PrismNodeCounts(Degree)
-      NodesU => VTKPrismU(Degree,1:n)
-      NodesV => VTKPrismV(Degree,1:n)
-      NodesW => VTKPrismW(Degree,1:n)
-
-    CASE(8)
-      IF (Degree > MAX_BRICK_DEGREE) THEN
-        CALL Fatal(Caller, 'Lagrange Element Degree (bricks) exceeds the supported maximum')
-      END IF
-      n = BrickNodeCounts(Degree)
-      NodesU => VTKBrickU(Degree,1:n)
-      NodesV => VTKBrickV(Degree,1:n)
-      NodesW => VTKBrickW(Degree,1:n)
-
-    CASE DEFAULT
-      CALL Fatal(Caller, 'An unknown element family')
-    END SELECT
-
-    BasisDegree(:) = 0
-
-    DO t = 1,n
-      ut = NodesU(t)
-      vt = NodesV(t)
-      wt = NodesW(t)
-
-      !PRINT *, 'CALLING AT POINT ', t,ut,vt,wt      
-
-      ! It seems that the p-basis for pyramids cannot be evaluated at the fifth node,
-      ! so we make a small "error":
-      IF (Family == 6 .AND. t==5) wt = wt - 1.0d-8
-
-      stat = ElementInfo(PElement, PNodes, ut, vt, wt, detJ, PBasis, BasisDegree=BasisDegree, &
-          USolver=PSolver)
-      IF (t == 1) THEN
-        nd = COUNT(BasisDegree > 0) 
-        IF (nd == 0) CALL Fatal(Caller, 'p-basis needed but the classical basis returned')
-        ! PRINT *, 'p-basis dimension ', nd, SUM( PBasis(1:nd)), SUM(PBasis(1:PElement % Type % NumberOfNodes))
-      END IF
-        
-      DO k = 1,Fields
-        LSol(k,t) = SUM(PBasis(1:nd) * PSol(k,1:nd))
-      END DO
-    END DO
-
-  CONTAINS
-
-    ! --------------------------------------------------------------------------------
-    ! Given the vertices of a 2-node edge in the first rows of the coordinate arrays
-    ! NodesU, NodesV and NodesW, create additional nodes corresponding to the Lagrange
-    ! interpolation up to the polynomial degree Maxdegree. The edge is defined by
-    ! specifying its start and end indices and is assumed to be of length 2.
-    ! The array Offsets gives the node counts before adding new nodes on the edge,
-    ! while the array NodeCounts gives the counts after this action.
-    ! --------------------------------------------------------------------------------
-    SUBROUTINE NodesOnEdge(NodesU, NodesV, ind_start, ind_end, MaxDegree, Offsets, &
-        NodeCounts, NodesW)
-
-      IMPLICIT NONE
-      REAL(KIND=dp), INTENT(INOUT):: NodesU(:,:), NodesV(:,:) 
-      INTEGER, INTENT(IN) :: ind_start, ind_end
-      INTEGER, INTENT(IN) :: MaxDegree
-      INTEGER, INTENT(IN) :: OffSets(:)
-      INTEGER, INTENT(INOUT) :: NodeCounts(:)
-      REAL(KIND=dp), OPTIONAL, INTENT(INOUT):: NodesW(:,:)
-      ! --------------------------------------------------------------
-      REAL(KIND=dp), PARAMETER :: L = 2.0_dp
-      LOGICAL :: CreateW
-      INTEGER :: i, k
-      REAL(KIND=dp) :: r(3), ut, vt, wt, delta
-      ! --------------------------------------------------------------
-      CreateW = PRESENT(NodesW)
-      r(1) =  NodesU(1,ind_end) - NodesU(1,ind_start)
-      r(2) =  NodesV(1,ind_end) - NodesV(1,ind_start)
-      IF (CreateW) THEN
-        r(3) =  NodesW(1,ind_end) - NodesW(1,ind_start)
-        k = 3
-      ELSE
-        k = 2
-      END IF
-      r(1:k) = r(1:k)/SQRT(SUM(r(1:k)**2))
-
-      DO k=2,MaxDegree
-        delta = L/k
-        ut = NodesU(1,ind_start)
-        vt = NodesV(1,ind_start)
-        IF (CreateW) wt = NodesW(1,ind_start)
-        DO i=1,k-1
-          ut = ut + delta * r(1)
-          vt = vt + delta * r(2)
-          NodesU(k,i+Offsets(k)) = ut
-          NodesV(k,i+Offsets(k)) = vt
-          IF (CreateW) THEN
-            wt = wt + delta * r(3)
-            NodesW(k,i+Offsets(k)) = wt
-          END IF
-          NodeCounts(k) = NodeCounts(k) + 1
-        END DO
-      END DO
-    END SUBROUTINE NodesOnEdge
-
-!------------------------------------------------------------------------------
-  END SUBROUTINE HierarchicPToLagrange
-!------------------------------------------------------------------------------

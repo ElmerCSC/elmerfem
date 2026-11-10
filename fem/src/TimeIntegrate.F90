@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 09 Jun 1997
 ! *
@@ -39,7 +39,7 @@
 
 !------------------------------------------------------------------------------
 !> Time integration schemes for first and second order partial differential
-!> equation with in time. 
+!> equation with in time.
 !------------------------------------------------------------------------------
 MODULE TimeIntegrate
 
@@ -121,12 +121,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-!------------------------------------------------------------------------------   
+!------------------------------------------------------------------------------
 ! Adams-Bashforth and Adams-Moulton time-integration schemes implemented
-! by Gong Cheng, 2017. 
-!   
+! by Gong Cheng, 2017.
+!
 !> Apply Adams-Bashforth method to local matrix equation.
-!> This method stores prev_stiff*prevSol in Element % propertydata and 
+!> This method stores prev_stiff*prevSol in Element % propertydata and
 !> the corresponding forcing terms.
 !> PredCorrOrder=1, Explicit Euler
 !> PredCorrOrder=2, 2nd order Adams-Bashforth
@@ -148,12 +148,12 @@ CONTAINS
      REAL(KIND=dp) :: s_curr, m_curr, residual, curr_res, preForce
 !------------------------------------------------------------------------------
      NB1 = SIZE( StiffMatrix,1 )
-     NB2 = SIZE( StiffMatrix,2 ) 
+     NB2 = SIZE( StiffMatrix,2 )
 
      Element => CurrentModel % CurrentElement
      IF (.NOT. ASSOCIATED(Element % propertydata)) THEN
        ALLOCATE( Element % propertydata )
-       ALLOCATE( Element % propertydata % values(NB1*2) )  
+       ALLOCATE( Element % propertydata % values(NB1*2) )
      END IF
 
 
@@ -161,8 +161,8 @@ CONTAINS
        s_curr = 0.0_dp
        m_curr = 0.0_dp
        DO j=1,n
-         s_curr = s_curr + StiffMatrix(i,j) * PrevSolution(j) 
-         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j) 
+         s_curr = s_curr + StiffMatrix(i,j) * PrevSolution(j)
+         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j)
        END DO
 
        curr_res = - s_curr
@@ -172,7 +172,7 @@ CONTAINS
          preForce = Force(i)
        ELSE
          residual = Element % propertydata % values(i)
-         preForce = Element % propertydata % values(i+NB1)        
+         preForce = Element % propertydata % values(i+NB1)
        END IF
        Element % propertydata % values(i) = curr_res
        Element % propertydata % values(i+NB1) = Force(i)
@@ -198,7 +198,7 @@ CONTAINS
 !> PrevSolution(:,2) -- the true solution from previous correction step H^{n-1}
 !> PrevSolution(:,1) -- the corrector \tilde{H^n}
 !>
-!> This method can only be used in the corrector phase of Predictor-Corrector 
+!> This method can only be used in the corrector phase of Predictor-Corrector
 !> scheme and just after Adams-Bashforth method with the same order, otherwise
 !> the residual at n-1 step will be incorrect.
 !> PredCorrOrder=1, Implicit Euler
@@ -219,7 +219,7 @@ CONTAINS
      REAL(KIND=dp) :: s_curr, m_curr, residual, preForce
 !------------------------------------------------------------------------------
      NB1 = SIZE( StiffMatrix,1 )
-     NB2 = SIZE( StiffMatrix,2 ) 
+     NB2 = SIZE( StiffMatrix,2 )
 
      Element => CurrentModel % CurrentElement
 
@@ -232,18 +232,18 @@ CONTAINS
        s_curr = 0.0_dp
        m_curr = 0.0_dp
        DO j=1,n
-         s_curr = s_curr + StiffMatrix(i,j) * PrevSolution(j,1) 
-         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j,2) 
+         s_curr = s_curr + StiffMatrix(i,j) * PrevSolution(j,1)
+         m_curr = m_curr + (1/dt) * MassMatrix(i,j) * PrevSolution(j,2)
        END DO
-         
+
        DO j=1,NB2
          StiffMatrix(i,j) =   (1/dt) * MassMatrix(i,j)
        END DO
 
        residual = Element % propertydata % values(i)
-       preForce = Element % propertydata % values(i+NB1)        
+       preForce = Element % propertydata % values(i+NB1)
        IF ( PredCorrOrder == 1 ) THEN
-         Force(i) =  Force(i) + m_curr - s_curr  
+         Force(i) =  Force(i) + m_curr - s_curr
        ELSE
          Force(i) =  0.5_dp * (Force(i) + preForce) + m_curr + 0.5_dp * (-s_curr + residual)
        END IF
@@ -392,15 +392,15 @@ CONTAINS
      a(1) = 1.0_dp / Dts(1)
      a(2) = -1.0_dp / Dts(1)
      IF(Order >= 2) THEN
-       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2)) 
-       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)) / (Dts(1)+Dts(2)) 
-       a(3) = (Dts(1)/Dts(2)) / (Dts(1)+Dts(2)) 
+       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2))
+       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)) / (Dts(1)+Dts(2))
+       a(3) = (Dts(1)/Dts(2)) / (Dts(1)+Dts(2))
      END IF
      IF(Order >= 3) THEN
-       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2)+Dts(3)) 
-       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)*(1.0+(Dts(1)+Dts(2))/(Dts(2)+Dts(3)))) / (Dts(1)+Dts(2)+Dts(3)) 
+       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2)+Dts(3))
+       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)*(1.0+(Dts(1)+Dts(2))/(Dts(2)+Dts(3)))) / (Dts(1)+Dts(2)+Dts(3))
        a(3) = a(3) + (Dts(1)/Dts(2)*(1.0+(Dts(1)+Dts(2))/(Dts(2)+Dts(3))) + &
-               Dts(1)/Dts(3)*(Dts(1)+Dts(2))/(Dts(2)+Dts(3)) ) / (Dts(1)+Dts(2)+Dts(3)) 
+               Dts(1)/Dts(3)*(Dts(1)+Dts(2))/(Dts(2)+Dts(3)) ) / (Dts(1)+Dts(2)+Dts(3))
        a(4) = -(Dts(1)/Dts(3))*(Dts(1)+Dts(2))/(Dts(2)+Dts(3)) / (Dts(1)+Dts(2)+Dts(3))
      END IF
      IF(Order > 3) THEN
@@ -413,7 +413,7 @@ CONTAINS
          DO j=1,N
            s = s - a(k+1)*MassMatrix(i,j) * PrevSolution(j,k)
          END DO
-       END DO 
+       END DO
        Force(i) = Force(i) + s
 
        DO j=1,NB2
@@ -475,13 +475,13 @@ CONTAINS
          StiffMatrix(i,j) = StiffMatrix(i,j) +  &
            (1-Alpha)/(1-Delta)/(Beta*dt**2) * MassMatrix(i,j) + &
                   (Gamma / (Beta*dt)) * DampMatrix(i,j)
-       END DO 
+       END DO
        Force(i) = Force(i) + s
-     END DO 
+     END DO
    END SUBROUTINE Time2ndOrder
 !------------------------------------------------------------------------------
 
-   
+
 
    SUBROUTINE Time2ndOrder_CRS( dt, Matrix, Force, param_a, param_b, PrevValues )
 
@@ -497,7 +497,7 @@ CONTAINS
      REAL(KIND=dp), POINTER :: Mass(:), Damp(:), Stiff(:)
      REAL(KIND=dp) :: Alpha, Beta, Gamma, Delta
      REAL(KIND=dp) :: c1,c2,c3,c4,c5,c6,c7,s
-     
+
      X => PrevValues(:,3)
      V => PrevValues(:,4)
      A => PrevValues(:,5)
@@ -509,7 +509,7 @@ CONTAINS
 
      Rows => Matrix % Rows
      Cols => Matrix % Cols
-     
+
      IF(param_b>=0) THEN ! this is rho_inf for Generalized-alpha
        Alpha  = (2*param_b-1)/(param_b+1)
        Beta = 1/(param_b+1)**2
@@ -559,11 +559,11 @@ CONTAINS
        END DO
        !$omp end parallel do
        Stiff = Stiff + c5 * Damp
-     END IF     
-     
+     END IF
+
    END SUBROUTINE Time2ndOrder_CRS
 
-   
+
 !------------------------------------------------------------------------------
    SUBROUTINE Update2ndOrder(n,dt,x,prevX,param_a, param_b)
 !------------------------------------------------------------------------------
@@ -643,10 +643,10 @@ CONTAINS
      fsAlpha  = ListGetConstReal( Solver % Values, 'fsAlpha')
      fsBeta   = ListGetConstReal( Solver % Values, 'fsBeta')
 
-     SELECT CASE( INT(fsstep) )     
+     SELECT CASE( INT(fsstep) )
        CASE(1)
         MassCoeff = fsAlpha * fsTheta
-        ForceCoeff = fsBeta * fsTheta 
+        ForceCoeff = fsBeta * fsTheta
        CASE(2)
         MassCoeff = fsBeta * fsdTheta
         ForceCoeff = fsAlpha * fsdTheta
@@ -672,44 +672,44 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-#if 0 
+#if 0
 !------------------------------------------------------------------------------
 !> Apply 2nd order Newmark time integration scheme.
 !------------------------------------------------------------------------------
-   SUBROUTINE Newmark2ndOrder_CRS( dt, Matrix, Force, PrevSol0, PrevSolv1, Average ) 
+   SUBROUTINE Newmark2ndOrder_CRS( dt, Matrix, Force, PrevSol0, PrevSolv1, Average )
        &
                         Force, PrevSol0,PrevSol1, Average )
 !------------------------------------------------------------------------------
-     
+
      INTEGER :: i,j,n
      REAL(KIND=dp), POINTER :: Stiff(:),Mass(:),MassL(:)
      INTEGER, POINTER :: Cols(:),Rows(:)
      REAL(KIND=dp) :: su,mu,uj,ui
 !------------------------------------------------------------------------------
-    
+
     n = Matrix % NumberOfRows
     Rows => Matrix % Rows
     Cols => Matrix % Cols
     Stiff => Matrix % Values
     Mass => Matrix % MassValues
     Damp => Matrix % DampValues
-    
-    IF( ASSOCIATED( Damp ) ) THEN   
-      !$omp parallel do private(j,s,u0,u1)     
+
+    IF( ASSOCIATED( Damp ) ) THEN
+      !$omp parallel do private(j,s,u0,u1)
       DO i=1,n
         s = 0.0_dp
         DO j=Rows(i),Rows(i+1)-1
           u0 = PrevSol(Cols(j))
-          s = s + cd*Damp(j)*u0 
+          s = s + cd*Damp(j)*u0
         END DO
         Force(i) = Force(i) + s
       END DO
       !$omp end parallel do
       Stiff = Stiff + cm * Mass + cd * Damp
     END IF
-    
+
     IF( ASSOCIATED( Mass ) ) THEN
-      !$omp parallel do private(j,s,u0,u1)     
+      !$omp parallel do private(j,s,u0,u1)
       DO i=1,n
         s = 0.0_dp
         DO j=Rows(i),Rows(i+1)-1
@@ -720,14 +720,14 @@ CONTAINS
         Force(i) = Force(i) + s
       END DO
       !$omp end parallel do
-      Stiff = Stiff + cm * Mass 
+      Stiff = Stiff + cm * Mass
     END IF
   END IF
 #endif
 
-   
 
-   
+
+
 
 !------------------------------------------------------------------------------
 ! These are similar subroutines as above except they operate on the full
@@ -749,13 +749,13 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:)
     REAL(KIND=dp) :: su,mu,uj,ui
 !------------------------------------------------------------------------------
-    
+
     n = Matrix % NumberOfRows
     Rows   => Matrix % Rows
     Cols   => Matrix % Cols
     Stiff => Matrix % Values
     Mass => Matrix % MassValues
-    
+
     ! For true 2nd order accuracy of Crank-Nicolsen for nonlinear
     ! problems the old matrix and rhs need to be considered.
     !-------------------------------------------------------------
@@ -775,7 +775,7 @@ CONTAINS
         Stiff = 0
         Stiff(Matrix % Diag) = Stiff(Matrix % Diag) + (1.0d0/dt) * MassL(i)
       ELSE
-        !$omp parallel do private(j,uj,mu)     
+        !$omp parallel do private(j,uj,mu)
         DO i=1,n
           mu = 0.0_dp
           DO j=Rows(i),Rows(i+1)-1
@@ -805,7 +805,7 @@ CONTAINS
         Stiff = 0
         Stiff(Matrix % Diag) = Stiff(Matrix % Diag) + (1.0/dt) * MassL
       ELSE
-        !$omp parallel do private(j,uj,su,mu)     
+        !$omp parallel do private(j,uj,su,mu)
         DO i=1,n
           su = 0.0_dp
           mu = 0.0_dp
@@ -842,13 +842,13 @@ CONTAINS
     INTEGER, POINTER :: Cols(:),Rows(:)
     REAL(KIND=dp) :: su,mu,uj,ui
 !------------------------------------------------------------------------------
-    
+
     n = Matrix % NumberOfRows
     Rows   => Matrix % Rows
     Cols   => Matrix % Cols
     Stiff => Matrix % Values
     Mass => Matrix % MassValues
-    
+
     ! For true 2nd order accuracy of Crank-Nicolsen for nonlinear
     ! problems the old matrix and rhs need to be considered.
     !-------------------------------------------------------------
@@ -869,7 +869,7 @@ CONTAINS
         Stiff = Beta * Stiff
         Stiff(Matrix % Diag) = Stiff(Matrix % Diag) + (1.0d0/dt) * MassL(i)
       ELSE
-        !$omp parallel do private(j,uj,mu)     
+        !$omp parallel do private(j,uj,mu)
         DO i=1,n
           mu = 0.0_dp
           DO j=Rows(i),Rows(i+1)-1
@@ -900,7 +900,7 @@ CONTAINS
         Stiff = Beta * Stiff
         Stiff(Matrix % Diag) = Stiff(Matrix % Diag) + (1.0/dt) * MassL
       ELSE
-        !$omp parallel do private(j,uj,su,mu)     
+        !$omp parallel do private(j,uj,su,mu)
         DO i=1,n
           su = 0.0_dp
           mu = 0.0_dp
@@ -939,7 +939,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
     IF( Order == 0 ) RETURN
-    
+
     n = Matrix % NumberOfRows
     Rows   => Matrix % Rows
     Cols   => Matrix % Cols
@@ -989,7 +989,7 @@ CONTAINS
           ui = PrevSolution(i,k)
           Force(i) = Force(i) - MassL(i) * a(k+1) * ui
         END DO
-        j = Matrix % Diag(i)      
+        j = Matrix % Diag(i)
         Stiff(j) = Stiff(j) + a(1) * MassL(i)
       END DO
       !$omp end parallel do
@@ -1000,7 +1000,7 @@ CONTAINS
         DO j=Rows(i),Rows(i+1)-1
           DO k=1,Order
             uj = PrevSolution(Cols(j),k)
-            mu = mu - Mass(j) * a(k+1) * uj  
+            mu = mu - Mass(j) * a(k+1) * uj
           END DO
           Stiff(j) = Stiff(j) + a(1) * Mass(j)
         END DO
@@ -1028,7 +1028,7 @@ CONTAINS
      INTEGER, POINTER :: Cols(:),Rows(:)
      REAL(KIND=dp) :: su,mu,uj,ui,a(4)
 !------------------------------------------------------------------------------
-    
+
      n = Matrix % NumberOfRows
      Rows   => Matrix % Rows
      Cols   => Matrix % Cols
@@ -1037,26 +1037,26 @@ CONTAINS
      IF( Matrix % Lumped ) THEN
        MassL => Matrix % MassValuesLumped
      END IF
-          
+
      a = 0.0_dp
 
      a(1) = 1.0_dp / Dts(1)
      a(2) = -1.0_dp / Dts(1)
      IF(Order >= 2) THEN
-       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2)) 
-       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)) / (Dts(1)+Dts(2)) 
-       a(3) = (Dts(1)/Dts(2)) / (Dts(1)+Dts(2)) 
+       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2))
+       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)) / (Dts(1)+Dts(2))
+       a(3) = (Dts(1)/Dts(2)) / (Dts(1)+Dts(2))
      END IF
      IF(Order >= 3) THEN
-       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2)+Dts(3)) 
-       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)*(1.0+(Dts(1)+Dts(2))/(Dts(2)+Dts(3)))) / (Dts(1)+Dts(2)+Dts(3)) 
+       a(1) = a(1) + 1.0_dp / (Dts(1)+Dts(2)+Dts(3))
+       a(2) = a(2) - (1.0_dp + Dts(1)/Dts(2)*(1.0+(Dts(1)+Dts(2))/(Dts(2)+Dts(3)))) / (Dts(1)+Dts(2)+Dts(3))
        a(3) = a(3) + (Dts(1)/Dts(2)*(1.0+(Dts(1)+Dts(2))/(Dts(2)+Dts(3))) + &
-               Dts(1)/Dts(3)*(Dts(1)+Dts(2))/(Dts(2)+Dts(3)) ) / (Dts(1)+Dts(2)+Dts(3)) 
+               Dts(1)/Dts(3)*(Dts(1)+Dts(2))/(Dts(2)+Dts(3)) ) / (Dts(1)+Dts(2)+Dts(3))
        a(4) = -(Dts(1)/Dts(3))*(Dts(1)+Dts(2))/(Dts(2)+Dts(3)) / (Dts(1)+Dts(2)+Dts(3))
      END IF
 
      ! The constant timestep BDF is implemented up to 5th degree hence higher order
-     ! schemes are possible even though this scheme cannot handle them. 
+     ! schemes are possible even though this scheme cannot handle them.
      IF(Order > 3) THEN
        CALL Warn('VBDF_CRS','Variable timestep BDF implemented only to order 3')
      END IF
@@ -1068,7 +1068,7 @@ CONTAINS
            ui = PrevSolution(i,k)
            Force(i) = Force(i) - MassL(i) * a(k+1) * ui
          END DO
-         j = Matrix % Diag(i)      
+         j = Matrix % Diag(i)
          Stiff(j) = Stiff(j) + a(1) * MassL(i)
        END DO
        !$omp end parallel do
@@ -1079,7 +1079,7 @@ CONTAINS
          DO j=Rows(i),Rows(i+1)-1
            DO k=1,MIN(Order,3)
              uj = PrevSolution(Cols(j),k)
-             mu = mu - Mass(j) * a(k+1) * uj  
+             mu = mu - Mass(j) * a(k+1) * uj
            END DO
          END DO
          Force(i) = Force(i) + mu
@@ -1099,7 +1099,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      USE Lists
 
-     TYPE(Solver_t) :: Solver    
+     TYPE(Solver_t) :: Solver
      TYPE(Matrix_t), POINTER :: Matrix
      REAL(KIND=dp) :: Force(:),PrevSolution(:),dt
 !------------------------------------------------------------------------------
@@ -1119,10 +1119,10 @@ CONTAINS
      fsAlpha  = ListGetConstReal( Solver % Values, 'fsAlpha')
      fsBeta   = ListGetConstReal( Solver % Values, 'fsBeta')
 
-     SELECT CASE( INT(fsstep) )     
+     SELECT CASE( INT(fsstep) )
        CASE(1)
         MassCoeff = fsAlpha * fsTheta
-        ForceCoeff = fsBeta * fsTheta 
+        ForceCoeff = fsBeta * fsTheta
        CASE(2)
         MassCoeff = fsBeta * fsdTheta
         ForceCoeff = fsAlpha * fsdTheta
@@ -1136,7 +1136,7 @@ CONTAINS
      Cols   => Matrix % Cols
      Stiff => Matrix % Values
      Mass => Matrix % MassValues
- 
+
 
      IF( ASSOCIATED( Matrix % MassValuesLumped ) ) THEN
        MassL => Matrix % MassValuesLumped
@@ -1149,13 +1149,13 @@ CONTAINS
          END DO
          j = Matrix % Diag(i)
          ui = PrevSolution(Cols(j))
-         
+
          Force(i) = Force(i) - ForceCoeff * su + (1._dp/dt)*MassL(i)*ui
          Stiff(j) = MassCoeff * Stiff(j) + (1.0d0/dt) * MassL(i)
        END DO
        !$omp end parallel do
      ELSE
-       !$omp parallel do private(j,uj,su,mu)     
+       !$omp parallel do private(j,uj,su,mu)
        DO i=1,n
          su = 0.0_dp
          mu = 0.0_dp

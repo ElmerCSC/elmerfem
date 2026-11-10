@@ -1,0 +1,128 @@
+!# This is similar to the previous except a non-trivial source term is introduced. Basically this
+!# is linear but treating it explicitly creates a nasty feedback that is treated with a nonlinear
+!# solver with Aitken relaxation at the nonlinear system iteration level. 
+!
+! P.R. 28.8.2026
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "angle"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+!  Max Output Level = 5
+  Coordinate System = "Cartesian"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = "Steady State"
+  Steady State Max Iterations = 1
+  Steady State Min Iterations = 1
+  Output Intervals = 1
+
+!  Post File = "case.ep"
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Body2"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+
+Solver 1
+  Coupled Solver = Logical True
+
+  Equation = "HeatEq"
+
+  Variable = "Temp"
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Relaxation Factor = Real 1.0
+  Nonlinear System Max Iterations = Integer 12
+  Nonlinear System Max Stepsize Tests = Integer 30
+  Nonlinear System Convergence Tolerance = Real 1.0e-6
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = bicgstab
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Max Iterations = 500
+  Linear System Preconditioning = ILU1
+
+
+  Nonlinear System Relaxation Factor = Real 0.3
+
+  Nonlinear System Aitken Relaxation = Logical True
+
+! The Aitken factor is a ratio of two dot products over the solution vector, so
+! it is only partition-independent if each dof is counted once. The same applies
+! to the norm that is compared against the reference, hence this keyword lets
+! the parallel runs reproduce the serial result.
+  Nonlinear System Consistent Norm = Logical True
+
+! Optional parameters to tune the eitken
+!  Aitken Relaxation Factor After Iterations = Integer 1
+!  Aitken Relaxation Factor Relaxation = Real 0.5
+!  Aitken Relaxation Factor Minimum = Real 0.001
+!  Aitken Relaxation Factor Maximum = Real 10.0
+!  Aitken Relaxation Factor Increase = Real 10.0
+!  Aitken Relaxation Factor Decrease = Real 0.1
+!  Aitken Relaxation Component = Integer 1
+
+End  
+
+Solver 2
+  Exec Solver = never
+
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Temp
+  Operator 1 = min
+  Variable 2 = Temp
+  Operator 2 = max
+End 
+
+Body Force 1
+  Heat Source = Variable Temp
+    Real MATC "1.0-20*tx"
+End 
+
+Material 1
+  Name = "Material1"
+
+  Heat Conductivity = 1.0
+  Density = 1.0
+End
+
+
+Boundary Condition 1
+  Name = "BCs"
+  Target Boundaries(2) = 1 2
+  Temp = Real 0
+End
+
+
+Solver 1 :: Reference Norm = 2.64056644E-02
+
+
+

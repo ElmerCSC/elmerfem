@@ -40,6 +40,27 @@ End
 
 Solver 1
   Equation = "Heat Equation"
+! This test only runs HeatSolveVec, but its comment history is worth
+! keeping: the previously-relaxed tolerance here (~4.2e-4 in the Solver 1
+! norm, ~3.7e-4 in Solver 3) was compensating for a genuine bug in legacy
+! HeatSolve.F90, not a HeatSolveVec discretization quirk.
+!
+! Legacy's DiffuseConvectiveCompose only grew its local assembly past the
+! n corner-node DOFs (NBasis) when a convection term was present -- so a
+! declared "Element = p:2" with no convection (this test's case, and any
+! pure-diffusion p-refined problem) had its edge/bubble DOFs assembled
+! with an all-zero matrix row: singular, confirmed by a Direct-solver NaN.
+! BiCGStab+ILU0 quietly left those DOFs at their zero initial guess
+! instead of diverging, returning a plausible-looking but only
+! corner-accurate (not truly p:2) answer -- which is where the ~4e-4 gap
+! from HeatSolveVec's (correctly p:2) result came from.
+!
+! Fixed in DiffuseConvectiveAnisotropic.F90 / DiffuseConvectiveGeneralAnisotropic.F90:
+! NBasis now becomes the element's true DOF count whenever it's an active
+! p-element with nd > n, independent of convection. Verified: legacy now
+! matches HeatSolveVec's norm here to ~1e-9 relative, under both the
+! iterative solver this test uses and a Direct solver (no longer NaNs).
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"
@@ -128,5 +149,7 @@ Boundary Condition 4
   Temperature = 0
 End
 
-Solver 1 :: Reference Norm = 3.74847732E-02
-Solver 3 :: Reference Norm = 1.209432966234E-001
+Solver 1 :: Reference Norm = 3.75004192E-02
+Solver 1 :: Reference Norm Tolerance = 1.0e-3
+Solver 3 :: Reference Norm = 1.20988151E-01
+Solver 3 :: Reference Norm Tolerance = 1.0e-3

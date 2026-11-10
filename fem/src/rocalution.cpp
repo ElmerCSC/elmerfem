@@ -63,9 +63,8 @@ static void
 
 template <typename ValueType>
 void elmer_distribute_matrix(const MPI_Comm*    comm,
-                       GlobalMatrix<ValueType>* gmat,
-                       int *rows, int *cols, double *vals,
-		       int ln, int gn, int *index_offset, ParallelManager* pm)
+     GlobalMatrix<ValueType>* gmat, int *rows, int *cols, double *vals,
+     int ln, int gn, int *index_offset, ParallelManager* pm)
 {
     int rank;
     int num_procs;
@@ -372,7 +371,7 @@ void elmer_distribute_matrix(const MPI_Comm*    comm,
 }
 
 
-extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout, 
+extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout,
    double *bnrm, int *gOffset,int *fcomm, int *imethod, int *prec, int *maxiter, double *TOL )
 {
     int i, *Lrows, *Lcols, rank, nranks;
@@ -463,7 +462,7 @@ extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double 
 
     // move solution back from device to host
     x.MoveToHost();
-    
+
     for(i=0; i<*n; i++ ) x_inout[i]=x[i];
 
     ls->Clear();
@@ -526,13 +525,13 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
       Lrows[0] = 0;
       for( r=0; r<nv; r++)
         for( i=0; i<*n/nv; i++ ) {
-  	  for( s=0; s<nv; s++ )
+          for( s=0; s<nv; s++ )
             for( j=rows[nv*i+r]+s; j<rows[nv*i+1+r]; j+=nv ) {
               if ( r==nv-1 && s==nv-1 ) continue;
               Lvals[k] = vals[j];
               Lcols[k++] = iCols[cols[j]];
             }
-	  Lrows[++m] =  k;
+          Lrows[++m] =  k;
         }
       fprintf( stderr, "X: %d %d %d %d\n", m, rows[*n], Lrows[*n], *n );
 #else
@@ -544,11 +543,11 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
       Lrows[0] = 0;
         for( i=0; i<*n; i++ ) {
           for( j=rows[i]; j<rows[i+1]; j++ ) {
-    	    if (i % 3==0 && j % 3==0 ) continue;
+            if (i % 3==0 && j % 3==0 ) continue;
             Lvals[k] = vals[j];
             Lcols[k++] = iCols[cols[j]];
           }
-	  Lrows[++m] =  k;
+          Lrows[++m] =  k;
         }
       fprintf( stderr, "X: %d %d %d %d\n", m, rows[*n], Lrows[*n], *n );
 
@@ -596,7 +595,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
       case(4): ls = &ls_fgmres; ls_fgmres.SetBasisSize(50); break;
       default: ls = &ls_bcg; break;
     }
-     
+
     switch(*prec) {
       case(0): ls->SetPreconditioner(prec_j); break;
       case(1): ls->SetPreconditioner(prec_g); break;
@@ -610,7 +609,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
       case(3):
 
 #ifdef  HAVE_SETSCHURCOMPLEMENT
-	if ( *schur_n > 0 ) {
+        if ( *schur_n > 0 ) {
           int *Srows = new int[*schur_n+1];
           int *Scols = new int[schur_rows[*schur_n]];
           double *Svals = new double[schur_rows[*schur_n]];
@@ -624,7 +623,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
           schurComplement.MoveToAccelerator();
           prec_dj.SetSchurComplement(schurComplement);
           delete Srows, Scols, Svals;
-	}
+        }
 #endif
 
         int level=0;
@@ -669,7 +668,7 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
 
     // Stop rocALUTION platform
     stop_rocalution();
-} 
+}
 #else
 #include <stdio.h>
 #include <stdlib.h>
@@ -679,8 +678,8 @@ extern "C" void ROCSerialSolve(int *n, int *rows, int *cols, double *vals, doubl
   exit(0);
 }
 
-extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout, 
-		          int *gOffset,int *fcomm )
+extern "C" void ROCParallelSolve( int *gn, int *n, int *rows, int *cols, double *vals, double *b, double *x_inout,
+                        int *gOffset,int *fcomm )
 {
   fprintf( stderr, "No parallel ROCALUTION library included.\n" );
   exit(0);

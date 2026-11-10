@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -62,7 +62,7 @@
 
 
 !------------------------------------------------------------------------------
-!>  Advection-diffusion equation solver for scalar fields. 
+!>  Advection-diffusion equation solver for scalar fields.
 !------------------------------------------------------------------------------
    SUBROUTINE AdvectionDiffusionSolver( Model,Solver,Timestep,TransientSimulation )
 !------------------------------------------------------------------------------
@@ -78,17 +78,17 @@
 
      IMPLICIT NONE
 !------------------------------------------------------------------------------
- 
+
      TYPE(Solver_t) :: Solver          !< Linear & nonlinear equation solver options
      TYPE(Model_t), TARGET :: Model    !< All model information (mesh, materials, BCs, etc...)
      REAL(KIND=dp) :: Timestep         !< Timestep size for time dependent simulations
      LOGICAL :: TransientSimulation    !< Steady state or transient simulation
- 
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,m,n,pn,t,tmax,iter,istat,bf_id,CoordinateSystem, outbody
- 
+
      TYPE(Matrix_t),POINTER  :: StiffMatrix
      TYPE(Nodes_t)   :: ElementNodes, ParentNodes
      TYPE(Element_t),POINTER :: CurrentElement, Parent
@@ -104,7 +104,7 @@
 
      INTEGER, POINTER :: SpeciesPerm(:), MeshPerm(:)
      REAL(KIND=dp), POINTER :: Species(:),ForceVector(:), MeshVelocity(:), Hwrk(:,:,:)
- 
+
      REAL(KIND=dp), ALLOCATABLE :: LocalMassMatrix(:,:), SoretDiffusivity(:), &
        NEConst(:), LocalStiffMatrix(:,:),Load(:),Diffusivity(:,:,:), &
                    C0(:),C1(:),CT(:),C2(:,:,:),LocalForce(:), TimeForce(:)
@@ -240,7 +240,7 @@
                  SpeciesTransferCoeff( N ), &
                  SExt( N ),              &
                  C0( N ), C1( N ), CT( N ), C2( 3,3,N ),STAT=istat )
- 
+
        NULLIFY( HWrk)
 
        IF ( istat /= 0 ) THEN
@@ -258,7 +258,7 @@
 !------------------------------------------------------------------------------
      Bubbles = .FALSE.
      Stabilize = .FALSE.
-     
+
      StabilizeFlag = GetString( Solver % Values, 'Stabilization Method', GotIt )
      IF( GotIt ) THEN
        SELECT CASE(StabilizeFlag)
@@ -277,10 +277,10 @@
          CALL Info('AdvectionDiffusion','Defaulting stabilization to bubbles',Level=10)
          Bubbles = .TRUE.
        ELSE IF( Stabilize .AND. Bubbles ) THEN
-         CALL Fatal('AdvectionDiffusion','Choose either Bubbles or Stabilize!')       
+         CALL Fatal('AdvectionDiffusion','Choose either Bubbles or Stabilize!')
        END IF
      END IF
-       
+
      NonlinearIter = ListGetInteger( Solver % Values, &
         'Nonlinear System Max Iterations',GotIt )
      IF ( .NOT.GotIt ) NonlinearIter = 1
@@ -322,22 +322,22 @@
 
        tmax = Solver % NumberOfActiveElements
        CALL Info( 'AdvectionDiffusion','Bulk Assembly')
- 
+
        DO t = 1, tmax
 
          IF ( RealTime() - at0 > 1.0 ) THEN
            WRITE(Message,'(a,i3,a)' ) '   Assembly: ', &
-               INT(100.0 - 100.0 * (tmax-t) / (1.0*tmax)), ' % done'           
-           CALL Info( 'AdvectionDiffusion', Message, Level=5 )             
+               INT(100.0 - 100.0 * (tmax-t) / (1.0*tmax)), ' % done'
+           CALL Info( 'AdvectionDiffusion', Message, Level=5 )
            at0 = RealTime()
          END IF
-         
+
          CurrentElement => GetActiveElement(t)
 !
 !------------------------------------------------------------------------------
          IF ( CurrentElement % BodyId /= body_id ) THEN
 !------------------------------------------------------------------------------
-           body_id = CurrentElement % Bodyid    
+           body_id = CurrentElement % Bodyid
            eq_id = ListGetInteger( Model % Bodies(body_id) % Values,'Equation')
            Eq => Model % Equations(eq_id) % Values
 
@@ -345,7 +345,7 @@
                TRIM(ComponentName(Solver % Variable)) //' Convection', GotIt )
            IF ( .NOT. GotIt ) &
              ConvectionFlag = ListGetString( Eq,'Convection', GotIt )
-           
+
            ScaledToSolubility = .FALSE.
            ConcentrationUnits = ListGetString( Eq, 'Concentration Units', GotIt )
            IF ( .NOT.GotIt ) AbsoluteMass = .FALSE.
@@ -363,7 +363,7 @@
 
            HeatSolName = ListGetString( Material, &
                'Temperature Field Variable', GotIt )
-           IF ( Gotit ) THEN 
+           IF ( Gotit ) THEN
              TempSol => VariableGet( Mesh % Variables, &
                  TRIM( HeatSolName ) )
              IF ( ASSOCIATED( TempSol ) ) THEN
@@ -449,7 +449,7 @@
 
          n = CurrentElement % TYPE % NumberOfNodes
          NodeIndexes => CurrentElement % NodeIndexes
- 
+
 !------------------------------------------------------------------------------
 !        Get element nodal coordinates
 !------------------------------------------------------------------------------
@@ -553,8 +553,8 @@
 
 !------------------------------------------------------------------------------
 !        Check for convection model
-!------------------------------------------------------------------------------         
-         
+!------------------------------------------------------------------------------
+
          IF ( ConvectionFlag == 'constant' ) THEN
            U = ListGetReal( Eq, TRIM(ComponentName(Solver % Variable)) // &
                ' Convection Velocity 1',n,NodeIndexes,GotIt )
@@ -569,11 +569,11 @@
            IF ( .NOT. GotIt ) &
              W = ListGetReal( Material,'Convection Velocity 3',n,NodeIndexes, GotIt)
          ELSE IF ( ConvectionFlag == 'computed' ) THEN
-           
+
            IF( .NOT. ASSOCIATED( FlowSol ) ) THEN
              CALL Fatal('AdvectionDiffusion','Give > Convection Field Variable <')
            END IF
-           
+
            DO i=1,n
              k = FlowPerm(NodeIndexes(i))
              IF ( k > 0 ) THEN
@@ -600,7 +600,7 @@
                  V(i) = FlowSolution( NSDOFs*k-2 )
                  W(i) = FlowSolution( NSDOFs*k-1 )
                END SELECT
-           
+
              ELSE
                U(i) = 0.0d0
                V(i) = 0.0d0
@@ -633,6 +633,23 @@
                   C2(i,j,:) = Density * Diffusivity(i,j,:)
                END DO
             END DO
+!------------------------------------------------------------------------------
+!            The Nernst-Planck drift velocity is built from C2 in the compose
+!            routines (Velo = Velo - C2*NEConst*grad(phi)) and the convection
+!            matrix then multiplies it by C1. In relative mass units C1=Density
+!            and C2=Density*Diffusivity, so the assembled drift would carry
+!            Density twice. The physical term is Density*Diffusivity*NEConst,
+!            so drop the surplus factor here. This cannot be done by dividing
+!            with C1 at the point of use: C1 is set to zero below when there is
+!            neither convection nor migration. Where the density vanishes the
+!            relative mass formulation is degenerate (C1=CT=0), so leave the
+!            drift at zero rather than generate a NaN.
+!------------------------------------------------------------------------------
+            WHERE ( Density(1:n) /= 0.0d0 )
+               NEConst(1:n) = NEConst(1:n) / Density(1:n)
+            ELSEWHERE
+               NEConst(1:n) = 0.0d0
+            END WHERE
          ELSE
             CT = 1.0d0
             DO i=1,3
@@ -657,7 +674,19 @@
             END DO
          END IF
 
-         C0 = Density
+!------------------------------------------------------------------------------
+!        C0 is used only as the carrier for the Soret (thermal diffusion)
+!        coefficient: the compose routines copy NodalC0 into NodalCThermal and
+!        then zero NodalC0, so it never acts as a reaction term. The Soret flux
+!        is Density*SoretDiffusivity*grad(T) in relative mass units, where the
+!        species equation carries the extra factor of the density, and
+!        SoretDiffusivity*grad(T) in absolute mass units, where it does not.
+!------------------------------------------------------------------------------
+         IF (.NOT. AbsoluteMass) THEN
+            C0 = Density
+         ELSE
+            C0 = 1.0d0
+         END IF
          IF ( ScaledToSolubility ) THEN
             MaxSol = ListGetConstReal( Material, &
               TRIM(ComponentName(Solver % Variable)) // &
@@ -669,7 +698,7 @@
             END IF
             C0 = C0 / MaxSol
          END IF
-             
+
 
 !------------------------------------------------------------------------------
 !      Get element local matrix, and rhs vector
@@ -713,7 +742,7 @@
                LocalMassMatrix, LocalStiffMatrix, LocalForce, Load, &
                CT, C0, C1, C2, LocalTemperature, LocalPotential, U(1:n), V(1:n), W(1:n), MU, MV, MW, &
                SoretDiffusivity, NEConst, (CompressibilityModel /= Incompressible), &
-               AbsoluteMass,Stabilize, Bubbles, CurrentElement, n, ElementNodes )           
+               AbsoluteMass,Stabilize, Bubbles, CurrentElement, n, ElementNodes )
          ELSE
            CALL DiffuseConvectiveGenCompose( &
                LocalMassMatrix, LocalStiffMatrix, LocalForce, Load, &
@@ -768,7 +797,7 @@
            GotIt = .FALSE.
            DO i=1,Model % NumberOfBCs
              GotIt = CurrentElement % BoundaryInfo % Constraint == &
-                 Model % BCs(i) % Tag 
+                 Model % BCs(i) % Tag
              IF( GotIt ) EXIT
            END DO
            IF( .NOT. GotIt ) CYCLE
@@ -785,7 +814,7 @@
 !------------------------------------------------------------------------------
            n = CurrentElement % TYPE % NumberOfNodes
            NodeIndexes => CurrentElement % NodeIndexes
-           
+
            ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
            ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
            ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
@@ -795,7 +824,7 @@
 !             direction is used for normal derivative calculation
 !------------------------------------------------------------------------------
            body_id = ListGetInteger( BC,'Normal Target Body', GotIt )
-           
+
            lbody = 0
            IF ( ASSOCIATED( CurrentElement % BoundaryInfo % Left ) ) &
                lbody = CurrentElement % BoundaryInfo % Left % BodyId
@@ -814,7 +843,7 @@
              body_id = lbody
              outbody = CurrentElement % BoundaryInfo % OutBody
              CurrentElement % BoundaryInfo % OutBody = body_id
-             
+
              Nrm = NormalVector( CurrentElement, ElementNodes, &
                  CurrentElement % TYPE % NodeU(1), CurrentElement % TYPE % NodeV(1), &
                  .TRUE. )
@@ -834,17 +863,17 @@
 
            k = ListGetInteger( Model % Bodies( body_id ) % Values, &
                'Material', minv=1, maxv=Model % NumberOfMaterials )
-           Material => Model % Materials(k) % Values                
-           
+           Material => Model % Materials(k) % Values
+
            Ratio = ListGetConstReal( Material, &
                TRIM(ComponentName(Solver % Variable)) // &
                ' Maximum Solubility', GotIt )
-           
+
            IF ( .NOT. GotIT ) THEN
              WRITE( Message, * ) 'No maximum solubility defined for material : ', k
              CALL Fatal( 'AdvectionDiffusion', Message )
            END IF
-           
+
            IF ( lbody == body_id ) THEN
              k = ListGetInteger( Model % Bodies( rbody ) % Values, 'Material', &
                  minv=1,maxv=Model % NumberOfMaterials )
@@ -854,24 +883,24 @@
                  minv=1,maxv=Model % NumberOfMaterials )
              Parent => CurrentElement % BoundaryInfo % Left
            END IF
-           Material => Model % Materials(k) % Values                
+           Material => Model % Materials(k) % Values
            Ratio = ListGetConstReal( Material, &
                TRIM(ComponentName(Solver % Variable)) // &
                ' Maximum Solubility', GotIt ) / Ratio
-           
+
            IF ( .NOT. GotIT ) THEN
              WRITE( Message, * ) 'No maximum solubility defined for material : ', k
              CALL Fatal( 'AdvectionDiffusion', Message )
            END IF
            Ratio = Ratio - 1.0d0
-           
+
 !------------------------------------------------------------------------------
 !            Get the diffusivity tensor
 !------------------------------------------------------------------------------
            CALL ListGetRealArray( Material,  &
                TRIM(ComponentName(Solver % Variable)) // &
                ' Diffusivity', Hwrk, n, NodeIndexes )
-           
+
            Diffusivity = 0.0d0
            IF ( SIZE(Hwrk,1) == 1 ) THEN
              DO m=1,3
@@ -888,9 +917,9 @@
                END DO
              END DO
            END IF
-           
+
            pn = Parent % TYPE % NumberOfNodes
-           
+
            ParentNodes % x(1:pn) = Mesh % Nodes % x(Parent % NodeIndexes)
            ParentNodes % y(1:pn) = Mesh % Nodes % y(Parent % NodeIndexes)
            ParentNodes % z(1:pn) = Mesh % Nodes % z(Parent % NodeIndexes)
@@ -902,7 +931,7 @@
                  ParentNodes, Ratio, CurrentElement, n, ElementNodes )
            ELSE
              CALL DiffuseConvectiveGenBBoundary(LocalStiffMatrix, Parent, &
-                 pn, ParentNodes, Ratio, CurrentElement,n , ElementNodes ) 
+                 pn, ParentNodes, Ratio, CurrentElement,n , ElementNodes )
            END IF
 !------------------------------------------------------------------------------
 !             Update global matrices from local matrices
@@ -913,7 +942,7 @@
              CALL Add1stOrderTime( LocalMassMatrix, LocalStiffMatrix, &
                  LocalForce,dt,pn,1,SpeciesPerm(Parent % NodeIndexes),Solver )
            END IF
-           
+
            CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
                ForceVector, LocalForce, pn, 1, SpeciesPerm(Parent % NodeIndexes) )
 !------------------------------------------------------------------------------
@@ -925,7 +954,7 @@
 !     Boundary element assembly
 !------------------------------------------------------------------------------
        CALL Info( 'AdvectionDiffusion','Boundary Assembly')
-       
+
        ErrorWritten = .FALSE.
        DO t=Mesh % NumberOfBulkElements + 1, &
            Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
@@ -962,7 +991,7 @@
               IF ( GotIt ) THEN
                 SExt(1:n) = ListGetReal( BC, &
                     'External Concentration', n, NodeIndexes, GotIt )
-                
+
                 IF ( .NOT. AbsoluteMass .OR. ScaledToSolubility ) THEN
                   IF ( .NOT. ErrorWritten ) THEN
                     CALL Error( 'AdvectionDiffusion', '--------------------' )
@@ -979,21 +1008,21 @@
               ELSE
                 SExt(1:n) = 0.0d0
               END IF
-              
+
 !------------------------------------------------------------------------------
 !           BC: -D@c/@n = \alpha(C - Cext)
 !------------------------------------------------------------------------------
               DO j=1,n
                 Load(j) = Load(j) + SpeciesTransferCoeff(j) * SExt(j)
               END DO
-               
+
 !------------------------------------------------------------------------------
 !             BC: j_n=-\rho*\alpha*@c/@n = g
 !------------------------------------------------------------------------------
-               
+
               IF ( ScaledToSolubility .AND. &
                   ListGetLogical( BC, 'Physical Units', GotIt ) ) THEN
-                
+
                 Ratio = ListGetConstReal( Material, &
                     TRIM(ComponentName(Solver % Variable)) // &
                     ' Maximum Solubility', GotIt )
@@ -1017,7 +1046,7 @@
                     Load,SpeciesTransferCoeff,CurrentElement,n,ElementNodes )
               ELSE
                 CALL DiffuseConvectiveGenBoundary(LocalStiffMatrix,LocalForce,&
-                    Load,SpeciesTransferCoeff,CurrentElement,n,ElementNodes ) 
+                    Load,SpeciesTransferCoeff,CurrentElement,n,ElementNodes )
               END IF
 !------------------------------------------------------------------------------
 !             Update global matrices from local matrices
@@ -1027,7 +1056,7 @@
                 CALL Add1stOrderTime( LocalMassMatrix, LocalStiffMatrix, &
                     LocalForce,dt,n,1,SpeciesPerm(NodeIndexes),Solver )
               END IF
-              
+
               CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
                   ForceVector, LocalForce, n, 1, SpeciesPerm(NodeIndexes) )
 !------------------------------------------------------------------------------
@@ -1068,7 +1097,7 @@
       WRITE(Message,'(a,i4,a,F8.2,F8.2)') 'iter: ',iter,' Solve:    (s)', st, totst
       CALL Info( 'AdvectionDiffusion', Message, Level=5 )
 !------------------------------------------------------------------------------
-      RelativeChange = Solver % Variable % NonlinChange 
+      RelativeChange = Solver % Variable % NonlinChange
 
       WRITE( Message, * ) 'Result Norm   : ',Norm
       CALL Info( 'AdvectionDiffusion', Message, Level=4 )
@@ -1085,9 +1114,9 @@
 ! Finally, check if integration of species density over volume requested.
 ! This is really old - don't know really what is done
 !------------------------------------------------------------------------------
-    IF( ListCheckPresent( Model % Simulation, 'Species Density') ) THEN        
+    IF( ListCheckPresent( Model % Simulation, 'Species Density') ) THEN
       PreviousMass = Mass
-      Mass = VolumeIntegrate( Model, Solver % ActiveElements, 'Species Density' )      
+      Mass = VolumeIntegrate( Model, Solver % ActiveElements, 'Species Density' )
       PRINT *,'Species Mass: ',Mass
       IF ( TransientSimulation )  THEN
         PRINT *,'Mass Gain: ',Mass - PreviousMass
@@ -1101,7 +1130,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Diffuse-convective local matrix computing (cartesian coordinates)
 !>  Returns element local matrices and RSH vector for diffusion-convection
-!>  equation. 
+!>  equation.
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveCompose( MassMatrix,StiffMatrix,ForceVector,  &
        LoadVector,NodalCT,NodalC0,NodalC1,NodalC2,Temperature,EPotential, &
@@ -1200,6 +1229,7 @@ CONTAINS
      REAL(KIND=dp) :: s,u,v,w,DivVelo
 
      REAL(KIND=dp) :: C0,C00,C1,CT,C2(3,3),dC2dx(3,3,3),SU(n),SW(n)
+     REAL(KIND=dp) :: dcG(2*n,3)
      REAL(KIND=dp) :: NodalCThermal(n), CThermal
      REAL(KIND=dp) :: NodalCNP(n), CNP
 
@@ -1223,10 +1253,10 @@ CONTAINS
         NBasis = 2*n
         Bubbles = .TRUE.
      END IF
-     
+
      ThermalDiffusion = .FALSE.
      IF ( ANY( ABS( SoretD(1:n) ) > AEPS ) ) THEN
-        ThermalDiffusion = .TRUE. 
+        ThermalDiffusion = .TRUE.
         NodalCThermal = NodalC0(1:n)
      END IF
      NPDiffusion = .FALSE.
@@ -1412,6 +1442,8 @@ CONTAINS
           END IF
         END IF
 
+        CALL GradDotTensor( NBasis, dim, dBasisdx, C2, dcG )
+
 !------------------------------------------------------------------------------
 !       Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -1425,11 +1457,17 @@ CONTAINS
 !------------------------------------------------------------------------------
 !         The diffusion term
 !------------------------------------------------------------------------------
-          DO i=1,dim
+          SELECT CASE(dim)
+          CASE(3)
+            A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2) + &
+                    dcG(q,3) * dBasisdx(p,3)
+          CASE(2)
+            A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2)
+          CASE DEFAULT
             DO j=1,dim
-              A = A + C2(i,j) * dBasisdx(q,i) * dBasisdx(p,j)
+              A = A + dcG(q,j) * dBasisdx(p,j)
             END DO
-          END DO
+          END SELECT
 
           IF ( Convection ) THEN
 !------------------------------------------------------------------------------
@@ -1468,7 +1506,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !     Add Soret diffusivity if necessary
-!     -div( rho D_t grad(T)) 
+!     -div( rho D_t grad(T))
 !------------------------------------------------------------------------------
 
         IF ( ThermalDiffusion ) THEN
@@ -1491,7 +1529,7 @@ CONTAINS
               SoretForce = CThermal * SorD * SUM( GradTemp(1:dim) * dBasisdx(p,1:dim) )
               ForceVector(p) = ForceVector(p) - s * SoretForce * Load
            END DO
-            
+
         END IF
 
      END DO
@@ -1523,7 +1561,7 @@ CONTAINS
 !       INPUT: Parent element node coordinates
 !
 !  REAL(KIND=dp) :: Ratio
-!       INPUT: The ratio of maximal solubilities - 1 (defining the 
+!       INPUT: The ratio of maximal solubilities - 1 (defining the
 !             measure of discontinuity)
 !
 !  TYPE(Element_t) :: Element
@@ -1833,6 +1871,7 @@ CONTAINS
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
 
      REAL(KIND=dp) :: C0,CT,C1,C2(3,3),dC2dx(3,3,3),SU(n),SW(n)
+     REAL(KIND=dp) :: dcG(2*n,3)
      REAL(KIND=dp) :: NodalCThermal(n), CThermal
      REAL(KIND=dp) :: NodalCNP(n), CNP
 
@@ -1865,10 +1904,10 @@ CONTAINS
         NBasis = 2*n
         Bubbles = .TRUE.
      END IF
-     
+
      ThermalDiffusion = .FALSE.
      IF ( ANY( ABS( SoretD(1:n) ) > AEPS ) ) THEN
-        ThermalDiffusion = .TRUE. 
+        ThermalDiffusion = .TRUE.
         NodalCThermal = NodalC0(1:n)
      END IF
      NPDiffusion = .FALSE.
@@ -1891,7 +1930,7 @@ CONTAINS
      W_Integ => IntegStuff % w
      S_Integ => IntegStuff % s
      N_Integ =  IntegStuff % n
- 
+
 !------------------------------------------------------------------------------
 !    Stabilization parameters: hK, mK (take a look at Franca et.al.)
 !    If there is no convection term we don't need stabilization.
@@ -1952,7 +1991,7 @@ CONTAINS
                 SUM( NodalC2(i,j,1:n) * Basis(1:n) )
          END DO
        END DO
- 
+
 !------------------------------------------------------------------------------
 !      If there's no convection term we don't need the velocities, and
 !      also no need for stabilization
@@ -1980,7 +2019,7 @@ CONTAINS
              IF ( dim > 2 .AND. CurrentCoordinateSystem() /= AxisSymmetric ) &
                dVelodx(3,i) = SUM( Uz(1:n)*dBasisdx(1:n,i) )
            END DO
-  
+
            DivVelo = 0.0D0
            DO i=1,dim
              DivVelo = DivVelo + dVelodx(i,i)
@@ -2021,13 +2060,13 @@ CONTAINS
 !------------------------------------------------------------------------------
          IF ( Stabilize ) THEN
 !          VNorm = SQRT( SUM(Velo(1:dim)**2) )
- 
+
            Vnorm = 0.0D0
            DO i=1,dim
               Vnorm = Vnorm + Velo(i)*Velo(i) / Metric(i,i)
            END DO
            Vnorm = SQRT( Vnorm )
- 
+
 !#if 1
            Pe = MIN(1.0D0,mK*hK*C1*VNorm/(2*ABS(C2(1,1))))
 
@@ -2106,6 +2145,8 @@ CONTAINS
            END DO
          END IF
        END IF
+       CALL GradDotTensor( NBasis, dim, dBasisdx, C2, dcG )
+
 !------------------------------------------------------------------------------
 !      Loop over basis functions of both unknowns and weights
 !------------------------------------------------------------------------------
@@ -2116,11 +2157,17 @@ CONTAINS
 !------------------------------------------------------------------------------
          M = CT * Basis(q) * Basis(p)
          A = C0 * Basis(q) * Basis(p)
-         DO i=1,dim
+         SELECT CASE(dim)
+         CASE(3)
+           A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2) + &
+                   dcG(q,3) * dBasisdx(p,3)
+         CASE(2)
+           A = A + dcG(q,1) * dBasisdx(p,1) + dcG(q,2) * dBasisdx(p,2)
+         CASE DEFAULT
            DO j=1,dim
-             A = A + C2(i,j) * dBasisdx(q,i) * dBasisdx(p,j)
+             A = A + dcG(q,j) * dBasisdx(p,j)
            END DO
-         END DO
+         END SELECT
 
          IF ( Convection ) THEN
            DO i=1,dim
@@ -2161,7 +2208,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !     Add Soret diffusivity if necessary
-!     -div( rho D_t grad(T)) 
+!     -div( rho D_t grad(T))
 !------------------------------------------------------------------------------
 
         IF ( ThermalDiffusion ) THEN
@@ -2192,7 +2239,7 @@ CONTAINS
               SoretForce = CThermal * SorD * SUM( GradTemp(1:dim) * dBasisdx(p,1:dim) )
               ForceVector(p) = ForceVector(p) - s * SoretForce * Load
            END DO
-            
+
         END IF
 
      END DO
@@ -2202,7 +2249,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>  Return element local matrices for a discontinuous flux boundary conditions
-!>  of diffusion equation in general coordinate system: 
+!>  of diffusion equation in general coordinate system:
 !------------------------------------------------------------------------------
    SUBROUTINE DiffuseConvectiveGenBBoundary( BoundaryMatrix, Parent, &
                pn, ParentNodes, Ratio, Element, n, Nodes )
@@ -2221,7 +2268,7 @@ CONTAINS
 !       INPUT: Parent element node coordinates
 !
 !  REAL(KIND=dp) :: Ratio
-!       INPUT: The ratio of maximal solubilities - 1 (defining the 
+!       INPUT: The ratio of maximal solubilities - 1 (defining the
 !             measure of discontinuity)
 !
 !  TYPE(Element_t) :: Element
@@ -2335,7 +2382,7 @@ CONTAINS
        END DO
 
      END DO
-     
+
    END SUBROUTINE DiffuseConvectiveGenBBoundary
 !------------------------------------------------------------------------------
 
@@ -2398,7 +2445,7 @@ CONTAINS
 
      BoundaryVector = 0.0D0
      BoundaryMatrix = 0.0D0
- 
+
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
@@ -2408,7 +2455,7 @@ CONTAINS
      W_Integ => IntegStuff % w
      S_Integ => IntegStuff % s
      N_Integ =  IntegStuff % n
- 
+
 !------------------------------------------------------------------------------
 !   Now we start integrating
 !------------------------------------------------------------------------------

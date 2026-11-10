@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -35,7 +35,7 @@
 !------------------------------------------------------------------------------
     SolverParams => GetSolverParams()
     CALL ListAddNewString( SolverParams, 'Variable', '-dofs 3 Deflection' )
-       
+
     CALL ListAddNewInteger( SolverParams, 'Time derivative order', 2 )
     CALL ListAddNewLogical( SolverParams, 'Use Global Mass Matrix', .TRUE. )
 
@@ -45,10 +45,10 @@
   END SUBROUTINE SmitcSolver_Init0
 !------------------------------------------------------------------------------
 
- 
+
 !------------------------------------------------------------------------------
 !> Solve the Reissner-Mindlin equations, i.e. displacement equations for
-!> elastic plates. 
+!> elastic plates.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
  SUBROUTINE SmitcSolver( Model,Solver,dt,TransientSimulation )
@@ -58,33 +58,33 @@
      IMPLICIT NONE
 !------------------------------------------------------------------------------
      TYPE(Solver_t):: Solver
-     TYPE(Model_t) :: Model 
+     TYPE(Model_t) :: Model
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
      INTEGER :: n,t,bf_id,mat_id,istat,DOFs
- 
+
      TYPE(Element_t),POINTER :: Element
      TYPE(Nodes_t) :: ElementNodes
      REAL(KIND=dp) :: Norm
      TYPE(ValueList_t), POINTER :: Material, BodyForce
- 
+
      LOGICAL :: AllocationsDone = .FALSE., HoleCorrection, &
          got_mat_id, got_bf_id, EigenOrHarmonic, Found, KernelVersion
 
      INTEGER, POINTER, SAVE ::  Indexes(:)
      INTEGER :: MaxIter, iter
      TYPE(ValueList_t), POINTER :: SolverParams
-     
+
      REAL(KIND=dp), ALLOCATABLE :: &
          STIFF(:,:), Load(:), Load2(:), FORCE(:), &
          Poisson(:), Thickness(:), Young(:), Tension(:), &
          MASS(:,:), DAMP(:,:), Density(:), &
          DampingCoef(:), HoleFraction(:), HoleSize(:), SpringCoef(:)
      REAL(KIND=dp), POINTER :: gWork(:,:)
-     
+
      CHARACTER(LEN=MAX_NAME_LEN) :: HoleType
      LOGICAL :: GotIt, GotHoleType, UseGravity
      REAL(KIND=dp) :: RelaxationAlpha, grav, at, st
@@ -109,7 +109,7 @@
                  Density ( N ), Thickness( N ), DampingCoef( N ), &
                  Tension( N ), HoleFraction( N ), HoleSize( N ),  &
                  SpringCoef( N ), STAT=istat )
- 
+
        IF ( istat /= 0 ) THEN
          CALL Fatal('SmitcSolver','Memory allocation error')
        END IF
@@ -120,20 +120,20 @@
 !    Do some additional initialization, and go for it
 !    ------------------------------------------------
      CALL Info( 'SmitcSolver', '--------------------------------------------------',Level=4 )
-     CALL Info( 'SmitcSolver', 'Solving the Reissner-Mindlin equations for plates',Level=4 )     
+     CALL Info( 'SmitcSolver', 'Solving the Reissner-Mindlin equations for plates',Level=4 )
      CALL Info( 'SmitcSolver', '--------------------------------------------------',Level=4 )
 
-     
+
      SolverParams => GetSolverParams()
 
      RelaxationAlpha = ListGetCReal(SolverParams, 'Shear Relaxation Alpha', Found)
      IF (.NOT. Found) RelaxationAlpha = 1.0d0
 
      EigenOrHarmonic = EigenOrHarmonicAnalysis() &
-         .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found ) 
+         .OR. ListGetLogical( SolverParams,'Harmonic Mode',Found )
 
      ! The following may be used to switch to a 4-node formulation where the shear is enforced to
-     ! be in the kernel of curl-conforming ABF_0: 
+     ! be in the kernel of curl-conforming ABF_0:
      !
      KernelVersion = ListGetLogical(SolverParams, 'Kernel Interpolation', Found)
 
@@ -141,25 +141,25 @@
      IF( ListGetLogical(SolverParams,'Use Gravity', Found ) ) THEN
        gWork => ListGetConstRealArray( CurrentModel % Constants,'Gravity',Found)
        IF(Found) THEN
-         grav = ABS(gWork(SIZE(gWork,1),1)) 
+         grav = ABS(gWork(SIZE(gWork,1),1))
        ELSE
          CALL Fatal('SmitcSolver','Gravity requested but not given as constant!')
        END IF
      END IF
-       
-         
-     CALL DefaultStart()     
-     
+
+
+     CALL DefaultStart()
+
      MaxIter = GetInteger( SolverParams, &
          'Nonlinear System Max Iterations',GotIt )
      IF ( .NOT. GotIt ) MaxIter = 1
 
      DO iter=1,MaxIter
-    
+
        at = CPUTime()
        CALL DefaultInitialize()
-       
-       !       
+
+       !
        ! These keywords enable the use of a second parameter set for the
        ! same elements so that the material properties are given in an additional
        ! body. May be used to model microphone and its backplate, for example:
@@ -268,11 +268,11 @@
          END IF
        END DO
        CALL DefaultFinishBulkAssembly()
-       
+
        ! No Flux BCs
        CALL DefaultFinishBoundaryAssembly()
        CALL DefaultFinishAssembly()
-       
+
        !------------------------------------------------------------------------------
        ! Dirichlet boundary conditions
        !------------------------------
@@ -288,7 +288,7 @@
        ! Solve the system and we are done
        !---------------------------------
        st = CPUTime()
-       
+
        Norm =  DefaultSolve()
 
        st = CPUTime() - st
@@ -297,11 +297,11 @@
 
        IF ( Solver % Variable % NonlinConverged == 1 ) EXIT
      END DO
-     
+
      CALL DefaultFinish()
-       
+
 !------------------------------------------------------------------------------
- 
+
    CONTAINS
 
 !------------------------------------------------------------------------------
@@ -420,7 +420,7 @@
          DO p=1,n
             ShearStrain(1,3*p-2) = dBasisdx(p,1)
             ShearStrain(2,3*p-2) = dBasisdx(p,2)
-         END DO 
+         END DO
 
          CALL StrainEnergyDensity(STIFF,Tmatrix,ShearStrain,2,3*n,s)
 
@@ -440,14 +440,14 @@
 !        ------------
          DO p=1,n
             i = DOFs*(p-1)+1
-            Force(i) = Force(i) + Pressure * Basis(p) * s 
+            Force(i) = Force(i) + Pressure * Basis(p) * s
          END DO
 
 !        Gravity in direction down:
 !        -------------------------
          DO p=1,n
             i = DOFs*(p-1)+1
-            Force(i) = Force(i) - grav * rho * h * Basis(p) * s 
+            Force(i) = Force(i) - grav * rho * h * Basis(p) * s
          END DO
 !
 !        Mass matrix:
@@ -484,7 +484,7 @@
 !> M. Pedersen, W. Olthuis, P. BergWald:
 !> 'On the mechanical behavior of thin perforated plates and their application
 !>  in silicon condenser microphones', Sensors and Actuators A 54 (1996) 499-504.
-! The model in verified in the special assignment of Jani Paavilainen 
+! The model in verified in the special assignment of Jani Paavilainen
 !------------------------------------------------------------------------------
      SUBROUTINE PerforatedElasticity(Ematrix, &
          Gmatrix,Poisson,Young,Thickness,HoleFraction, &
@@ -519,7 +519,7 @@
        Ematrix(3,3) = 0.5d0*(1.0d0-sq)/(1.0d0+Puvw) + &
            1.5d0*k*sq*(1-sq)/(b*(1.0d0+Puvw)*Tuvw**3)
 
-       Guvw = Euvw * Ematrix(3,3) ! * 2.0d0? 
+       Guvw = Euvw * Ematrix(3,3) ! * 2.0d0?
 
        Ematrix = Ematrix * Euvw * (Tuvw**3) / 12.0d0
 
@@ -535,7 +535,7 @@
      SUBROUTINE CovariantInterpolation(ShearStrain,Basis,X,Y,U,V,n,Pressure,s, &
          KernelVersion)
 !------------------------------------------------------------------------------
-       USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4 
+       USE SolidMechanicsUtils, ONLY: Jacobi3, Jacobi4
        REAL(KIND=dp) :: ShearStrain(:,:),Basis(:),X(:),Y(:),U,V,Pressure,s
        INTEGER :: n
        LOGICAL :: KernelVersion
@@ -567,7 +567,7 @@
           Sdofs(3) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))/2.0d0
           Sdofs(5) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))/2.0d0
           Sdofs(6) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))/2.0d0
-           
+
           DO j = 1,9
              ShearRef(1,j) = ShearRef(1,j) + (1.0d0-V)*Sdofs(j)
              ShearRef(2,j) = ShearRef(2,j) + (U)*Sdofs(j)
@@ -616,10 +616,10 @@
          ShearStrain = 0.0d0
 
          IF (KernelVersion) THEN
-           
-           ! The kernel of curl-conforming ABF_0 can be generated in terms of basis functions 
+
+           ! The kernel of curl-conforming ABF_0 can be generated in terms of basis functions
            ! associated with the edges. The fourth edge (14) DOF is set such that the interpolant
-           ! is in the kernel space. An equivalent constraint is to enforce the vanishing 
+           ! is in the kernel space. An equivalent constraint is to enforce the vanishing
            ! circulation around the element boundary.
            ! ---------------------------------------------------------------------------
            abf0basis(1,1) = (1.0d0-V)/4.0d0
@@ -650,7 +650,7 @@
            b12 = 0.25d0 * (y(1)-y(2)+y(3)-y(4))
 
            ! The negative gradient of the deflection (no approximation introduced):
-           ShearRef(:,1) = ShearRef(:,1) + abf0basis(:,1)  
+           ShearRef(:,1) = ShearRef(:,1) + abf0basis(:,1)
            ShearRef(:,4) = ShearRef(:,4) - abf0basis(:,1)
            ShearRef(:,4) = ShearRef(:,4) + abf0basis(:,2)
            ShearRef(:,7) = ShearRef(:,7) - abf0basis(:,2)
@@ -680,7 +680,7 @@
            ShearRef(:,11) = ShearRef(:,11) + (a1+a12) * abf0basis(:,3)
            ShearRef(:,12) = ShearRef(:,12) + (b1+b12) * abf0basis(:,3)
 
-           ! Edge 14: 
+           ! Edge 14:
            ! ------------
            ShearRef(:,2) = ShearRef(:,2) + (a1-a12) * abf0basis(:,4)
            ShearRef(:,3) = ShearRef(:,3) + (b1-b12) * abf0basis(:,4)
@@ -691,7 +691,7 @@
            ShearRef(:,11) = ShearRef(:,11) + (-a1-a12) * abf0basis(:,4)
            ShearRef(:,12) = ShearRef(:,12) + (-b1-b12) * abf0basis(:,4)
 
-           ! The following would give the full MIN4 element based on adding 5 bubble 
+           ! The following would give the full MIN4 element based on adding 5 bubble
            ! functions that are determined by linked interpolation. It appears that
            ! this is not the best possible element, but the code is left here for
            ! comparison.
@@ -777,7 +777,7 @@
              ShearRef(:,11) = ShearRef(:,11) + (a2-a12) * abf0basis(:,4)
              ShearRef(:,12) = ShearRef(:,12) + (b2-b12) * abf0basis(:,4)
 
-             !ShearRef(:,1) = ShearRef(:,1) - abf0basis(:,4)           
+             !ShearRef(:,1) = ShearRef(:,1) - abf0basis(:,4)
              ShearRef(:,2) = ShearRef(:,2) + (a2-a12) * abf0basis(:,4)
              ShearRef(:,3) = ShearRef(:,3) + (b2-b12) * abf0basis(:,4)
 
@@ -789,7 +789,7 @@
 
              ! The first curl-DOF:
              ShearRef(:,2) = ShearRef(:,2) + (-a1-a12)/3.0d0 * abf0basis(:,5)
-             ShearRef(:,3) = ShearRef(:,3) + (-b1-b12)/3.0d0 * abf0basis(:,5)          
+             ShearRef(:,3) = ShearRef(:,3) + (-b1-b12)/3.0d0 * abf0basis(:,5)
              ShearRef(:,5) = ShearRef(:,5) + (a1+a12)/3.0d0 * abf0basis(:,5)
              ShearRef(:,6) = ShearRef(:,6) + (b1+b12)/3.0d0 * abf0basis(:,5)
              ShearRef(:,8) = ShearRef(:,8) + (-a1+a12)/3.0d0 * abf0basis(:,5)
@@ -799,7 +799,7 @@
 
              ! The second curl-DOF:
              ShearRef(:,2) = ShearRef(:,2) + (a2+a12)/3.0d0 * abf0basis(:,6)
-             ShearRef(:,3) = ShearRef(:,3) + (b2+b12)/3.0d0 * abf0basis(:,6)          
+             ShearRef(:,3) = ShearRef(:,3) + (b2+b12)/3.0d0 * abf0basis(:,6)
              ShearRef(:,5) = ShearRef(:,5) + (-a2+a12)/3.0d0 * abf0basis(:,6)
              ShearRef(:,6) = ShearRef(:,6) + (-b2+b12)/3.0d0 * abf0basis(:,6)
              ShearRef(:,8) = ShearRef(:,8) + (a2-a12)/3.0d0 * abf0basis(:,6)
@@ -829,7 +829,7 @@
            Tau(2) = 0.0d0
 
            CALL Jacobi4(Jmat,invJ,detJ,0.0d0,-1.0d0,x,y)
-          
+
            Sdofs = 0.0d0
            Sdofs(2) = (Tau(1)*Jmat(1,1)+Tau(2)*Jmat(2,1))
            Sdofs(3) = (Tau(1)*Jmat(1,2)+Tau(2)*Jmat(2,2))

@@ -1,4 +1,11 @@
 /* femelmer.h + femmesh.h -> egnative.h */
+
+/* These routines are C. ElmerGUI compiles the ElmerGrid core as a library and
+   calls into it from C++, so the declarations need C linkage there. */
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 void Instructions();
 void Goodbye();
 void InitGrid(struct GridType *grid);
@@ -33,3 +40,7 @@ int SaveElmerInput(struct FemType *data,struct BoundaryType *bound,
 int CreateElmerGridMesh(struct GridType *grid,
 			struct FemType *data,struct BoundaryType *boundaries,
 			Real relh,int info);
+
+#ifdef __cplusplus
+}
+#endif

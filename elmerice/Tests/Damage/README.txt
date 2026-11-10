@@ -1,9 +1,7 @@
 How to run the test:
 --------------------
-Require two calls of the FreeSurfaceSolver. 
-It is then needed to make a copy of the object file FreeSurfaceSolver.so (or FreeSurfaceSolver.dylib for mac)
+Uses two instances of the FreeSurfaceSolver.
 
-cp $ELMER_HOME/share/elmersolver/lib/FreeSurfaceSolver.so FreeSurfaceSolver1
 ElmerGrid 1 2 mesh.grd
 ElmerSolver damage.sif
 

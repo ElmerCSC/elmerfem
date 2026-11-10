@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,15 +13,15 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 
@@ -33,6 +33,24 @@ MODULE ListMatrix
     IMPLICIT NONE
 
     INTEGER, PARAMETER :: LISTMATRIX_GROWTH = 1000
+
+    ! Matrix entries are handed out from a pool of large chunks instead of being
+    ! allocated one at a time. This saves one allocation per matrix nonzero and,
+    ! more importantly, keeps entries created in sequence close to each other in
+    ! memory, which is what the row walks mostly pay for. Deleted entries go on
+    ! a free list and are recycled, so the pool stays at the high water mark of
+    ! simultaneously live entries rather than growing with the total ever built.
+    ! Once every entry has been returned all chunks but the newest are released.
+    !
+    ! NOTE: like the rest of this module the pool assumes that a list matrix is
+    ! built by one thread at a time. Threaded assembly has its own per-thread
+    ! pools in ListMatrixArray.
+    INTEGER, PARAMETER, PRIVATE :: LISTMATRIX_CHUNKMIN = 4096
+    INTEGER, PARAMETER, PRIVATE :: LISTMATRIX_CHUNKMAX = 262144
+
+    TYPE(ListMatrixEntryPool_t), POINTER, PRIVATE, SAVE :: EntryChunks => NULL()
+    TYPE(ListMatrixEntry_t), POINTER, PRIVATE, SAVE :: FreeEntries => NULL()
+    INTEGER(KIND=8), PRIVATE, SAVE :: EntriesInUse = 0
 
 CONTAINS
 
@@ -61,7 +79,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
   END FUNCTION List_AllocateMatrix
 !-------------------------------------------------------------------------------
- 
+
 
 !-------------------------------------------------------------------------------
 !> Frees a list matrix.
@@ -72,24 +90,53 @@ CONTAINS
      INTEGER :: N
 !-------------------------------------------------------------------------------
 
-     TYPE(ListMatrixEntry_t), POINTER :: p,p1
+     TYPE(ListMatrixEntry_t), POINTER :: p,Head,Tail,RowTail
      INTEGER :: i
+     INTEGER(KIND=8) :: cnt
 !-------------------------------------------------------------------------------
      IF ( .NOT. ASSOCIATED(List) ) RETURN
 
-     !$OMP PARALLEL DO &
+     ! Chain the rows of each thread together, then hand the whole chain back to
+     ! the entry pool in a single splice. Nothing is freed per entry any more.
+     !$OMP PARALLEL &
      !$OMP SHARED(List,N) &
-     !$OMP PRIVATE(p, p1) DEFAULT(NONE)
+     !$OMP PRIVATE(i,p,Head,Tail,RowTail,cnt) DEFAULT(NONE)
+     Head => NULL()
+     Tail => NULL()
+     cnt = 0
+     !$OMP DO
      DO i=1,N
         p => List(i) % Head
-        DO WHILE( ASSOCIATED(p) )
-           p1 => p % Next
-           DEALLOCATE( p )
-           p => p1 
+        IF ( .NOT. ASSOCIATED(p) ) CYCLE
+
+        RowTail => p
+        cnt = cnt + 1
+        DO WHILE( ASSOCIATED( RowTail % Next ) )
+           RowTail => RowTail % Next
+           cnt = cnt + 1
         END DO
+
+        ! The first row processed provides the tail of the whole chain
+        IF ( .NOT. ASSOCIATED(Tail) ) Tail => RowTail
+
+        RowTail % Next => Head
+        Head => p
      END DO
-     !$OMP END PARALLEL DO
+     !$OMP END DO
+
+     ! Unnamed !$OMP CRITICAL on purpose, as in GaussPointsInit: a named critical
+     ! section allocates its per-name mutex lazily on first encounter, and that
+     ! lazy init crashes inside MPI-spawned processes with GOMP on Windows+MSMPI.
+     ! The unnamed form uses a pre-allocated global lock. Do not reintroduce a
+     ! name here. The wider lock costs nothing, this being entered once per
+     ! thread per matrix rather than once per entry.
+     !$OMP CRITICAL
+     CALL List_ReturnEntryChain( Head, Tail, cnt )
+     !$OMP END CRITICAL
+     !$OMP END PARALLEL
+
      DEALLOCATE( List )
+     CALL List_ShrinkEntryPool()
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_FreeMatrix
 !-------------------------------------------------------------------------------
@@ -115,7 +162,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
-!> Transfer the flexible list matrix to the more efficient CRS matrix that is 
+!> Transfer the flexible list matrix to the more efficient CRS matrix that is
 !> used in most places of the code. Here the target is the rows and columns of the matrix.
 !-------------------------------------------------------------------------------
   SUBROUTINE List_ToCRS(L,Rows,Cols,Diag)
@@ -135,7 +182,7 @@ CONTAINS
       CALL Fatal('List_ToCRS','Could not allocate memory for CRS Rows of size '//I2S(n))
     END IF
 
-    
+
     Rows(1) = 1
     DO i=1,n
       Rows(i+1) = Rows(i) + L(i) % Degree
@@ -172,14 +219,14 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-!> Transfer the flexible list matrix to the more efficient CRS matrix that is 
+!> Transfer the flexible list matrix to the more efficient CRS matrix that is
 !> used in most places of the code. The matrix structure can accommodate both forms.
 !-------------------------------------------------------------------------------
   SUBROUTINE List_ToCRSMatrix(A)
 !-------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A
-    
-    TYPE(ListMatrix_t), POINTER :: L(:)   
+
+    TYPE(ListMatrix_t), POINTER :: L(:)
     INTEGER :: i,j,k,n,m,istat
     TYPE(ListMatrixEntry_t), POINTER :: P
     INTEGER, POINTER CONTIG :: Rows(:),Cols(:),Diag(:)
@@ -189,25 +236,25 @@ CONTAINS
       CALL Warn('List_ToCRSMatrix','The initial matrix type is not List')
       RETURN
     END IF
-    
+
     L => A % ListMatrix
 
     IF( .NOT. ASSOCIATED( L ) ) THEN
-      A % FORMAT = MATRIX_CRS      
+      A % FORMAT = MATRIX_CRS
       A % NumberOfRows = 0
       RETURN
-    END IF 
-    
+    END IF
+
     DO n=SIZE(L),1,-1
       IF ( L(n) % Degree > 0 ) EXIT
     END DO
     CALL Info('List_ToCRSMatrix','List size '//I2S(SIZE(L))//' vs. active rows '//I2S(n),Level=25)
-    
+
     ALLOCATE( Rows(n+1), Diag(n), STAT=istat)
     IF(istat /= 0 ) THEN
       CALL Fatal('List_ToCRSMatrix','Could not allocate memory for CRS Rows of size '//I2S(n))
     END IF
-    
+
     Diag = 0
     Rows(1) = 1
     DO i=1,n
@@ -218,7 +265,7 @@ CONTAINS
     CALL Info('List_ToCRSMatrix',&
         'Changing matrix type with number of non-zeros: '//I2S(m),Level=8)
 
-    ALLOCATE( Cols(m),Values(m),STAT=istat) 
+    ALLOCATE( Cols(m),Values(m),STAT=istat)
     IF(istat /= 0 ) THEN
       CALL Fatal('List_ToCRS','Could not allocate memory for CRS Cols & Values of size '//I2S(m))
     END IF
@@ -233,13 +280,13 @@ CONTAINS
         P => P % Next
       END DO
     END DO
-    
+
     A % NumberOfRows = n
     A % Rows => Rows
     A % Diag => Diag
     A % Cols => Cols
-    A % Values => Values  
-  
+    A % Values => Values
+
     A % Ordered=.FALSE.
     CALL CRS_SortMatrix( A )
 
@@ -262,13 +309,14 @@ CONTAINS
 !-------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A
     LOGICAL, OPTIONAL :: Truncate
-    
+
     INTEGER :: i,j,n
     LOGICAL :: Trunc
-    TYPE(ListMatrixEntry_t), POINTER :: CList
+    TYPE(ListMatrixEntry_t), POINTER :: CList, Dummy
 
     Trunc=.FALSE.
     IF(PRESENT(Truncate)) Trunc=Truncate
+    Dummy => NULL()
 
     A % ListMatrix => List_AllocateMatrix(A % NumberOfRows)
 
@@ -281,27 +329,26 @@ CONTAINS
         CYCLE
       END IF
 
-      ALLOCATE(A % ListMatrix(i) % Head)
-      Clist => A % ListMatrix(i) % Head
-      Clist % Next => NULL()
+      Clist => NULL()
 
       DO j=A % Rows(i), A % Rows(i+1)-1
         IF(Trunc) THEN
           IF (A % Cols(j) > A % NumberOfRows) EXIT
         END IF
 
-        IF (j>A % Rows(i)) THEN
+        IF ( ASSOCIATED(Clist) ) THEN
           IF ( Clist % Index >= A % Cols(j) ) THEN
             CALL Warn( 'List_ToListMatrix()', 'Input matrix not ordered ? ')
             GOTO 100
           END IF
-          ALLOCATE(Clist % Next)
+          Clist % Next => List_GetMatrixEntry( A % Cols(j), Dummy )
           Clist => Clist % Next
-          CList % Next => NULL()
+        ELSE
+          A % ListMatrix(i) % Head => List_GetMatrixEntry( A % Cols(j), Dummy )
+          Clist => A % ListMatrix(i) % Head
         END IF
 
         CList % Val = A % Values(j)
-        CList % Index = A % Cols(j)
         A % ListMatrix(i) % Degree = A % ListMatrix(i) % Degree + 1
       END DO
     END DO
@@ -328,20 +375,37 @@ CONTAINS
 
     A % FORMAT = MATRIX_LIST
 
+    ! The ILU factors depend on the CRS structure, which is now gone. ILU(0) shares
+    ! the structure of the matrix, other factors have their own.
+    IF( ASSOCIATED( A % ILUValues ) ) DEALLOCATE( A % ILUValues )
+    IF( ASSOCIATED( A % ILURows ) ) THEN
+      IF( .NOT. ASSOCIATED( A % ILURows, A % Rows ) ) DEALLOCATE( A % ILURows )
+    END IF
+    IF( ASSOCIATED( A % ILUCols ) ) THEN
+      IF( .NOT. ASSOCIATED( A % ILUCols, A % Cols ) ) DEALLOCATE( A % ILUCols )
+    END IF
+    IF( ASSOCIATED( A % ILUDiag ) ) THEN
+      IF( .NOT. ASSOCIATED( A % ILUDiag, A % Diag ) ) DEALLOCATE( A % ILUDiag )
+    END IF
+    A % ILUValues => Null()
+    A % ILURows => Null()
+    A % ILUCols => Null()
+    A % ILUDiag => Null()
+
     IF( ASSOCIATED( A % Rows ) ) DEALLOCATE( A % Rows )
     IF( ASSOCIATED( A % Cols ) ) DEALLOCATE( A % Cols )
     IF( ASSOCIATED( A % Diag ) ) DEALLOCATE( A % Diag )
     IF( ASSOCIATED( A % Values ) ) DEALLOCATE( A % Values )
 
-    A % Rows => Null()  
-    A % Cols => Null()  
-    A % Diag => Null()  
+    A % Rows => Null()
+    A % Cols => Null()
+    A % Diag => Null()
     A % Values => NULL()
 
     ! If the CRS matrix had a specific structure it is probably spoiled when going into
     ! free form matrix structure.
-    A % ndeg = -1 
-    
+    A % ndeg = -1
+
     CALL Info('List_ToListMatrix','Matrix format changed from CRS to List', Level=7)
 !-------------------------------------------------------------------------------
   END SUBROUTINE List_ToListMatrix
@@ -394,7 +458,7 @@ CONTAINS
      ELSE
         List(k1) % Head => Entry
      END IF
- 
+
      List(k1) % Degree = List(k1) % Degree + 1
 !-------------------------------------------------------------------------------
    END FUNCTION List_GetMatrixIndex
@@ -419,14 +483,14 @@ CONTAINS
        List => List_EnlargeMatrix(List,MAX(k1, &
              SIZE(List)+LISTMATRIX_GROWTH) )
      END IF
-     
+
      ! Add each element in Ind to the row list
      RowPtr => List(k1) % Head
-    
-     ! First element needs special treatment as it may modify 
+
+     ! First element needs special treatment as it may modify
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
-       Dummy => NULL() 
+       Dummy => NULL()
        Entry => List_GetMatrixEntry(Ind(1),Dummy)
        List(k1) % Degree = 1
        List(k1) % Head => Entry
@@ -459,7 +523,7 @@ CONTAINS
          PrevPtr => RowPtr
          RowPtr  => RowPtr % Next
        END DO
-       
+
        IF (ASSOCIATED(RowPtr)) THEN
          ! Do not add duplicates
          IF (RowPtr % Index /= k2) THEN
@@ -470,7 +534,7 @@ CONTAINS
 
            ! Advance to next element in list
            PrevPtr => Entry
-!          RowPtr  => 
+!          RowPtr  =>
          ELSE
            ! Advance to next element in list
            PrevPtr => RowPtr
@@ -533,23 +597,23 @@ CONTAINS
        CALL SortF(nk2, Ind, Vals)
      END IF
 
-       
+
      IF(ASSOCIATED(List)) THEN
        i = SIZE(List)
      ELSE
        i = 0
      END IF
-     
+
      IF (k1>i) THEN
        List => List_EnlargeMatrix(List,MAX(k1, &
              i+LISTMATRIX_GROWTH) )
      END IF
      RowPtr => List(k1) % Head
-       
-     ! First element needs special treatment as it may modify 
+
+     ! First element needs special treatment as it may modify
      ! the list starting point
      IF (.NOT. ASSOCIATED(RowPtr)) THEN
-       Dummy => NULL() 
+       Dummy => NULL()
        Entry => List_GetMatrixEntry(Ind(1),Dummy)
        Entry % Val = Vals(1)
        List(k1) % Degree = 1
@@ -587,7 +651,7 @@ CONTAINS
          PrevPtr => RowPtr
          RowPtr  => RowPtr % Next
        END DO
-       
+
        IF (ASSOCIATED(RowPtr)) THEN
          ! Do not add duplicates
          IF (RowPtr % Index /= k2) THEN
@@ -628,10 +692,10 @@ CONTAINS
      END DO
 
      IF( DoOrder ) THEN
-       Ind(1:nk2) = OrigInd 
-       Vals(1:nk2) = OrigVals 
+       Ind(1:nk2) = OrigInd
+       Vals(1:nk2) = OrigVals
      END IF
-     
+
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_AddMatrixRow
 !-------------------------------------------------------------------------------
@@ -647,18 +711,119 @@ CONTAINS
      TYPE(ListMatrixEntry_t), POINTER, INTENT(IN) :: next
      TYPE(ListMatrixEntry_t), POINTER :: ListEntry
 
-     INTEGER :: istat
-     
-     ALLOCATE(ListEntry, STAT=istat)
-     IF( istat /= 0 ) THEN
-        CALL Fatal('List_GetMatrixEntry','Could not allocate entry!')
+     IF( ASSOCIATED( FreeEntries ) ) THEN
+       ! Recycle a previously deleted entry
+       ListEntry => FreeEntries
+       FreeEntries => ListEntry % Next
+     ELSE
+       IF( .NOT. ASSOCIATED( EntryChunks ) ) THEN
+         CALL List_NewEntryChunk()
+       ELSE IF( EntryChunks % NextIndex > SIZE( EntryChunks % Entries ) ) THEN
+         CALL List_NewEntryChunk()
+       END IF
+       ListEntry => EntryChunks % Entries( EntryChunks % NextIndex )
+       EntryChunks % NextIndex = EntryChunks % NextIndex + 1
      END IF
+
+     EntriesInUse = EntriesInUse + 1
 
      ListEntry % Val = REAL(0,dp)
      ListEntry % INDEX = ind
      ListEntry % Next => next
 !-------------------------------------------------------------------------------
-   END FUNCTION List_GetMatrixEntry     
+   END FUNCTION List_GetMatrixEntry
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> Add a new chunk of entries to the pool. The chunks grow geometrically so that
+!> even a very large matrix needs only a handful of them.
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_NewEntryChunk()
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrixEntryPool_t), POINTER :: Chunk
+     INTEGER :: n, istat
+
+     n = LISTMATRIX_CHUNKMIN
+     IF( ASSOCIATED( EntryChunks ) ) THEN
+       n = MIN( 2*SIZE( EntryChunks % Entries ), LISTMATRIX_CHUNKMAX )
+     END IF
+
+     ALLOCATE( Chunk, STAT=istat )
+     IF( istat == 0 ) ALLOCATE( Chunk % Entries(n), STAT=istat )
+     IF( istat /= 0 ) THEN
+       CALL Fatal('List_NewEntryChunk', &
+           'Could not allocate entry chunk of size: '//I2S(n))
+     END IF
+
+     Chunk % NextIndex = 1
+     Chunk % Next => EntryChunks
+     EntryChunks => Chunk
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_NewEntryChunk
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> Return a single entry to the pool. The caller must have unlinked it from its
+!> row already, and must not read the entry afterwards.
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_ReturnEntry( Entry )
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrixEntry_t), POINTER :: Entry
+
+     Entry % Next => FreeEntries
+     FreeEntries => Entry
+     EntriesInUse = EntriesInUse - 1
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_ReturnEntry
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> Return a whole chain of "cnt" entries, from Head to Tail, in one splice.
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_ReturnEntryChain( Head, Tail, cnt )
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrixEntry_t), POINTER :: Head, Tail
+     INTEGER(KIND=8) :: cnt
+
+     IF( .NOT. ASSOCIATED( Head ) ) RETURN
+
+     Tail % Next => FreeEntries
+     FreeEntries => Head
+     EntriesInUse = EntriesInUse - cnt
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_ReturnEntryChain
+!-------------------------------------------------------------------------------
+
+
+!-------------------------------------------------------------------------------
+!> If no list matrix holds an entry any more then every chunk is free, so give
+!> them back to the system. The newest and largest chunk is kept so that the
+!> next matrix does not have to start from scratch.
+!-------------------------------------------------------------------------------
+   SUBROUTINE List_ShrinkEntryPool()
+!-------------------------------------------------------------------------------
+     TYPE(ListMatrixEntryPool_t), POINTER :: Chunk, NextChunk
+
+     IF( EntriesInUse /= 0 ) RETURN
+     IF( .NOT. ASSOCIATED( EntryChunks ) ) RETURN
+
+     FreeEntries => NULL()
+
+     Chunk => EntryChunks % Next
+     DO WHILE( ASSOCIATED( Chunk ) )
+       NextChunk => Chunk % Next
+       DEALLOCATE( Chunk % Entries )
+       DEALLOCATE( Chunk )
+       Chunk => NextChunk
+     END DO
+
+     EntryChunks % Next => NULL()
+     EntryChunks % NextIndex = 1
+!-------------------------------------------------------------------------------
+   END SUBROUTINE List_ShrinkEntryPool
 !-------------------------------------------------------------------------------
 
 !-------------------------------------------------------------------------------
@@ -685,7 +850,7 @@ CONTAINS
      ELSE
        List(k1) % Head => Clist % Next
      END IF
-     DEALLOCATE(Clist)
+     CALL List_ReturnEntry(Clist)
      List(k1) % Degree = MAX(List(k1) % Degree-1,0)
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_DeleteMatrixElement
@@ -709,13 +874,13 @@ CONTAINS
      Clist=>List(k1) % Head
      DO WHILE(ASSOCIATED(Clist))
        Next=>Clist % Next
-       DEALLOCATE(Clist)
+       CALL List_ReturnEntry(Clist)
        Clist=>Next
      END DO
 
      lKeep = .FALSE.
      IF(PRESENT(Keep)) lKeep = Keep
-     
+
      IF(lKeep) THEN
        List(k1) % Degree=0
        List(k1) % Head=>NULL()
@@ -758,7 +923,7 @@ CONTAINS
            List(i) % Head => Clist % Next
          END IF
          List(i) % Degree = MAX(List(i) % Degree-1,0)
-         DEALLOCATE(Clist)
+         CALL List_ReturnEntry(Clist)
        END IF
      END DO
 !-------------------------------------------------------------------------------
@@ -772,7 +937,7 @@ CONTAINS
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: k1,k2
      REAL(KIND=dp) :: Val
-     LOGICAL, OPTIONAL :: SetVal 
+     LOGICAL, OPTIONAL :: SetVal
 !-------------------------------------------------------------------------------
      TYPE(ListMatrixEntry_t), POINTER :: Entry
      LOGICAL :: Set
@@ -852,23 +1017,23 @@ CONTAINS
      INTEGER :: k1
 !-------------------------------------------------------------------------------
      TYPE(ListMatrixEntry_t), POINTER :: CList
-     
+
      IF ( .NOT. ASSOCIATED(List) ) THEN
        CALL Warn('List_ZeroRow','No List matrix present!')
        RETURN
      END IF
-     
+
      IF ( k1 > SIZE(List) ) THEN
        CALL Warn('List_ZeroRow','No such row!')
        RETURN
      END IF
-     
+
      Clist => List(k1) % Head
      IF ( .NOT. ASSOCIATED(Clist) ) THEN
        CALL Warn('List_ZeroRow','Row not associated!')
        RETURN
      END IF
-     
+
      DO WHILE( ASSOCIATED(CList) )
        Clist % Val = 0.0_dp
        CList => CList % Next
@@ -887,6 +1052,7 @@ CONTAINS
 !-------------------------------------------------------------------------------
      INTEGER :: k2
      REAL(KIND=dp) :: val, c, d
+     LOGICAL :: Found
      TYPE(ListMatrixEntry_t), POINTER :: p1, p2, prev2, Entry
 
      IF( PRESENT(coeff)) THEN
@@ -938,7 +1104,9 @@ CONTAINS
          p2    => p2 % Next
        END DO
 
-       IF ( ASSOCIATED(p2) .AND. p2 % Index == k2 ) THEN
+       Found = .FALSE.
+       IF ( ASSOCIATED(p2) ) Found = ( p2 % Index == k2 )
+       IF ( Found ) THEN
          ! Entry already exists in row n2 — accumulate and advance past it
          p2 % Val = p2 % Val + c * val
          prev2 => p2
@@ -972,14 +1140,15 @@ CONTAINS
      TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: n1, n2
 !-------------------------------------------------------------------------------
-     INTEGER :: k1, k2
-     TYPE(ListMatrixEntry_t), POINTER :: CList1, CList2, Lptr
-              
+     INTEGER :: i, d1, d2
+     INTEGER, ALLOCATABLE :: Ind1(:), Ind2(:)
+     TYPE(ListMatrixEntry_t), POINTER :: CList1, CList2
+
      IF ( .NOT. ASSOCIATED(List) ) THEN
        CALL Warn('List_ExchangeRowStructure','No List matrix present!')
        RETURN
      END IF
-         
+
      Clist1 => List(n1) % Head
      IF ( .NOT. ASSOCIATED(Clist1) ) THEN
        CALL Warn('List__ExchangeRowStructure','Row1 not associated!')
@@ -991,19 +1160,45 @@ CONTAINS
        CALL Warn('List__ExchangeRowStructure','Row2 not associated!')
        RETURN
      END IF
-     
+
+     ! Take a copy of both index sets before either row is touched, then merge
+     ! each into the other in one pass. Both rows are sorted so no sorting is
+     ! needed. The outcome is the union of the two structures for both rows.
+     d1 = 0
      DO WHILE( ASSOCIATED(CList1) )
-       k1 = Clist1 % Index
-       Lptr => List_GetMatrixIndex( List,n2,k1 )
+       d1 = d1 + 1
        CList1 => CList1 % Next
      END DO
-     
+
+     d2 = 0
      DO WHILE( ASSOCIATED(CList2) )
-       k2 = Clist2 % Index
-       Lptr => List_GetMatrixIndex( List,n1,k2 )
+       d2 = d2 + 1
        CList2 => CList2 % Next
      END DO
-     
+
+     ALLOCATE( Ind1(d1), Ind2(d2) )
+
+     i = 0
+     Clist1 => List(n1) % Head
+     DO WHILE( ASSOCIATED(CList1) )
+       i = i + 1
+       Ind1(i) = Clist1 % Index
+       CList1 => CList1 % Next
+     END DO
+
+     i = 0
+     Clist2 => List(n2) % Head
+     DO WHILE( ASSOCIATED(CList2) )
+       i = i + 1
+       Ind2(i) = Clist2 % Index
+       CList2 => CList2 % Next
+     END DO
+
+     CALL List_AddMatrixIndexes( List,n2,d1,Ind1 )
+     CALL List_AddMatrixIndexes( List,n1,d2,Ind2 )
+
+     DEALLOCATE( Ind1, Ind2 )
+
 !-------------------------------------------------------------------------------
    END SUBROUTINE List_ExchangeRowStructure
 !-------------------------------------------------------------------------------
@@ -1011,7 +1206,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>    Add the entries of a local matrix to a list-format matrix.    
+!>    Add the entries of a local matrix to a list-format matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE List_GlueLocalMatrix( A,N,Dofs,Indexes,LocalMatrix )
 !------------------------------------------------------------------------------
@@ -1021,25 +1216,97 @@ CONTAINS
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Val
-     INTEGER :: i,j,k,l,c,Row,Col
-     
+     INTEGER :: i,k,nc,nu,Row
+     INTEGER :: Cols(N*Dofs),UCols(N*Dofs),Slot(N*Dofs),Lcol(N*Dofs)
+     REAL(KIND=dp) :: Vals(N*Dofs)
+
+     ! Every row of the element shares the same column structure, so it is
+     ! sorted and compressed just once. Each row is then glued with a single
+     ! merge pass over the row list rather than one list walk per entry.
+     CALL List_LocalColStructure( N,Dofs,Indexes,0,nc,nu,Cols,UCols,Slot,Lcol )
+     IF( nu == 0 ) RETURN
+
      DO i=1,n
        IF (Indexes(i)<=0) CYCLE
        DO k=0,Dofs-1
          Row = Dofs*Indexes(i)-k
-         DO j=1,n
-           IF (Indexes(j)<=0) CYCLE
-           DO l=0,Dofs-1
-             Col = Dofs * Indexes(j) - l
-             Val = LocalMatrix(Dofs*i-k,Dofs*j-l)
-             CALL List_AddToMatrixElement(A,Row,Col,Val)
-           END DO
-         END DO
 
+         CALL List_GatherLocalRow( LocalMatrix,Dofs*i-k,nc,nu,Slot,Lcol,Vals )
+         CALL List_AddMatrixRow( A,Row,nu,UCols,Vals,SortedInput=.TRUE.)
        END DO
      END DO
    END SUBROUTINE List_GlueLocalMatrix
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!>    Build the sorted and compressed column structure shared by all rows of a
+!>    local (element) matrix. "Cols" holds the global column of each local
+!>    column in order, "UCols(1:nu)" the sorted distinct ones, "Slot" maps each
+!>    of the "nc" local columns to its place in UCols and "Lcol" back to the
+!>    column index of the local matrix. Duplicate global columns, which arise
+!>    if the index list repeats an entry, land in a single slot.
+!------------------------------------------------------------------------------
+   SUBROUTINE List_LocalColStructure( Ncol,ColDofs,ColInds,Col0,nc,nu, &
+          Cols,UCols,Slot,Lcol )
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: Ncol,ColDofs,Col0
+     INTEGER, INTENT(IN) :: ColInds(:)
+     INTEGER, INTENT(OUT) :: nc,nu
+     INTEGER, INTENT(OUT) :: Cols(:),UCols(:),Slot(:),Lcol(:)
+!------------------------------------------------------------------------------
+     INTEGER :: j,l,p
+
+     nc = 0
+     nu = 0
+     DO j=1,Ncol
+       IF( ColInds(j) <= 0 ) CYCLE
+       DO l=0,ColDofs-1
+         nc = nc + 1
+         Cols(nc) = Col0 + ColDofs * ColInds(j) - l
+         Lcol(nc) = ColDofs*j-l
+       END DO
+     END DO
+     IF( nc == 0 ) RETURN
+
+     UCols(1:nc) = Cols(1:nc)
+     CALL Sort( nc, UCols )
+
+     nu = 1
+     DO p=2,nc
+       IF( UCols(p) /= UCols(nu) ) THEN
+         nu = nu + 1
+         UCols(nu) = UCols(p)
+       END IF
+     END DO
+
+     DO p=1,nc
+       Slot(p) = SearchI( nu, UCols, Cols(p) )
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE List_LocalColStructure
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!>    Gather one row of a local matrix into the compressed column order given
+!>    by List_LocalColStructure().
+!------------------------------------------------------------------------------
+   SUBROUTINE List_GatherLocalRow( LocalMatrix,Lrow,nc,nu,Slot,Lcol,Vals )
+!------------------------------------------------------------------------------
+     REAL(KIND=dp), INTENT(IN) :: LocalMatrix(:,:)
+     INTEGER, INTENT(IN) :: Lrow,nc,nu
+     INTEGER, INTENT(IN) :: Slot(:),Lcol(:)
+     REAL(KIND=dp), INTENT(OUT) :: Vals(:)
+!------------------------------------------------------------------------------
+     INTEGER :: p
+
+     Vals(1:nu) = 0.0_dp
+     DO p=1,nc
+       Vals(Slot(p)) = Vals(Slot(p)) + LocalMatrix(Lrow,Lcol(p))
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE List_GatherLocalRow
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -1049,29 +1316,30 @@ CONTAINS
    SUBROUTINE List_GlueLocalSubMatrix( List,row0,col0,Nrow,Ncol, &
           RowInds,ColInds,RowDofs,ColDofs,LocalMatrix )
 !------------------------------------------------------------------------------
-     TYPE(ListMatrix_t), POINTER :: List(:) 
+     TYPE(ListMatrix_t), POINTER :: List(:)
      INTEGER :: Nrow,Ncol,RowDofs,ColDofs,Col0,Row0,RowInds(:),ColInds(:)
      REAL(KIND=dp) :: LocalMatrix(:,:)
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
-     REAL(KIND=dp) :: Val
-     INTEGER :: i,j,k,l,c,Row,Col
-     
-     DO i=1,Nrow
-       DO k=0,RowDofs-1
-         IF ( RowInds(i) <= 0 ) CYCLE
-         Row = Row0 + RowDofs * RowInds(i) - k
-         
-         DO j=1,Ncol
-           DO l=0,ColDofs-1
-             IF ( ColInds(j) <= 0 ) CYCLE
-             Col  = Col0 + ColDofs * ColInds(j) - l
-             Val = LocalMatrix(RowDofs*i-k,ColDofs*j-l)
-             CALL List_AddToMatrixElement(List,Row,Col,Val)
-           END DO
-         END DO
+     INTEGER :: i,k,nc,nu,Row
+     INTEGER :: Cols(Ncol*ColDofs),UCols(Ncol*ColDofs)
+     INTEGER :: Slot(Ncol*ColDofs),Lcol(Ncol*ColDofs)
+     REAL(KIND=dp) :: Vals(Ncol*ColDofs)
 
+     ! As in List_GlueLocalMatrix: sort the shared column structure once, then
+     ! add each row with a single merge pass.
+     CALL List_LocalColStructure( Ncol,ColDofs,ColInds,Col0,nc,nu, &
+             Cols,UCols,Slot,Lcol )
+     IF( nu == 0 ) RETURN
+
+     DO i=1,Nrow
+       IF ( RowInds(i) <= 0 ) CYCLE
+       DO k=0,RowDofs-1
+         Row = Row0 + RowDofs * RowInds(i) - k
+
+         CALL List_GatherLocalRow( LocalMatrix,RowDofs*i-k,nc,nu,Slot,Lcol,Vals )
+         CALL List_AddMatrixRow( List,Row,nu,UCols,Vals,SortedInput=.TRUE.)
        END DO
      END DO
    END SUBROUTINE List_GlueLocalSubMatrix

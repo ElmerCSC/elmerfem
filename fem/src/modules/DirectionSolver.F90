@@ -3,20 +3,20 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This program is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU General Public License
 ! *  as published by the Free Software Foundation; either version 2
 ! *  of the License, or (at your option) any later version.
-! * 
+! *
 ! *  This program is distributed in the hope that it will be useful,
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 ! *  GNU General Public License for more details.
 ! *
 ! *  You should have received a copy of the GNU General Public License
-! *  along with this program (in file fem/GPL-2); if not, write to the 
-! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor, 
+! *  along with this program (in file fem/GPL-2); if not, write to the
+! *  Free Software Foundation, Inc., 51 Franklin Street, Fifth Floor,
 ! *  Boston, MA 02110-1301, USA.
 ! *
 ! *****************************************************************************/
@@ -35,7 +35,7 @@
 ! *  Original Date: December 2015
 ! *
 ! *****************************************************************************/
- 
+
 !> \ingroup Solvers
 !> \{
 !------------------------------------------------------------------------------
@@ -61,7 +61,7 @@ SUBROUTINE DirectionSolver_Init0(Model,Solver,dt,Transient)
   visited = visited + 1
 
   ! This is really using DG so we don't need to make any dirty tricks to create DG fields
-  ! as is done in this initialization. 
+  ! as is done in this initialization.
   IF (GetLogical(GetSolverParams(),'Discontinuous Galerkin',Found)) RETURN
 
   PSolver => Solver
@@ -83,7 +83,7 @@ SUBROUTINE DirectionSolver_Init0(Model,Solver,dt,Transient)
 
   ! Create DG solver structures on-the-fly without actually solving the matrix
   ! equations. It is assumed that the DG field within each element is independent
-  ! and hence no coupling between elemental fields is needed. 
+  ! and hence no coupling between elemental fields is needed.
   ALLOCATE(Solvers(n+1))
   Solvers(1:n) = Model % Solvers
   Solvers(n+1) % Values => ListAllocate()
@@ -150,7 +150,7 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
 !
 !  ARGUMENTS:
 !
-!  TYPE(Model_t) :: Model,  
+!  TYPE(Model_t) :: Model,
 !     INPUT: All model information (mesh, materials, BCs, etc...)
 !
 !  TYPE(Solver_t) :: Solver
@@ -203,8 +203,8 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
      END IF
      AllocationsDone = .TRUE.
   END IF
-  NofNameSpaces = Model%numberofbodies 
-  DO ns_iter=1,NofNameSpaces 
+  NofNameSpaces = Model%numberofbodies
+  DO ns_iter=1,NofNameSpaces
    Namespace='body '//i2s(ns_iter)//':'
    VNWithNS = TRIM(Namespace)//' '//TRIM(varname)
    IF (ListCheckPresentAnyBC(Model,VNWithNS)) CALL ListSetNameSpace(Namespace)
@@ -250,7 +250,7 @@ SUBROUTINE DirectionSolver( Model,Solver,dt,TransientSimulation )
      LOAD = 0._dp
      IF (PosEl) LOAD = 1._dp
      IF (NegEl) LOAD = -1._dp
-     
+
      IF (Solver % Variable % name == 'w') CALL BoundaryCondition(LOAD, FORCE, Element, n)
 
      CALL DefaultUpdateEquations( STIFF, FORCE )
@@ -299,7 +299,7 @@ CONTAINS
   CHARACTER(LEN=MAX_NAME_LEN), SAVE :: varname
   REAL(KIND=dp) :: direction(nn)
 
-  IF (varname .ne. GetString(GetSolverParams(), 'Variable', Found)) & 
+  IF (varname .ne. GetString(GetSolverParams(), 'Variable', Found)) &
           First =.TRUE.
   varname = GetString(GetSolverParams(), 'Variable', Found)
   IF (First) THEN
@@ -309,7 +309,7 @@ CONTAINS
       CALL Fatal('SaveElementSolution()','Direction variable not found')
     END IF
   END IF
- 
+
   CALL GetLocalSolution(direction, varname)
   DO j=1,nn
     IF (ASSOCIATED(directionvar)) THEN
@@ -318,7 +318,7 @@ CONTAINS
               Element % DGIndexes(j))-1)+k) = direction(j)
       END DO
     END IF
-  END DO 
+  END DO
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveElementSolution
 !------------------------------------------------------------------------------

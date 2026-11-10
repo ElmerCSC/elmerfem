@@ -1,0 +1,94 @@
+! ElasticSolve reusing what a previous pass assembled, at all three depths.
+!
+!   Constant Bulk Matrix -- the matrix is reused, the load is reassembled
+!   Constant Bulk System -- matrix and bulk load reused, only the BCs run
+!   Constant System      -- nothing is assembled at all
+!
+! Each is behaviour-neutral by construction, so what the four RUNs below pin is
+! exactly that: enabling a keyword must not move the answer. That is worth a test
+! even though it cannot be told from the feature silently not engaging, because
+! the failure mode it does catch is the dangerous one -- restoring the system
+! from the wrong point and dropping a contribution.
+!
+! Hence the Neumann condition on boundary 2 rather than a prescribed
+! displacement. The bulk values are saved before the boundary assembly runs, so
+! a "Constant System" that skipped the boundary conditions while restoring only
+! the bulk state would silently lose that force. With Dirichlet conditions alone
+! the boundary assembly contributes nothing and the error would not show.
+!
+! Two steady state iterations per RUN, since with one there is no previous pass
+! and nothing is reused.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 2
+  Steady State Min Iterations = 2
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+  Density = 1.0
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+
+  ! The reuse is only sound for a linear problem; the solver refuses the
+  ! nonlinear paths outright rather than assemble a stale tangent.
+  Large Deflection = False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Force 1 = Real 5.0
+  Force 2 = Real 3.0
+End
+
+! The reference, with no reuse at all.
+Solver 1 :: Reference Norm = Real 1.70786776E-03
+RUN
+
+! The matrix is held over and only the load is reassembled.
+Solver 1 :: Constant Bulk Matrix = Logical True
+Solver 1 :: Reference Norm = Real 1.70786776E-03
+RUN
+
+! The whole bulk assembly is skipped on the second pass.
+Solver 1 :: Constant Bulk Matrix = Logical False
+Solver 1 :: Constant Bulk System = Logical True
+Solver 1 :: Reference Norm = Real 1.70786776E-03
+RUN
+
+! "Constant System", the third level, is covered by ElasticConstantSystemFull
+! rather than by a fourth RUN here. It cannot follow the others in one process:
+! Solver % Matrix % BulkValues persists across RUNs, and setting the narrower
+! keywords False does not discard it, so this level would restore a bulk-only
+! system saved under the previous RUN's regime and lose the boundary force. Its
+! own save point is after the boundary assembly, which is the whole difference.

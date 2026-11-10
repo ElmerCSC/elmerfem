@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 23 Aug 2004
 ! *
@@ -38,10 +38,10 @@
 !> \{
 
 !-------------------------------------------------------------------------------
-!>  Module defining mappings for p elements. These include nodal points 
+!>  Module defining mappings for p elements. These include nodal points
 !>  contained by faces and edges, element boundary maps (edges for 2d elements,
-!>  faces for 3d) and mappings from faces to edge numbers. Mappings defined in 
-!>  this module are compatible with basis functions defined in module 
+!>  faces for 3d) and mappings from faces to edge numbers. Mappings defined in
+!>  this module are compatible with basis functions defined in module
 !>  PElementBase.
 !-------------------------------------------------------------------------------
 
@@ -79,13 +79,13 @@ CONTAINS
 
   ! MAPPINGS
 
-  ! First some direct mappings to elements. These should not be used directly 
+  ! First some direct mappings to elements. These should not be used directly
   ! unless element type is implicitly known from context. Better way is to use
   ! getElement[Boundary,Edge,Face]Map -routines.
 
     ! Call: localEdge = getQuadEdge(i)
     !
-    ! Function returns mapping from edge number to edge endpoints 
+    ! Function returns mapping from edge number to edge endpoints
 
     FUNCTION getLineEdgeMap(i) RESULT(localEdge)
       IMPLICIT NONE
@@ -94,13 +94,13 @@ CONTAINS
       INTEGER, DIMENSION(2) :: localEdge
 
       IF (.NOT. MInit) CALL InitializeMappings()
-      
+
       localEdge(:) = LineEdgeMap(i,:)
     END FUNCTION getLineEdgeMap
 
     ! Call: localEdge = getQuadEdge(i)
     !
-    ! Function returns mapping from edge number to edge endpoints 
+    ! Function returns mapping from edge number to edge endpoints
 
     FUNCTION getQuadEdgeMap(i) RESULT(localEdge)
       IMPLICIT NONE
@@ -109,16 +109,16 @@ CONTAINS
       INTEGER, DIMENSION(2) :: localEdge
 
       IF (.NOT. MInit) CALL InitializeMappings()
-      
+
       localEdge(:) = QuadEdgeMap(i,:)
     END FUNCTION getQuadEdgeMap
 
     ! Call: localFace = getQuadFaceMap(i)
-    ! 
+    !
     ! Function returns mapping from face number to face nodes
     FUNCTION getQuadFaceMap(i) RESULT(localFace)
       IMPLICIT NONE
-      
+
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: localFace
 
@@ -128,7 +128,7 @@ CONTAINS
     END FUNCTION getQuadFaceMap
 
     ! Call: localEdge = getTriangleEdge(i)
-    ! 
+    !
     ! Function returns mapping from edge number to edge endpoints
 
     FUNCTION getTriangleEdgeMap(i) RESULT(localEdge)
@@ -143,11 +143,11 @@ CONTAINS
     END FUNCTION getTriangleEdgeMap
 
     ! Call: localFace = geTriangleFaceMap(i)
-    ! 
+    !
     ! Function returns mapping from face number to face nodes
     FUNCTION getTriangleFaceMap(i) RESULT(localFace)
       IMPLICIT NONE
-      
+
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(3) :: localFace
 
@@ -155,9 +155,9 @@ CONTAINS
 
       localFace(:) = TriangleFaceMap(1,:)
     END FUNCTION getTriangleFaceMap
-    
+
     ! Call: localEdge = getBrickEdgeMap(i)
-    ! 
+    !
     ! Function returns mapping from edge number to edge endpoints
 
     FUNCTION getBrickEdgeMap(i) RESULT(localEdge)
@@ -170,14 +170,14 @@ CONTAINS
 
       localEdge(:) = BrickEdgeMap(i,:)
     END FUNCTION getBrickEdgeMap
-    
+
     ! Call: localFace = getBrickFaceMap(i)
-    ! 
+    !
     ! Function returns mapping from face number to face nodes
 
     FUNCTION getBrickFaceMap(i) RESULT(localFace)
       IMPLICIT NONE
-      
+
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: localFace
 
@@ -188,14 +188,14 @@ CONTAINS
 
     ! Call: localEdge = getFaceEdgeMap(face, localNode)
     !
-    ! getFaceEdgeMap returns number of local edge when given face and 
+    ! getFaceEdgeMap returns number of local edge when given face and
     ! its local node number. Node number is treated as edges beginning point
 
     FUNCTION getBrickFaceEdgeMap(face, localNode) RESULT(localEdge)
       IMPLICIT NONE
       CHARACTER(:), ALLOCATABLE :: msg
 
-      ! Parameters 
+      ! Parameters
       INTEGER, INTENT(IN) :: face, localNode
       ! Variables
       INTEGER :: localEdge
@@ -246,25 +246,25 @@ CONTAINS
       INTEGER, DIMENSION(3) :: face
 
       IF (.NOT. MInit) CALL InitializeMappings()
-      
+
       ! If type not present use default (1)
       t = 1
       IF (PRESENT(TYPE)) t = TYPE
 
-      ! Select face map by tetra type 
+      ! Select face map by tetra type
       SELECT CASE(t)
       CASE (1)
          face(:) = TetraFaceMap1(i,:)
       CASE (2)
          face(:) = TetraFaceMap2(i,:)
-      CASE DEFAULT 
+      CASE DEFAULT
          CALL Fatal('PElementMaps::getTetraFaceMap','Unknown tetra type')
       END SELECT
     END FUNCTION getTetraFaceMap
 
     FUNCTION getWedgeEdgeMap(i) RESULT(edge)
       IMPLICIT NONE
-      
+
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(2) :: edge
 
@@ -276,7 +276,7 @@ CONTAINS
 
     FUNCTION getWedgeFaceMap(i) RESULT(face)
       IMPLICIT NONE
-      
+
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: face
 
@@ -300,7 +300,7 @@ CONTAINS
 
     FUNCTION getPyramidFaceMap(i) RESULT(face)
       IMPLICIT NONE
-      
+
       INTEGER, INTENT(IN) :: i
       INTEGER, DIMENSION(4) :: face
 
@@ -311,8 +311,8 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>     Mapping from element local edge or face number to nodes contained in 
-!>     that edge or face. 
+!>     Mapping from element local edge or face number to nodes contained in
+!>     that edge or face.
 !------------------------------------------------------------------------------
     FUNCTION getElementBoundaryMap(Element, i) RESULT(map)
 !------------------------------------------------------------------------------
@@ -327,13 +327,13 @@ CONTAINS
 !  FUNCTION VALUE:
 !    INTEGER :: map(4)
 !       Map containing local node numbers of given local edge or face
-!    
+!
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
       TYPE(Element_t) :: Element
       INTEGER, INTENT(IN) :: i
-      
+
       INTEGER :: map(4)
 
       IF (.NOT. MInit) CALL InitializeMappings()
@@ -341,7 +341,7 @@ CONTAINS
 
       ! Function is not defined for non p elements
       !IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-      !   CALL Warn('PElementMaps::getElementBoundaryMap','Element not p element') 
+      !   CALL Warn('PElementMaps::getElementBoundaryMap','Element not p element')
       !   RETURN
       !END IF
 
@@ -367,7 +367,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>     Mapping from element local face to local edges contained in face. Given
 !>     element and local face number this routine returns numbers of local edges
-!>     on face. 
+!>     on face.
 !------------------------------------------------------------------------------
     FUNCTION getFaceEdgeMap( Element, i) RESULT(map)
 !------------------------------------------------------------------------------
@@ -382,7 +382,7 @@ CONTAINS
 !  FUNCTION VALUE:
 !    INTEGER :: map(4)
 !       Map containing local numbers of edges on face
-!    
+!
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
@@ -397,7 +397,7 @@ CONTAINS
 
       ! Function is not defined for non p elements
       !IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-      !   CALL Warn('PElementMaps::getFaceEdgeMap','Element not p element') 
+      !   CALL Warn('PElementMaps::getFaceEdgeMap','Element not p element')
       !   map = 0
       !   RETURN
       !END IF
@@ -426,9 +426,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!>     Get mappings for given element to element edges and their nodes. Given 
+!>     Get mappings for given element to element edges and their nodes. Given
 !>     element, this routine returns a map containing nodes (endpoints) of
-!>     elements edges. 
+!>     elements edges.
 !------------------------------------------------------------------------------
     SUBROUTINE GetElementEdgeMap( Element, map )
 !------------------------------------------------------------------------------
@@ -439,7 +439,7 @@ CONTAINS
 !
 !    INTEGER :: map(:,:)
 !       OUTPUT: Map containing local node numbers of local edges
-!    
+!
 !------------------------------------------------------------------------------
       IMPLICIT NONE
       TYPE(Element_t) :: Element
@@ -449,7 +449,7 @@ CONTAINS
 
       ! Function is not defined for non p elements
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementMaps::GetElementEdgeMap','Element not p element') 
+         CALL Warn('PElementMaps::GetElementEdgeMap','Element not p element')
          map = 0
          RETURN
       END IF
@@ -480,12 +480,12 @@ CONTAINS
          CALL Fatal('PElementMaps::GetElementEdgeMap','Unsupported element type')
       END SELECT
     END SUBROUTINE GetElementEdgeMap
-   
+
 
 !------------------------------------------------------------------------------
-!>     Get mappings for given element to element faces and their nodes. Given 
+!>     Get mappings for given element to element faces and their nodes. Given
 !>     element, this routine returns a map containing nodes (endpoints) of
-!>     elements face. 
+!>     elements face.
 !------------------------------------------------------------------------------
     SUBROUTINE GetElementFaceMap( Element, faceMap )
 !------------------------------------------------------------------------------
@@ -496,10 +496,10 @@ CONTAINS
 !
 !    INTEGER :: map(:,:)
 !       OUTPUT: Map containing local node numbers of local faces
-!    
+!
 !------------------------------------------------------------------------------
       IMPLICIT NONE
-      
+
       TYPE(Element_t) :: Element
       INTEGER, POINTER :: faceMap(:,:)
 
@@ -507,7 +507,7 @@ CONTAINS
 
       ! Function is not defined for non p elements
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementMaps::GetElementFaceMap','Element not p element') 
+         CALL Warn('PElementMaps::GetElementFaceMap','Element not p element')
          NULLIFY(faceMap)
          RETURN
       END IF
@@ -538,13 +538,13 @@ CONTAINS
     END SUBROUTINE GetElementFaceMap
 
 
-!------------------------------------------------------------------------------    
-!>     Get mappings for given element to elements faces and their edge. Given 
+!------------------------------------------------------------------------------
+!>     Get mappings for given element to elements faces and their edge. Given
 !>     element, this routine returns a map containing local edge numbers of
-!>     elements faces. 
-!------------------------------------------------------------------------------    
+!>     elements faces.
+!------------------------------------------------------------------------------
     SUBROUTINE GetElementFaceEdgeMap( Element, faceEdgeMap )
-!------------------------------------------------------------------------------    
+!------------------------------------------------------------------------------
 !
 !  ARGUMENTS:
 !    Type(Element_t) :: Element
@@ -552,18 +552,18 @@ CONTAINS
 !
 !    INTEGER :: map(:,:)
 !       OUTPUT: Map containing local edge numbers of local faces
-!    
+!
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
       TYPE(Element_t) :: Element
       INTEGER, POINTER :: faceEdgeMap(:,:)
-      
+
       IF (.NOT. MInit) CALL InitializeMappings()
 
       ! Function is not defined for non p elements
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
-         CALL Warn('PElementMaps::GetElementFaceEdgeMap','Element not p element') 
+         CALL Warn('PElementMaps::GetElementFaceEdgeMap','Element not p element')
          NULLIFY(faceEdgeMap)
          RETURN
       END IF
@@ -593,10 +593,10 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>   This subroutine initializes element mappings.
 !------------------------------------------------------------------------------
-    SUBROUTINE InitializeMappings() 
+    SUBROUTINE InitializeMappings()
 !------------------------------------------------------------------------------
       IMPLICIT NONE
-      
+
       CALL Info('PElementMaps::InitializeMappings','Initializing mappings for elements',Level=10)
 
       LineEdgeMap(1,:) = [1,2]
@@ -637,11 +637,11 @@ CONTAINS
       BrickFaceMap(4,:) = (/ 2,3,7,6 /) ! eta,zeta
       ! BrickFaceMap(5,:) = (/ 3,4,8,7 /)
       BrickFaceMap(5,:) = (/ 4,3,7,8 /)
-      ! BrickFaceMap(6,:) = (/ 4,1,5,8 /) 
+      ! BrickFaceMap(6,:) = (/ 4,1,5,8 /)
       BrickFaceMap(6,:) = (/ 1,4,8,5 /)
 
       BrickFaceEdgeMap(1,:) = (/ 1,2,3,4 /)
-      BrickFaceEdgeMap(2,:) = (/ 5,6,7,8 /)    
+      BrickFaceEdgeMap(2,:) = (/ 5,6,7,8 /)
       BrickFaceEdgeMap(3,:) = (/ 1,10,5,9 /)
       BrickFaceEdgeMap(4,:) = (/ 2,11,6,10 /)
       ! BrickFaceEdgeMap(5,:) = (/ 3,12,7,11 /)
@@ -671,18 +671,18 @@ CONTAINS
       TetraFaceMap1(2,:) = (/ 1,2,4 /)
       TetraFaceMap1(3,:) = (/ 2,3,4 /)
       TetraFaceMap1(4,:) = (/ 1,3,4 /)
-      ! Type 2 
+      ! Type 2
       TetraFaceMap2(1,:) = (/ 1,3,2 /)
       TetraFaceMap2(2,:) = (/ 1,2,4 /)
       TetraFaceMap2(3,:) = (/ 3,2,4 /)
       TetraFaceMap2(4,:) = (/ 1,3,4 /)
 
-      ! Type 1 
+      ! Type 1
       TetraFaceEdgeMap1(1,:) = (/ 1,2,3 /)
       TetraFaceEdgeMap1(2,:) = (/ 1,5,4 /)
       TetraFaceEdgeMap1(3,:) = (/ 2,6,5 /)
       TetraFaceEdgeMap1(4,:) = (/ 3,6,4 /)
-      ! Type 2 
+      ! Type 2
       TetraFaceEdgeMap2(1,:) = (/ 3,2,1 /)
       TetraFaceEdgeMap2(2,:) = (/ 1,5,4 /)
       TetraFaceEdgeMap2(3,:) = (/ 2,5,6 /)
@@ -711,8 +711,8 @@ CONTAINS
       WedgeFaceEdgeMap(3,:) = (/ 1,8,4,7 /)
       WedgeFaceEdgeMap(4,:) = (/ 2,9,5,8 /)
       WedgeFaceEdgeMap(5,:) = (/ 3,7,6,9 /)
-      
-      ! Pyramid edge mappings 
+
+      ! Pyramid edge mappings
       PyramidEdgeMap(1,:) = (/ 1,2 /)
       PyramidEdgeMap(2,:) = (/ 2,3 /)
       PyramidEdgeMap(3,:) = (/ 4,3 /)
@@ -760,29 +760,29 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !>     Based on element face polynomial degree p, return degrees of freedom for
-!>     given face. 
+!>     given face.
 !------------------------------------------------------------------------------
   FUNCTION getFaceDOFs(Element, p, faceNumber, Face ) RESULT(faceDOFs)
 !------------------------------------------------------------------------------
 !
 !  ARGUMENTS:
 !    Type(Element_t), POINTER :: Element
-!      INPUT: Element to get face dofs to 
+!      INPUT: Element to get face dofs to
 !
 !    INTEGER :: p
 !      INPUT: Face polynomial degree p
 !
 !    INTEGER :: faceNumber
-!      INPUT: Local number of face for element (important for wedges and 
+!      INPUT: Local number of face for element (important for wedges and
 !        pyramids).
 !
 !  FUNCTION VALUE:
 !    REAL(KIND=dp) :: faceDOFs
 !       number of face dofs for Element
-!    
+!
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    
+
     TYPE(Element_t) :: Element
     TYPE(Element_t), OPTIONAL :: Face
     INTEGER, INTENT(IN) :: p
@@ -834,7 +834,7 @@ CONTAINS
             faceDOFs = (p-1)**2 ! (p-1)*p/2
           END IF
        END SELECT
-    ! Brick   
+    ! Brick
     CASE (8)
        IF(SerendipityPBasis) THEN
          faceDOFs = (p-2)*(p-3)/2
@@ -853,9 +853,9 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> Based on the polynomial degree p of the element, return the number of
-!> bubble functions (the count of bubble DOFs). 
+!> bubble functions (the count of bubble DOFs).
 !> NOTE: The returned value is not the bubble count for an approximation
-!> based on the space Q_p of polynomials of degree at most p in each variable 
+!> based on the space Q_p of polynomials of degree at most p in each variable
 !> separately.
 !------------------------------------------------------------------------------
   FUNCTION getBubbleDOFs( Element, p) RESULT(bubbleDOFs)
@@ -863,7 +863,7 @@ CONTAINS
 !
 !  ARGUMENTS:
 !    Type(Element_t), POINTER :: Element
-!      INPUT: Element to get bubble dofs to 
+!      INPUT: Element to get bubble dofs to
 !
 !    INTEGER :: p
 !      INPUT: Element polynomial degree p
@@ -871,15 +871,15 @@ CONTAINS
 !  FUNCTION VALUE:
 !    REAL(KIND=dp) :: bubbleDOFs
 !       number of bubble dofs for Element
-!    
+!
 !------------------------------------------------------------------------------
     IMPLICIT NONE
-    
+
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: p
     INTEGER :: bubbleDOFs, i
     LOGICAL :: SerendipityPBasis
-    
+
     ! This function is not defined for non p elements
     IF (.NOT. ASSOCIATED(Element % PDefs) ) THEN
        bubbleDOFs = 0
@@ -893,7 +893,7 @@ CONTAINS
     IF(p<=1) RETURN
 
     SELECT CASE (Element % TYPE % ElementCode / 100)
-    ! Line 
+    ! Line
     CASE (2)
       BubbleDOFs = p-1
     ! Triangle
@@ -937,8 +937,68 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!> The largest degree in a single coordinate direction reached by the bubble
+!> set of an element of degree p. Mirrors getBubbleDOFs above: that function is
+!> the VOLUME of the bubble index loops, this one is their EXTENT along one
+!> axis, and both are read off the same loop bounds in ElemInfo.F90 (and their
+!> copies in H1Basis.F90 for the vectorised path). Keep the three in step.
+!>
+!> This matters because tensor-product quadrature counts are formed as
+!> (degree+1)**dim, which is only valid for a PER-DIRECTION degree. The
+!> serendipity loops are constrained by a TOTAL degree, so the p they are
+!> indexed by overstates what one direction needs; the plain loops are already
+!> per-direction and return p unchanged. Feeding a serendipity total degree
+!> straight into the tensor count over-resolves badly: with "b:1" a brick asks
+!> for 343 points where 27 is exact, a prism 216 where 64 is, a quad 25 where 9
+!> is. The bubble is literally the same function in both schemes -- the basis
+!> routines use different index conventions (SD_* takes degrees directly, the
+!> plain ones add +2) and the loop bounds compensate -- so only the label moves.
+!------------------------------------------------------------------------------
+  FUNCTION getBubbleMaxDegree1D( Element, p ) RESULT(deg)
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+
+    TYPE(Element_t) :: Element
+    INTEGER, INTENT(IN) :: p
+    INTEGER :: deg
+
+    IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
+      deg = p
+      RETURN
+    END IF
+
+    ! Only quad, prism and brick have a serendipity branch in getBubbleDOFs;
+    ! line, triangle, tetra and pyramid have none, so their p is already the
+    ! degree the loops reach.
+    deg = p
+    IF (Element % PDefs % Serendipity) THEN
+      SELECT CASE (Element % TYPE % ElementCode / 100)
+      ! Quad: "DO i=2,p-2 ; DO j=2,p-i" over Phi(i)*Phi(j), so with the other
+      ! index at its minimum of 2 one index reaches p-2.
+      CASE (4)
+        deg = p - 2
+      ! Prism: "DO i=0,p-5 ; DO j=0,p-5-i ; DO k=2,p-3-i-j" over
+      ! L1*L2*L3*LegendreP(i)*LegendreP(j)*Phi(k). The in-plane factor
+      ! L1*L2*L3 carries degree 3 on top of i+j <= p-5, giving p-2, which
+      ! dominates the out-of-plane k <= p-3.
+      CASE (7)
+        deg = p - 2
+      ! Brick: "DO i=2,p-4 ; DO j=2,p-i-2 ; DO k=2,p-i-j" over
+      ! Phi(i)*Phi(j)*Phi(k), so with the other two at their minimum of 2 one
+      ! index reaches p-4.
+      CASE (8)
+        deg = p - 4
+      END SELECT
+    END IF
+
+    deg = MAX(0, deg)
+!------------------------------------------------------------------------------
+  END FUNCTION getBubbleMaxDegree1D
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 !> Checks whether any solver of the given model has been associated with
-!> p-element definitions  
+!> p-element definitions
 !------------------------------------------------------------------------------
   FUNCTION isActivePModel(Model) RESULT(Active)
 !------------------------------------------------------------------------------
@@ -947,19 +1007,19 @@ CONTAINS
     LOGICAL :: Active
 !------------------------------------------------------------------------------
     INTEGER :: i
-!------------------------------------------------------------------------------    
+!------------------------------------------------------------------------------
     Active = .FALSE.
-    
+
     DO i=1,Model % NumberOfSolvers
       Active = isActivePSolver(Model % Solvers(i))
       IF (Active) EXIT
     END DO
 !------------------------------------------------------------------------------
   END FUNCTION isActivePModel
-!------------------------------------------------------------------------------    
-    
 !------------------------------------------------------------------------------
-!> Checks if given element is a p-element active in a particular solver.   
+
+!------------------------------------------------------------------------------
+!> Checks if given element is a p-element active in a particular solver.
 !------------------------------------------------------------------------------
   FUNCTION isActivePElement(Element,USolver) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -971,19 +1031,19 @@ CONTAINS
 
     INTEGER :: m
     TYPE(Solver_t), POINTER :: pSolver
-        
+
     retVal = isPelement(Element)
 
     ! The solver can have an active p-element only when p-element information
     ! is associated
     IF(.NOT. retVal) RETURN
-    
+
     IF( PRESENT( USolver ) ) THEN
       pSolver => USolver
     ELSE
       pSolver => CurrentModel % Solver
     END IF
-    
+
     IF(ASSOCIATED(pSolver))THEN
       IF(ALLOCATED(pSolver % Def_Dofs)) THEN
         m = Element % Type % ElementCode / 100
@@ -1006,22 +1066,22 @@ CONTAINS
 
     TYPE(Solver_t) :: Solver
     LOGICAL :: retVal
- 
+
     TYPE(Element_t) :: Element
-        
-    retVal = .FALSE.    
+
+    retVal = .FALSE.
     IF(ALLOCATED(Solver % Def_Dofs)) THEN
       retVal = ANY(Solver % Def_Dofs(:,:,6)>0)
     END IF
-    
+
 !------------------------------------------------------------------------------
   END FUNCTION isActivePSolver
 !------------------------------------------------------------------------------
 
-  
+
 
 !------------------------------------------------------------------------------
-!> Checks whether given element has p-element information associated  
+!> Checks whether given element has p-element information associated
 !------------------------------------------------------------------------------
     FUNCTION isPElement( Element ) RESULT(retVal)
 !------------------------------------------------------------------------------
@@ -1033,7 +1093,7 @@ CONTAINS
 !  FUNCTION VALUE:
 !    LOGICAL :: retVal
 !       .TRUE. if given element is a p element, .FALSE. otherwise
-!    
+!
 !------------------------------------------------------------------------------
       IMPLICIT NONE
 
@@ -1044,7 +1104,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     END FUNCTION isPElement
 !------------------------------------------------------------------------------
-    
+
 
 !------------------------------------------------------------------------------
   FUNCTION getEffectiveBubbleP(Element,set_p,bdofs) RESULT(p)
@@ -1075,7 +1135,7 @@ CONTAINS
     FUNCTION getNumberOfGaussPoints( Element, Mesh ) RESULT(ngp)
 !------------------------------------------------------------------------------
       IMPLICIT NONE
-      TYPE(Mesh_t) :: Mesh 
+      TYPE(Mesh_t) :: Mesh
       TYPE(Element_t) :: Element
       INTEGER :: ngp
 !------------------------------------------------------------------------------
@@ -1093,18 +1153,18 @@ CONTAINS
            Element % TYPE % DIMENSION == 3) THEN
          edgeP = getEdgeP( Element, Mesh )
       END IF
-      
+
       ! Max p of faces
       faceP = 0
       IF ( Element % TYPE % DIMENSION == 3 ) THEN
          faceP = getFaceP(Element, Mesh )
       END IF
-      
+
       ! Element bubble p
       bubbleP = getEffectiveBubbleP(Element,Element % PDefs % P,Element % bdofs)
       TrueBubbleP = bubbleP
 
-      ! Special quadrature may be available: 
+      ! Special quadrature may be available:
       IF (Element % PDefs % Serendipity .AND. Element % TYPE % ElementCode / 100 == 4) THEN
         ! The true polynomial degree is as follows
         !maxp = MAX(1, edgeP, faceP, TrueBubbleP)
@@ -1135,7 +1195,15 @@ CONTAINS
           END IF
         END IF
       END IF
-      ! Get the number r of Gauss points for the product of two basis functions: 
+      ! The tensor count below is (degree+1)**dim, which needs a PER-DIRECTION
+      ! degree; under serendipity the bubble loops are indexed by a total
+      ! degree. Convert before taking the MAX. This is a no-op for a plain
+      ! "p:N" element, where edgeP == N already dominates and is genuinely
+      ! per-direction; it bites only when an explicit "b:" raises the bubble
+      ! degree above the edge and face degrees.
+      bubbleP = getBubbleMaxDegree1D( Element, bubbleP )
+
+      ! Get the number r of Gauss points for the product of two basis functions:
       ! r = (2*max(p)+1)/2
       maxp = MAX(1, edgeP, faceP, bubbleP) + 1
       ! The number of Gauss points based on the Cartesian product (more efficient
@@ -1150,11 +1218,11 @@ CONTAINS
     FUNCTION getEdgeP( Element, Mesh ) RESULT(edgeP)
 !------------------------------------------------------------------------------
       IMPLICIT NONE
-      
+
       TYPE(Mesh_t) :: Mesh
-      TYPE(Element_t) :: Element 
+      TYPE(Element_t) :: Element
       TYPE(Element_t), POINTER :: Edge
-      
+
       INTEGER :: edgeP, i
 
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
@@ -1186,7 +1254,7 @@ CONTAINS
       TYPE(Element_t), POINTER :: Face
       INTEGER :: faceP, i
       TYPE(Mesh_t) :: Mesh
-      
+
       IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
          CALL Warn('PElementMaps::getFaceP','Element not p element')
          faceP = 0
@@ -1231,10 +1299,10 @@ CONTAINS
         ! If no face dofs, the max p is defined by the edges
         maxp = edgeP
       ELSE
-        maxp = MAX(edgeP, Face % PDefs % P)  
+        maxp = MAX(edgeP, Face % PDefs % P)
       END IF
 
-      ! An economic quadrature may be available: 
+      ! An economic quadrature may be available:
       IF (Face % Pdefs % Serendipity .AND. Face % TYPE % ElementCode / 100 == 4) THEN
         !IF ( .NOT.(maxp < 4 .AND. Face % BDOFs>0) ) THEN
         IF (maxp > 1 .AND. maxp <= 8) THEN
@@ -1264,8 +1332,8 @@ CONTAINS
 !------------------------------------------------------------------------------
     END FUNCTION getNumberOfGaussPointsFace
 !------------------------------------------------------------------------------
- 
-  
+
+
 !------------------------------------------------------------------------------
 !>     Subroutine for getting reference p element nodes (because these are NOT
 !>     yet defined in element description files)
@@ -1277,7 +1345,7 @@ SUBROUTINE GetRefPElementNodes(Element, U, V, W)
         REAL(KIND=dp) :: U(:), V(:), W(:)
         !--------------------------------------------------------------------------------
         INTEGER :: n
-        !--------------------------------------------------------------------------------    
+        !--------------------------------------------------------------------------------
         ! Reserve space for element nodes
         n = Element % NumberOfNodes
 
@@ -1289,6 +1357,19 @@ SUBROUTINE GetRefPElementNodes(Element, U, V, W)
                 element % N_NodeW = element % NOdeW
         END IF
 !$OMP END single
+
+    ! Only the coordinates that the element's own dimension uses are set below,
+    ! and only for its corner nodes, so start from zero: this is the same
+    ! convention the nodal definitions follow, where elements.def gives no
+    ! "Node V"/"Node W" line for a lower-dimensional element and the reader
+    ! defaults the missing component to zero. Without this the unset entries
+    ! stay as whatever the ALLOCATE in SwapRefElemNodes happened to get, and
+    ! they do escape: a 2D parent element's NodeW is read as the third
+    ! reference coordinate of a boundary node in e.g. ElasticSolve's
+    ! LocalBoundaryMatrix.
+    U = 0.0_dp
+    V = 0.0_dp
+    W = 0.0_dp
 
     ! Select by element type given
     SELECT CASE(Element % ElementCode / 100)
@@ -1330,7 +1411,7 @@ SUBROUTINE GetRefPElementNodes(Element, U, V, W)
 !------------------------------------------------------------------------------
     END SUBROUTINE GetRefPElementNodes
 !------------------------------------------------------------------------------
-    
+
 
 END MODULE PElementMaps
 

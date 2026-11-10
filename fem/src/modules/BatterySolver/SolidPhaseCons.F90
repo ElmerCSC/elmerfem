@@ -3,10 +3,10 @@
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
-!> Initialization of the primary solver. 
+!> Initialization of the primary solver.
 !> If requested create an internal mesh.
 !> This is the only solver that operates on the internal 1D mesh
-!> that is active in every node of the global 1D/2D/3D mesh. 
+!> that is active in every node of the global 1D/2D/3D mesh.
 !------------------------------------------------------------------------------
 SUBROUTINE SolidPhaseCons_Init( Model,Solver,dt,Transient)
   USE MeshBasics, ONLY : CreateLineMesh
@@ -26,7 +26,7 @@ SUBROUTINE SolidPhaseCons_Init( Model,Solver,dt,Transient)
 
   CALL ListAddInteger(Params,'1D Active Direction',1)
   CALL ListAddNewConstReal(Params,'1D Mesh Length',1.0_dp)
-  
+
   ! Create 1D mesh on the fly and set it to be the active mesh of this solver.
   IF( GetLogical( Params,'1D Mesh Create') ) THEN
     CALL Info(Caller,'Creating internal 1D mesh')
@@ -34,15 +34,15 @@ SUBROUTINE SolidPhaseCons_Init( Model,Solver,dt,Transient)
     ! The initial 1D mesh is x \in [0,1].
     ! Currently we deal with the unite mesh inside the code
     Mesh => CreateLineMesh( Params )
-    
-    Mesh % OutputActive = .FALSE.
-    Solver % Mesh => Mesh 
 
-    
+    Mesh % OutputActive = .FALSE.
+    Solver % Mesh => Mesh
+
+
     ! Add the mesh to the list of meshes
     PMesh => Model % Meshes
     IF( ASSOCIATED( PMesh ) ) THEN
-      DO WHILE ( ASSOCIATED( PMesh % Next ) ) 
+      DO WHILE ( ASSOCIATED( PMesh % Next ) )
         Pmesh => PMesh % Next
       END DO
       Pmesh % Next => Mesh
@@ -56,17 +56,17 @@ SUBROUTINE SolidPhaseCons_Init( Model,Solver,dt,Transient)
   CALL ListAddLogical( Params,'Optimize Bandwidth',.FALSE.)
 
   ! We will assembly mass & stiffness matrices only once and use them
-  ! for timestepping. To be able to separate mass matrix we need to have this flag on. 
+  ! for timestepping. To be able to separate mass matrix we need to have this flag on.
   CALL ListAddLogical( Params,'Use Global Mass Matrix',.TRUE.)
 
   ! We solve number of 1D equation but study the average norm rather than an individual one
   CALL ListAddNewLogical( Params,'Skip Compute Nonlinear Change',.TRUE.)
   CALL ListAddNewLogical( Params,'Skip Compute Steady State Change',.TRUE.)
-  
+
   IF( ListGetLogical( Params,'Linearize Flux',Found ) ) THEN
     CALL ListAddNewLogical( Params,'Calculate Cs Sensitivity',.TRUE.)
   END IF
-  
+
 END SUBROUTINE SolidPhaseCons_Init
 
 
@@ -75,7 +75,7 @@ END SUBROUTINE SolidPhaseCons_Init
 !> Solve for the 1D diffusion equation taking place at every node (or just once).
 !> By default the equation is solved in a spherically symmetric domain (dim=3).
 !> Also line strip (dim=1) and circle (dim=2) could be possible geometries but
-!> are not currently supported. 
+!> are not currently supported.
 !------------------------------------------------------------------------------
 SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
@@ -97,7 +97,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   INTEGER :: t,i,j,k,l,n,nn,dofs,elems,iLeft,iRight,jLeft,jRight,&
       CsNodes, timestep, prevtimestep = -1, iter, maxiter, &
       VisitedTimes = 0, NoLimited, NoPassive
-  INTEGER, POINTER :: CsPerm(:)  
+  INTEGER, POINTER :: CsPerm(:)
   LOGICAL, ALLOCATABLE :: NodeDone(:)
   LOGICAL :: Found, Newton, Show, DoRelax, DoSSRelax, &
       LimitDxLoc, LimitDxGlo, NewtonConst, DoPotRelax
@@ -110,7 +110,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   CHARACTER(LEN=MAX_NAME_LEN) :: str
   LOGICAL :: Visited = .FALSE., DoOutput, PostFix
   REAL(KIND=dp) :: fluxerr, minfluxerr, maxfluxerr
-  
+
   SAVE Visited, prevtimestep, PrevSSRelax, &
       CsNodes, CsPerm, iLeft, iRight, jLeft, jRight, &
       x0, Fullx0, Phie0, Phis0
@@ -140,19 +140,19 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   xprev => Var % PrevValues
 
   maxiter = ListGetInteger( Params,'Nonlinear System Max Iterations',Found)
-  IF(.NOT. Found ) maxiter = 1  
+  IF(.NOT. Found ) maxiter = 1
   Relax = ListGetCReal( Params,'Nonlinear System Relaxation Factor',DoRelax )
 
   SSRelax0 = ListGetCReal( Params,'Solid Phase Relaxation Factor',DoSSRelax )
   IF(.NOT. DOSSRelax ) SSRelax0 = 1.0
   PrevSSRelax = SSRelax0
-  
+
   NonlinTol = ListGetCReal( Params,'Nonlinear System Convergence Tolerance',Found )
 
-  dxliml = dt * ListGetCReal( Params,'Maximum Local Change Speed',LimitDxLoc )  
-  dxlimg = dt * ListGetCReal( Params,'Maximum Global Change Speed',LimitDxGlo )  
-  
-  
+  dxliml = dt * ListGetCReal( Params,'Maximum Local Change Speed',LimitDxLoc )
+  dxlimg = dt * ListGetCReal( Params,'Maximum Global Change Speed',LimitDxGlo )
+
+
   IF( .NOT. Visited ) THEN
     CALL Info(Caller,'Local mesh has '//I2S(dofs)//' nodes and '//I2S(elems)//' elements')
 
@@ -160,22 +160,22 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
       CALL Fatal(Caller,'Size of variable "'//TRIM(Var % Name)//&
           '" should be equal to number of 1D mesh nodes!')
     END IF
-    
+
     ! We assume simple mesh that extends in the 1st coordinate direction.
-    ! The BCs can only be given at the start and at the finish of it. 
-    iLeft = ExtremeLeftNode( SubMesh ) 
-    iRight = ExtremeRightNode( SubMesh ) 
-    
+    ! The BCs can only be given at the start and at the finish of it.
+    iLeft = ExtremeLeftNode( SubMesh )
+    iRight = ExtremeRightNode( SubMesh )
+
     jLeft = Var % Perm(iLeft)
-    jRight = Var % Perm(iRight)    
-    
+    jRight = Var % Perm(iRight)
+
     ! The 1D solid phase diffusion equation is solved in SubMesh.
     ! The other equations are solved in MainMesh.
     !-------------------------------------------------------------------------------------
-    CsPerm => CsVar % Perm  
+    CsPerm => CsVar % Perm
     ! Number Of active nodes for concentration
-    CsNodes = SIZE( CsVar % Values )    
-    
+    CsNodes = SIZE( CsVar % Values )
+
     CALL Info(Caller,'Allocating full solution for solid phase',Level=8)
 
     ! If requested saves the solid phase profile for visualization
@@ -183,7 +183,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     DoOutput = ListGetLogical( Params,'Save Solid Phase Profile', Found )
     CALL VariableAddVector( MainMesh % Variables, MainMesh, Solver,'Cs Profile',dofs,&
         Perm = CsVar % Perm, Output = DoOutput, Secondary = .TRUE.)
-    
+
     CsFullVar => VariableGet( MainMesh % Variables,'Cs Profile' )
     n = SIZE( Var % PrevValues, 2 )
 
@@ -195,7 +195,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     DO i=1,n
       CsFullVar % PrevValues(:,i) = CsFullVar % Values(:)
     END DO
-    
+
     ALLOCATE( x0( SIZE( x ) ) )
     IF( DoSSRelax .OR. LimitDxGlo ) ALLOCATE( FullX0( SIZE( CsFullVar % Values ) ) )
     !PrevSSRelax = SSRelax0
@@ -204,25 +204,25 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     IF( ASSOCIATED( CsInitVar ) ) THEN
       CsInitVar % Values = CsVar % Values
     END IF
-    
+
     Visited = .TRUE.
   END IF
-    
+
   VisitedTimes = VisitedTimes + 1
 
   NoPassive = GetInteger( Params,'Number of Passive Visits',Found )
 
   PotRelax = ListGetCReal( Params,'Potential Relaxation Factor',DoPotRelax)
-  IF( DoPotRelax ) THEN    
+  IF( DoPotRelax ) THEN
     IF( .NOT. ALLOCATED( PhiS0 ) ) THEN
       ALLOCATE( PhiS0( SIZE( PhisVar % Values ) ), Phie0( SIZE( PhieVar % Values ) ) )
     END IF
     Phis0 = PhisVar % Values
     Phie0 = PhieVar % Values
     PhisVar % Values = PotRelax * PhisVar % Values + (1.0_dp-PotRelax) * Phis0
-    PhieVar % Values = PotRelax * PhieVar % Values + (1.0_dp-PotRelax) * Phie0    
+    PhieVar % Values = PotRelax * PhieVar % Values + (1.0_dp-PotRelax) * Phie0
   END IF
-      
+
   IF( VisitedTimes < NoPassive ) THEN
     RETURN
   END IF
@@ -230,11 +230,11 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   PostFix = GetLogical( Params,'Check Material Balance',Found )
   minfluxerr = HUGE(minfluxerr)
   maxfluxerr = -HUGE(maxfluxerr)
-  
+
   timestep = GetTimestep()
 
   ! If we are on a new timestep advance concentration forward in time.
-  IF( timestep /= prevtimestep ) THEN  
+  IF( timestep /= prevtimestep ) THEN
     IF( timestep > 1 ) THEN
       CALL Info(Caller,'Moving concentration forward in time: '//I2S(timestep))
       n = SIZE( CsFullVar % PrevValues,2 )
@@ -247,21 +247,21 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
   END IF
 
   ALLOCATE( NodeDone( MainMesh % NumberOfNodes ) )
-  
+
   ! Update surface flux
-  Newton = ListGetLogical( Params,'Linearize Flux',Found )     
+  Newton = ListGetLogical( Params,'Linearize Flux',Found )
   NewtonConst = ListGetLogical( Params,'Linearize Flux Average',Found)
   NewtonCoeff = ListGetCReal( Params,'Linearize Flux Multiplier',Found)
   IF(.NOT. Found ) NewtonCoeff = 1.0
   IF( NewtonConst ) Newton = .TRUE.
-    
-  IF( DoSSRelax .OR. LimitDxGlo ) Fullx0 = CsFullVar % Values 
+
+  IF( DoSSRelax .OR. LimitDxGlo ) Fullx0 = CsFullVar % Values
 
 #if 0
   TotFlux0(1) = SUM( JliVar % Values * AnodeWeight, AnodeWeight > 0 )
   TotFlux0(2) = SUM( -JliVar % Values * AnodeWeight, AnodeWeight < 0 )
 #endif
-  
+
   DO iter = 1, maxiter
     IF(maxiter>1) CALL Info(Caller,'Nonlinear system iteration: '//I2S(iter),Level=5)
     NoLimited = 0
@@ -271,11 +271,11 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
       BLOCK
         REAL(KIND=dp) :: TotSens(2), TotFlux(2), dphi(2)
         INTEGER :: iter
-        
+
         CALL ListAddLogical( Params,'Calculate Phis Sensitivity',.TRUE.)
 
         DO iter = 1, 20
-        
+
           CALL ButlerVolmerUpdate( Solver )
           SensVar => VariableGet( MainMesh % Variables,'dJli dPhis')
           IF(.NOT. ASSOCIATED( SensVar ) ) THEN
@@ -298,19 +298,19 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
             PhisVar % Values = PhisVar % Values + dphi(2)
           END WHERE
         END DO
-        !CALL ListAddLogical( Params,'Calculate Phis Sensitivity',.FALSE.)        
+        !CALL ListAddLogical( Params,'Calculate Phis Sensitivity',.FALSE.)
       END BLOCK
     END IF
 #endif
-    
-    IF( iter == 1 ) THEN    
+
+    IF( iter == 1 ) THEN
       CALL ButlerVolmerUpdate( Solver )
-      ! On the 1st iteration save the flux 
+      ! On the 1st iteration save the flux
       IF( UseMeanFlux ) THEN
         Jli0 = JliVar % Values
       END IF
     END IF
-      
+
     IF( Newton ) THEN
       SensVar => VariableGet( MainMesh % Variables,'dJli dCs')
       IF(.NOT. ASSOCIATED( SensVar ) ) THEN
@@ -328,7 +328,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     PrevMaterial => NULL()
     NodeDone = .FALSE.
     dxmax = 0.0_dp
-    
+
     ! Loop over elements is done only in order to have handle for Material
     DO t=1,MainMesh % NumberOfBulkElements
       Element => MainMesh % Elements(t)
@@ -338,25 +338,25 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
 
       n  = GetElementNOFNodes(Element)
       nn = GetElementNOFDOFs(Element)
-      
+
       DO i=1,n
         j = Element % NodeIndexes(i)
-        IF( NodeDone(j) ) CYCLE           
+        IF( NodeDone(j) ) CYCLE
         NodeDone(j) = .TRUE.
         k = CsPerm(j)
 
-        ! Copy the 1D concentration values related to a node        
+        ! Copy the 1D concentration values related to a node
         x(1:dofs) = CsFullVar % Values(dofs*(k-1)+1:dofs*k)
         xprev(1:dofs,:) = CsFullVar % PrevValues(dofs*(k-1)+1:dofs*k,:)
         x0 = x
-        
+
         ! Obtain flux from precomputed Butler-Volmer solution
         IF( UseMeanFlux .OR. UseTimeAveFlux ) THEN
-          Flux = 0.5_dp * ( JliVar % Values(k) + Jli0(k) ) 
+          Flux = 0.5_dp * ( JliVar % Values(k) + Jli0(k) )
         ELSE
           Flux = JliVar % Values(k)
         END IF
-        
+
         IF( Newton ) THEN
           IF( NewtonConst ) THEN
             diffflux = NewtonCoeff * NewtonFactor
@@ -365,12 +365,12 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
           END IF
           IF( UseMeanFlux .OR. UseTimeAveFlux ) diffFlux = diffFlux / 2
         END IF
-                
+
         ! The 1D diffusion matrix is the same unless the diffusion coefficient has changed.
         IF( .NOT. ASSOCIATED( Material, PrevMaterial ) ) THEN
           Show = .TRUE.
-          FluxCoeff = SolidFluxScaling( Material )        
-          DiffCoeff = ListGetCReal( Material,'Solid Phase Diffusion Coefficient')    
+          FluxCoeff = SolidFluxScaling( Material )
+          DiffCoeff = ListGetCReal( Material,'Solid Phase Diffusion Coefficient')
           R_s = ListGetCReal( Material,'Particle Radius')
 
           ! We assumed mesh is [0,1]
@@ -378,10 +378,10 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
           ! The 1st is scaled away also in the r.h.s. but the second means we must rescale diffusion
           DiffCoeff = DiffCoeff / R_s**2
           MassMult1D = 0.0_dp
-          
+
           CALL LocalAssembly1D(DiffCoeff)
           PrevMaterial => Material
-          CALL CopyBulkMatrix( Amat, BulkMass = .TRUE. ) 
+          CALL CopyBulkMatrix( Amat, BulkMass = .TRUE. )
         ELSE
           IF( t == 0 ) THEN
             PRINT *,'Restore:'
@@ -393,9 +393,9 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
         END IF
 
         CALL Default1stOrderTimeGlobal(Solver)
-        
-        ! Source term as the Neumann BC in (3.4) 
-        bvec(jRight) = bvec(jRight) - FluxCoeff * Flux 
+
+        ! Source term as the Neumann BC in (3.4)
+        bvec(jRight) = bvec(jRight) - FluxCoeff * Flux
         IF( Newton ) THEN
           CALL CRS_AddToMatrixElement( Amat,jRight,jRight, FluxCoeff*diffFlux)
           bvec(jRight) = bvec(jRight) + FluxCoeff * diffFlux * x0(jRight)
@@ -406,22 +406,22 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
         Norm = DefaultSolve()
 
         IF( PostFix ) THEN
-          fluxerr = SUM( MassMult1D * ( xprev(:,1) - x ) ) / ( FluxCoeff * Flux ) - 1         
+          fluxerr = SUM( MassMult1D * ( xprev(:,1) - x ) ) / ( FluxCoeff * Flux ) - 1
           maxfluxerr = MAX( maxfluxerr, fluxerr )
           minfluxerr = MIN( minfluxerr, fluxerr )
         END IF
-               
+
         IF( DoRelax ) THEN
           x = Relax * x + (1-Relax) * x0
         END IF
-        
+
         ! The concentration change at the solid-liquid interface
         dx = x(jright) - x0(jright)
 
         ! Limit concentration change in each individual node separately
         IF( LimitDxLoc ) THEN
-          IF( ABS( dx ) > dxliml ) THEN          
-            
+          IF( ABS( dx ) > dxliml ) THEN
+
             NoLimited = NoLimited + 1
             IF( NoLimited < 5 ) THEN
               PRINT *,'Limited Cs:',iter,j,k,x(Jright),dx
@@ -437,7 +437,7 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
             ! that the change is solution is no more than "dxliml"
             CALL ZeroRow( Amat, jRight )
             CALL CRS_AddToMatrixElement( Amat,jRight,jRight,1.0_dp)
-            bvec(jRight) = x0(jright) + SIGN( dxliml, dx ) 
+            bvec(jRight) = x0(jright) + SIGN( dxliml, dx )
             Norm = DefaultSolve()
             dx = x(jright) - x0(jright)
           END IF
@@ -445,41 +445,41 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
 
         ! Remember the maximum change in concentration
         dxmax = MAX( ABS(dx), dxmax )
-        
-        ! We skipped internal computation 
-        Norm = SUM( x**2 ) 
+
+        ! We skipped internal computation
+        Norm = SUM( x**2 )
         dNorm = SUM( (x-x0)**2 )
 
         ! Compute summed norm for all the solid phase nodes
         SumNorm = SumNorm + Norm
         SumdNorm = SumdNorm + dNorm
-        
+
         ! Back copy the computed node-wise results to the full vector
         CsFullVar % Values(dofs*(k-1)+1:dofs*k) = x
         CsVar % Values(k) = x(jRight)
       END DO
-      
+
       Show = .FALSE.
     END DO
-    
+
     IF( LimitDxLoc ) THEN
       CALL Info(Caller,'Limiter applied '//I2S(NoLimited)//&
           ' times on iteration '//I2S(iter))
     END IF
-    
-    ! For testing purposes add the summed average norm as the target norm 
+
+    ! For testing purposes add the summed average norm as the target norm
     Change = SQRT( SumdNorm / SumNorm )
 
-    Norm = SQRT( SumNorm / CsNodes )    
-    Solver % Variable % Norm = Norm 
+    Norm = SQRT( SumNorm / CsNodes )
+    Solver % Variable % Norm = Norm
 
     ! We imitate here a standard norm output to be able able to study the
-    ! output as usual (using "grep", for example). 
+    ! output as usual (using "grep", for example).
     str = ListGetString( Params,'Equation')
     WRITE( Message, '(a,g15.8,g15.8,a)') &
         'NS (ITER='//i2s(iter)//') (NRM,RELC): (',Norm, Change,&
         ' ) :: '// TRIM(str)
-    CALL Info( Caller, Message )        
+    CALL Info( Caller, Message )
 
     IF( Change < NonlinTol ) EXIT
   END DO
@@ -495,16 +495,16 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
       IF( SSRelax > PrevSSRelax ) SSRelax = SQRT( SSRelax * PrevSSRelax )
       PrevSSRelax = SSRelax
     END IF
-      
+
     CsFullVar % Values = SSRelax * CsFullVar % Values + (1-SSRelax) * Fullx0
 
-    ! Update the surface concentrations in solid phase after complete solution & relaxation 
+    ! Update the surface concentrations in solid phase after complete solution & relaxation
     CsVar % Values = CsFullVar % Values(jright::dofs)
   END IF
-    
+
   n = COUNT( CsVar % Values < 0 )
   IF( n > 0 ) THEN
-    CALL Fatal(Caller,'We got '//I2S(n)//' negative concentration!')       
+    CALL Fatal(Caller,'We got '//I2S(n)//' negative concentration!')
   END IF
 
   ! We want to visualize a given node with the 1D solution then we may
@@ -526,11 +526,11 @@ SUBROUTINE SolidPhaseCons( Model,Solver,dt,Transient )
     CALL ListAddConstReal( Model % Simulation,'res: concentration relax',SSRelax )
     WRITE( Message,'(A,ES12.4)') 'Solid phase relaxation factor: ',SSRelax
     CALL Info(Caller,Message,Level=5)
-  END IF     
-  
+  END IF
+
   CALL Info(Caller,'Solid phase concentration computed',Level=8)
 
-  
+
 CONTAINS
 
 
@@ -550,30 +550,30 @@ CONTAINS
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t), SAVE :: Nodes
     !------------------------------------------------------------------------------
-    
+
     ! Allocate storage if needed
     IF (.NOT. ALLOCATED(Basis)) THEN
       m = SubMesh % MaxElementDofs
       ALLOCATE(Basis(m), dBasisdx(m,3),&
-          MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)      
+          MASS(m,m), STIFF(m,m), FORCE(m), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal(Caller,'Local storage allocation failed')
       END IF
     END IF
 
     CALL InitializeToZero( Amat, bvec )
-    
+
     DO e = 1, SubMesh % NumberOfBulkElements
-      Element1D => SubMesh % Elements(e)   
+      Element1D => SubMesh % Elements(e)
       IP = GaussPoints( Element1D, Element1D % Type % GaussPoints2 )
 
-      CALL GetElementNodes( Nodes, UElement=Element1D )      
+      CALL GetElementNodes( Nodes, UElement=Element1D )
       m = GetElementNOFNodes(Element1D)
 
       MASS  = 0._dp
       STIFF = 0._dp
       FORCE = 0._dp
-        
+
       DO t=1,IP % n
         ! Basis function values & derivatives at the integration point:
         !--------------------------------------------------------------
@@ -584,31 +584,31 @@ CONTAINS
         ! particles are assumed to be spheres
         rad = SUM( Nodes % x(1:m)*Basis(1:m) )
         Weight = Weight * rad**2 ! 4*PI neglected
-          
+
         DO p=1,m
           DO q=1,m
             STIFF(p,q) = STIFF(p,q) + Weight * DiffCoeff * SUM( dBasisdx(p,:) * dBasisdx(q,:) )
-            MASS(p,q) = MASS(p,q) + Weight * Basis(p) * Basis(q) 
+            MASS(p,q) = MASS(p,q) + Weight * Basis(p) * Basis(q)
           END DO
 
           ! We use this just temporarily to integrate the MassMult1D
           FORCE(p) = FORCE(p) + Weight * Basis(p)
         END DO
-        
+
       END DO
 
       ! This is the vector that can quickly recover total amounts on 1D stride
       MassMult1D(Element1D % NodeIndexes(1:m)) = MassMult1D(Element1D % NodeIndexes(1:m)) + &
           Force(1:m)
       Force = 0.0_dp
-        
+
       ! When we use global mass matrix this only updates MassValues
-      IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element1D)    
+      IF(Transient) CALL Default1stOrderTime(MASS,STIFF,FORCE,UElement=Element1D)
 
       ! This updates Values and rhs
       CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element1D)
     END DO
-          
+
   END SUBROUTINE LocalAssembly1D
-   
+
 END SUBROUTINE SolidPhaseCons

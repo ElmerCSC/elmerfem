@@ -135,11 +135,11 @@ CONTAINS
     LOGICAL, INTENT(IN) :: VecAsm
 !------------------------------------------------------------------------------
 
-    REAL(KIND=dp), ALLOCATABLE, TARGET, SAVE :: Coeffs(:,:), CoeffsInBasis(:,:)
+    REAL(KIND=dp), ALLOCATABLE, TARGET :: Coeffs(:,:), CoeffsInBasis(:,:)
     INTEGER, PARAMETER :: DIFF_IND = 1, CONV_IND = 2, REACT_IND= 3, TIME_IND = 4, &
          LOAD_IND = 5, VELO_IND = 6
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
-    REAL(KIND=dp), ALLOCATABLE, SAVE :: MASS(:,:), STIFF(:,:), FORCE(:)
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:),dBasisdx(:,:,:), DetJ(:)
+    REAL(KIND=dp), ALLOCATABLE :: MASS(:,:), STIFF(:,:), FORCE(:)
     REAL(KIND=dp), POINTER CONTIG :: diff_coeff(:), conv_coeff(:), react_coeff(:), &
          time_coeff(:), Load(:), Velo(:,:), LoadAtIp(:), &
          DiffInBasis(:), ReactInBasis(:), ConvInBasis(:), VeloInBasis(:,:), rho(:)
@@ -148,9 +148,7 @@ CONTAINS
     INTEGER :: i,t,p,q,dim,ngp,allocstat
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
-    TYPE(Nodes_t), SAVE :: Nodes
-    !$OMP THREADPRIVATE(Coeffs, CoeffsInBasis, Basis, dBasisdx, DetJ, &
-    !$OMP               MASS, STIFF, FORCE, Nodes)
+    TYPE(Nodes_t) :: Nodes
 !DIR$ ATTRIBUTES ALIGN:64 :: Basis, dBasisdx, DetJ, Coeffs, CoeffsInBasis
 !DIR$ ATTRIBUTES ALIGN:64 :: MASS, STIFF, FORCE
 !------------------------------------------------------------------------------
@@ -159,21 +157,11 @@ CONTAINS
     IP = GaussPoints( Element )
     ngp = IP % n
 
-    ! Deallocate storage if needed
-    IF (ALLOCATED(Basis)) THEN
-       IF (SIZE(Basis,1) < ngp .OR. SIZE(Basis,2) < nd) &
-            DEALLOCATE(Basis,dBasisdx, DetJ, Coeffs, CoeffsInBasis, &
-            MASS, STIFF, FORCE)
-    END IF
-
-    ! Allocate storage if needed
-    IF (.NOT. ALLOCATED(Basis)) THEN
-       ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJ(ngp), &
-            Coeffs(n,VELO_IND+2), CoeffsInBasis(ngp,VELO_IND+2), &
-            MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
-       IF (allocstat /= 0) THEN
-          CALL Fatal('ModelPDEthreaded::LocalMatrix','Local storage allocation failed')
-       END IF
+    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJ(ngp), &
+         Coeffs(n,VELO_IND+2), CoeffsInBasis(ngp,VELO_IND+2), &
+         MASS(nd,nd), STIFF(nd,nd), FORCE(nd), STAT=allocstat)
+    IF (allocstat /= 0) THEN
+       CALL Fatal('ModelPDEthreaded::LocalMatrix','Local storage allocation failed')
     END IF
 
     CALL GetElementNodesVec( Nodes, UElement=Element )
@@ -334,8 +322,6 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: BC
 
     TYPE(Nodes_t) :: Nodes
-    SAVE Nodes
-    !$OMP THREADPRIVATE(Nodes)
 !------------------------------------------------------------------------------
     BC => GetBC(Element)
     IF (.NOT.ASSOCIATED(BC) ) RETURN

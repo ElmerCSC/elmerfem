@@ -1,7 +1,14 @@
-! A test case for the new StatCurrentSolveVec module.
+! A test case for the StatCurrentSolveVec module.
 !
-! Includes isotropic conduction. 
+! Includes isotropic conduction.
 ! Vectorized assembly.
+!
+! StatCurrentSolveVec is now a thin backward-compatibility front for
+! StatCurrentSolve (the vectorized solver moved there; StatCurrentSolveVec's
+! own name is kept only so old sifs naming it directly keep working). This is
+! the one test in the suite deliberately left naming "StatCurrentSolveVec"
+! rather than "StatCurrentSolve", so that front keeps continuous regression
+! coverage -- do not repoint it.
 !
 ! P.R. 13.11.2018
 

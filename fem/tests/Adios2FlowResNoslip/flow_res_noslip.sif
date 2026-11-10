@@ -54,6 +54,11 @@ Solver 1
   Nonlinear System Relaxation Factor = 1.0
   Steady State Convergence Tolerance = 1.0e-05
 
+  linear system save = logical true
+  linear system save adios2 = logical true
+  linear system save slot = after
+  linear system save solution = logical true
+
   Calculate Loads = Logical True
 End
 

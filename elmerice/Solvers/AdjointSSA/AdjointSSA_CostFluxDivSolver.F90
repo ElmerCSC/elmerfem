@@ -136,7 +136,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: ComputeDJDZb,ComputeDJDZs,ResetCost
   Logical :: Firsttime=.true.,Found,Parallel,stat,Gotit
   LOGICAL :: BoundarySolver
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
   save Firsttime,Parallel 
   save SolverName,CostSolName,CostFile
@@ -283,7 +283,7 @@ SUBROUTINE AdjointSSA_CostFluxDivSolver( Model,Solver,dt,TransientSimulation )
                 'It is not possible to compute SSA problems with DOFs=',&
                 DIM, ' . Aborting'
            CALL Fatal( SolverName, Message)
-           STOP
+           ERROR STOP
         END IF
 
       BodyForce => GetBodyForce()

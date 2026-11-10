@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 04 Oct 2000
 ! *
@@ -58,10 +58,10 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(Matrix_t), POINTER, SAVE :: Proj => NULL()
   TYPE(ValueList_t), POINTER :: Material, BodyForce, BC
-  
+
   LOGICAL :: AllocationsDone = .FALSE., Bubbles, GotIt, notScalar = .TRUE., stat, &
       PrecUse, Found, SecondOrder, PiolaVersion, SecondFamily
-  
+
   INTEGER, POINTER :: NodeIndexes(:)
   INTEGER, POINTER :: PressurePerm(:)
   INTEGER :: dim, iter, i, j, k, n, t, istat, eq, LocalNodes
@@ -71,7 +71,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp) :: Norm, PrevNorm, RelativeChange
   REAL(KIND=dp) :: NonlinearTol,s
   REAL(KIND=dp) :: at0
-  
+
   REAL(KIND=dp), ALLOCATABLE :: LocalStiffMatrix(:,:), Load(:,:), Work(:), &
        LocalForce(:), &
        Amatrix(:,:,:), AvectorReal(:,:), AvectorImag(:,:), AscalarReal(:), &
@@ -123,7 +123,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
   Params => GetSolverParams()
   Mesh => GetMesh()
   dim = CoordinateSystemDimension()
-  
+
   Pressure     => Solver % Variable % Values
   PressurePerm => Solver % Variable % Perm
 
@@ -176,15 +176,15 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
     ELSE
       CALL Fatal('DCRComplexSolve', 'Give Edge Update Name to enable the use as a preconditioner')
     END IF
-    
-    EdgeResVar => NULL()  
+
+    EdgeResVar => NULL()
     sname = ListGetString(Params, 'Edge Residual Name', Found)
     IF (Found) THEN
       EdgeResVar => VariableGet(Mesh % Variables, sname, ThisOnly = .TRUE., UnfoundFatal = .TRUE.)
       EdgeSolverParams => GetSolverParams(EdgeResVar % Solver)
 
       CALL EdgeElementStyle(EdgeSolverParams, PiolaVersion, SecondFamily, SecondOrder, Check = .TRUE.)
-      IF (SecondOrder) CALL Fatal('DCRComplexSolve', 'The lowest-order edge basis assumed') 
+      IF (SecondOrder) CALL Fatal('DCRComplexSolve', 'The lowest-order edge basis assumed')
     ELSE
       CALL Fatal('DCRComplexSolve', 'Give Edge Residual Name to enable the use as a preconditioner')
     END IF
@@ -211,7 +211,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
       CALL NodalGradientToNedelecInterpolation_GlobalMatrix(Mesh, Solver % Variable, EdgeResVar, Proj)
     END IF
   END IF
-  
+
 !------------------------------------------------------------------------------
 ! Iterate over any nonlinearity of material or source
 !------------------------------------------------------------------------------
@@ -241,7 +241,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
            (Solver % NumberOfActiveElements-t) / &
                        (1.0*Solver % NumberOfActiveElements)), ' % done'
           CALL Info( 'DCRComplexSolve', Message, Level=5 )
-                      
+
           at0 = RealTime()
         END IF
 !------------------------------------------------------------------------------
@@ -289,7 +289,7 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 !       Get element local matrix and rhs vector
 !------------------------------------------------------------------------------
-        CALL LocalMatrix(  LocalStiffMatrix, LocalForce, & 
+        CALL LocalMatrix(  LocalStiffMatrix, LocalForce, &
            Load, Bubbles, CurrentElement, n, ElementNodes, &
            Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag )
 !------------------------------------------------------------------------------
@@ -337,15 +337,15 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 
           BscalarReal(1:n) = ListGetReal( BC, &
               'Bscalar 1', n, NodeIndexes, GotIt)
-              
+
           BscalarImag(1:n) = ListGetReal( BC, &
               'Bscalar 2', n, NodeIndexes, GotIt)
-          
+
 !------------------------------------------------------------------------------
 !         Get element local matrix and rhs vector
 !------------------------------------------------------------------------------
           CALL LocalMatrixBoundary( LocalStiffMatrix, LocalForce, &
-              Load, CurrentElement, n, ElementNodes, & 
+              Load, CurrentElement, n, ElementNodes, &
               Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
               Bvector, BscalarReal, BscalarImag )
         END IF
@@ -372,9 +372,9 @@ SUBROUTINE DCRComplexSolver( Model,Solver,dt,TransientSimulation )
 
    IF (PrecUse) THEN
      CALL Info('DCRComplexSolve', 'Projecting nodal solution to vector element space', Level=6)
-     CALL CRS_MatrixVectorMultiply(Proj, Solver % Variable % Values, EdgeSolVar % Values ) 
+     CALL CRS_MatrixVectorMultiply(Proj, Solver % Variable % Values, EdgeSolVar % Values )
    END IF
-   
+
    IF ( ListGetLogical( Solver % Values, 'Adaptive Mesh Refinement', GotIt ) ) THEN
      IF ( .NOT. ListGetLogical( Solver % Values, 'Library Adaptivity', GotIt ) ) THEN
        CALL RefineMesh( Model,Solver,Pressure,PressurePerm, &
@@ -408,10 +408,10 @@ CONTAINS
 
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
       IF ( .NOT. stat ) RETURN
-      
+
       n1 = MIN(SIZE(HWrk,1),3)
       n2 = MIN(SIZE(Hwrk,2),3)
-      IsScalar = (n1==1 .AND. n2==1) 
+      IsScalar = (n1==1 .AND. n2==1)
 
       IF ( IsScalar ) THEN
         t1 = SIZE(Tensor,1)
@@ -468,7 +468,7 @@ CONTAINS
       IsScalar = (n1==1 .AND. n2==1)
 
       IF ( .NOT. stat ) RETURN
-      
+
       IF ( n1 == 1 ) THEN
          DO i=1,n2
             Tensor( i,1:n ) = Hwrk( 1,i,1:n )
@@ -547,7 +547,7 @@ CONTAINS
           s = s * SqrtMetric
        END IF
 !------------------------------------------------------------------------------
-!      The source term and the coefficient of the time derivative and 
+!      The source term and the coefficient of the time derivative and
 !      diffusion terms at the integration point
 !------------------------------------------------------------------------------
 !       D  =  WaveNumber * SUM( Damping(1:n) * Basis(1:n) )
@@ -571,7 +571,7 @@ CONTAINS
              A2(i,j) = A2(i,j) + SUM( Amatrix(i,j,1:n) * Basis(1:n) )
           end do
        end do
-       
+
 !      Stiffness matrix and load vector
 !      --------------------------------
        DO p=1,NBasis
@@ -603,7 +603,7 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-  SUBROUTINE LocalMatrixBoundary(  StiffMatrix, Force, & 
+  SUBROUTINE LocalMatrixBoundary(  StiffMatrix, Force, &
        Load, Element, n, Nodes, &
        Amatrix, AvectorReal, AvectorImag, AscalarReal, AscalarImag, &
        Bvector, BscalarReal, BscalarImag )
@@ -662,7 +662,7 @@ CONTAINS
          END DO
          CYCLE
        END IF
-       
+
        Normal = Normalvector(Element, Nodes, U, V, .TRUE.)
 
        A2 = 0.0d0
@@ -684,7 +684,7 @@ CONTAINS
           B1(i) = B1(i) + SUM( Bvector(i,1:n) * Basis(1:n) )
        end do
        B1(1:dim) = B1(1:dim) + Normal(1:dim)
-       
+
        C0 = 0.0d0
        do i = 1,dim
           do j = 1,dim
@@ -709,14 +709,14 @@ CONTAINS
              A = A + SUM( C1(1:dim) * dBasisdx(q,1:dim) ) * Basis(p)
              LSTIFF(p,q) = LSTIFF(p,q) + s * A
           END DO
-          LFORCE(p) = LFORCE(p) + s * Basis(p) * C0 * CMPLX( L1, L2, KIND=dp ) 
+          LFORCE(p) = LFORCE(p) + s * Basis(p) * C0 * CMPLX( L1, L2, KIND=dp )
        END DO
     END DO
     CALL DefaultUpdateEquations(LSTIFF, LFORCE)
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBoundary
 !------------------------------------------------------------------------------
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE DCRComplexSolver
 !------------------------------------------------------------------------------
@@ -737,7 +737,7 @@ END SUBROUTINE DCRComplexSolver
      TYPE(Element_t), POINTER :: Element, Bndry
 
      INTEGER :: i,j,k,n,l,t,DIM,Pn,En
-     LOGICAL :: stat, GotIt, gotWIreal,gotWIimag 
+     LOGICAL :: stat, GotIt, gotWIreal,gotWIimag
 
      LOGICAL :: notScalar = .TRUE.
 
@@ -775,7 +775,7 @@ END SUBROUTINE DCRComplexSolver
         CASE DEFAULT
            DIM = CoordinateSystemDimension()
      END SELECT
-!    
+!
 !    ---------------------------------------------
      Element => Edge % BoundaryInfo % Left
      IF ( .NOT. ASSOCIATED( Element ) ) THEN
@@ -833,7 +833,7 @@ END SUBROUTINE DCRComplexSolver
 
         CALL InputVector( Bvector, notScalar, 'Bvector', &
              Model % BCs(j) % Values, Pn, Element % NodeIndexes )
-        
+
         BscalarReal(1:Pn) = ListGetReal( Model % BCs(j) % Values, &
              'Bscalar 1', Pn, Element % NodeIndexes, GotIt)
 
@@ -881,7 +881,7 @@ END SUBROUTINE DCRComplexSolver
               u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
               v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
               w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
-      
+
               CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                          Symb, dSymb, u, v, w )
 
@@ -908,7 +908,7 @@ END SUBROUTINE DCRComplexSolver
            B1 = 0.0d0
            B0r = 0.0d0
            B0i = 0.0d0
-           
+
            B0r = SUM( BscalarReal(1:Pn) * Basis(1:Pn) )
            B0i = SUM( BscalarImag(1:Pn) * Basis(1:Pn) )
            do i = 1,dim
@@ -919,14 +919,14 @@ END SUBROUTINE DCRComplexSolver
            WaveFlux = 0.0d0
            WaveFlux(1) = SUM( FluxReal(1:En) * EdgeBasis(1:En) )
            WaveFlux(2) = SUM( FluxImag(1:En) * EdgeBasis(1:En) )
-           
+
            ResidualReal = -WaveFlux(1)
            ResidualImag = -WaveFlux(2)
 
            Greal = 0.0d0
            Gimag = 0.0d0
 !
-!          flux given by the computed solution, and 
+!          flux given by the computed solution, and
 !          force norm for scaling the residual:
 !          -----------------------------------------
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
@@ -936,20 +936,20 @@ END SUBROUTINE DCRComplexSolver
                       SUM( dBasisdx(1:Pn,k) * Pressure(1,1:Pn) ) * B1(k)
 
                  ResidualImag = ResidualImag + &
-                      SUM( dBasisdx(1:Pn,k) * Pressure(2,1:Pn) ) * B1(k) 
+                      SUM( dBasisdx(1:Pn,k) * Pressure(2,1:Pn) ) * B1(k)
 
                  GReal = GReal + &
                       SUM( dBasisdx(1:Pn,k) * Pressure(1,1:Pn) ) * B1(k)
 
                  Gimag = Gimag + &
-                      SUM( dBasisdx(1:Pn,k) * Pressure(2,1:Pn) ) * B1(k) 
+                      SUM( dBasisdx(1:Pn,k) * Pressure(2,1:Pn) ) * B1(k)
 
               END DO
 
               ResidualReal = ResidualReal + &
                     SUM( Basis(1:Pn) * Pressure(1,1:Pn) ) * B0r &
                    -SUM( Basis(1:Pn) * Pressure(2,1:Pn) ) * B0i
-              
+
               ResidualImag = ResidualImag + &
                     SUM( Basis(1:Pn) * Pressure(1,1:Pn) ) * B0i &
                    +SUM( Basis(1:Pn) * Pressure(2,1:Pn) ) * B0r
@@ -957,7 +957,7 @@ END SUBROUTINE DCRComplexSolver
               Greal = Greal + &
                     SUM( Basis(1:Pn) * Pressure(1,1:Pn) ) * B0r &
                    -SUM( Basis(1:Pn) * Pressure(2,1:Pn) ) * B0i
-              
+
               Gimag = Gimag + &
                     SUM( Basis(1:Pn) * Pressure(1,1:Pn) ) * B0i &
                    +SUM( Basis(1:Pn) * Pressure(2,1:Pn) ) * B0r
@@ -1158,7 +1158,7 @@ END SUBROUTINE DCRComplexSolver
                       Symb, dSymb, u, v, w )
            s = IntegStuff % s(t) * detJ * SqrtMetric
         END IF
-! 
+!
 !       Compute flux over the edge as seen by elements
 !       on both sides of the edge:
 !       ----------------------------------------------
@@ -1170,7 +1170,7 @@ END SUBROUTINE DCRComplexSolver
                  Element => Edge % BoundaryInfo % Right
            END SELECT
 !
-!          Can this really happen (maybe it can...)  ?      
+!          Can this really happen (maybe it can...)  ?
 !          -------------------------------------------
            IF ( ANY( Perm( Element % NodeIndexes ) <= 0 ) ) CYCLE
 !
@@ -1211,16 +1211,16 @@ END SUBROUTINE DCRComplexSolver
 
            CALL InputTensor( Amatrix, notScalar, &
                 'Amatrix', Model % Materials(k) % Values, Pn, Element % NodeIndexes )
-           
+
            CALL InputVector( AvectorReal, notScalar, &
                 'Avector 1', Model % Materials(k) % Values, Pn, Element % NodeIndexes )
-           
+
            CALL InputVector( AvectorImag, notScalar, &
                 'Avector 2', Model % Materials(k) % Values, Pn, Element % NodeIndexes )
-           
+
            AscalarReal(1:Pn) = ListGetReal( Model % Materials(k) % Values, &
                 'Ascalar 1', Pn, Element % NodeIndexes, GotIt)
-           
+
            AscalarImag(1:Pn) = ListGetReal( Model % Materials(k) % Values, &
                 'Ascalar 2', Pn, Element % NodeIndexes, GotIt)
 
@@ -1229,7 +1229,7 @@ END SUBROUTINE DCRComplexSolver
            A1i = 0.0d0
            A0r = 0.0d0
            A0i = 0.0d0
-           
+
            A0r = SUM( AscalarReal(1:Pn) * Basis(1:Pn) )
            A0i = SUM( AscalarImag(1:Pn) * Basis(1:Pn) )
            do j = 1,dim
@@ -1260,7 +1260,7 @@ END SUBROUTINE DCRComplexSolver
         END DO
 
 !       Compute squre of the flux jump:
-!       -------------------------------   
+!       -------------------------------
         EdgeLength  = EdgeLength + s
         JumpReal = 0.0d0
         JumpImag = 0.0d0
@@ -1473,16 +1473,16 @@ END SUBROUTINE DCRComplexSolver
 
      CALL InputTensor( Amatrix, notScalar, &
           'Amatrix', Material, n, Element % NodeIndexes )
-     
+
      CALL InputVector( AvectorReal, notScalar, &
           'Avector 1', Material, n, Element % NodeIndexes )
-     
+
      CALL InputVector( AvectorImag, notScalar, &
           'Avector 2', Material, n, Element % NodeIndexes )
-     
+
      AscalarReal(1:n) = ListGetReal( Material, &
           'Ascalar 1', n, Element % NodeIndexes, GotIt)
-     
+
      AscalarImag(1:n) = ListGetReal( Material, &
           'Ascalar 2', n, Element % NodeIndexes, GotIt)
 !
@@ -1539,7 +1539,7 @@ END SUBROUTINE DCRComplexSolver
         A1i = 0.0d0
         A0r = 0.0d0
         A0i = 0.0d0
-        
+
         A0r = SUM( AscalarReal(1:n) * Basis(1:n) )
         A0i = SUM( AscalarImag(1:n) * Basis(1:n) )
         do i = 1,dim
@@ -1570,7 +1570,7 @@ END SUBROUTINE DCRComplexSolver
               ResidualReal = ResidualReal + &
                    SUM( dBasisdx(1:n,i) * Pressione(1,1:n) ) * A1r(i) &
                    -SUM( dBasisdx(1:n,i) * Pressione(2,1:n) ) * A1i(i)
-              
+
               ResidualImag = ResidualImag + &
                    SUM( dBasisdx(1:n,i) * Pressione(1,1:n) ) * A1i(i) &
                    +SUM( dBasisdx(1:n,i) * Pressione(2,1:n) ) * A1r(i)
@@ -1581,7 +1581,7 @@ END SUBROUTINE DCRComplexSolver
            ResidualReal = ResidualReal + &
                 SUM( Basis(1:n) * Pressione(1,1:n) ) * A0r &
                 -SUM( Basis(1:n) * Pressione(2,1:n) ) * A0i
-           
+
            ResidualImag = ResidualImag + &
                 SUM( Basis(1:n) * Pressione(1,1:n) ) * A0i &
                 +SUM( Basis(1:n) * Pressione(2,1:n) ) * A0r
@@ -1667,7 +1667,7 @@ CONTAINS
       IsScalar = (n1==1 .AND. n2==1)
 
       IF ( .NOT. stat ) RETURN
-     
+
       IF ( n1 == 1 ) THEN
          DO i=1,n2
             Tensor( i,i,1:n ) = Hwrk( 1,1,1:n )
@@ -1713,7 +1713,7 @@ CONTAINS
       n1 = MIN(SIZE(HWrk,1),3)
       n2 = MIN(SIZE(HWrk,2),3)
 
-      IsScalar = (n1 == 1 .AND. n2 == 1 ) 
+      IsScalar = (n1 == 1 .AND. n2 == 1 )
       IF ( .NOT. stat ) RETURN
 
       IF ( n1 == 1 ) THEN

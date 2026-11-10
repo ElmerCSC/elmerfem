@@ -1,0 +1,116 @@
+! Minimal transient test for classical FlowSolve's own condensed velocity
+! bubble ("Element = p:1 b:3"), exercising NSCondensateTransient in
+! MatrixAssembly.F90 -- the saddle-point (velocity+pressure, no pressure
+! bubble) analog of CondensatePTransient, giving a condensed FlowSolve
+! velocity bubble a BDF(1) time derivative instead of silently treating its
+! previous value as zero every timestep. Mirrors IncompressibleNSVec's own
+! LCondensate and Step_v2f_vec_transient's coverage of KESolver/V2FSolver's
+! condensed bubbles, but for the classical (non-vectorized) flow solver.
+!
+! "Nonlinear System Min/Max Iterations" are deliberately left unset here so
+! that FlowSolver_init's own default (forcing 2 whenever a condensed bubble
+! is in play) is what's under test, rather than an explicit sif setting.
+!
+Header
+  Mesh DB "." "Step_v2f"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+
+  Simulation Type = Transient
+
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.01
+  Timestep Intervals = 5
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+
+  Set Dirichlet BCs by BC Numbering = True
+
+  Coordinate Scaling(3) = 2 1 0
+
+  Post File = "Step_flow_transient.vtu"
+End
+
+
+Body 1
+  Name  = "Flow"
+  Equation  = 1
+  Material  = 1
+  Initial Condition = 1
+End
+
+
+Body 2
+  Name  = "Flow1"
+  Equation = 1
+  Material = 1
+  Initial Condition = 1
+End
+
+
+Initial Condition 1
+  Velocity 1 = Variable Coordinate 2
+   Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2"
+  Velocity 2 = 0
+End
+
+
+Solver 1
+  Equation = Navier-Stokes
+
+  Element = "p:1 b:3"
+
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Newton After Iterations = 10
+  Nonlinear System Newton After Tolerance  = 1.0e-2
+  Nonlinear System Relaxation Factor = 0.5
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-6
+End
+
+
+Equation 1 :: Active Solvers(1) = 1
+
+
+Material 1
+  Viscosity = 1.49691e-5
+  Density = 1
+End
+
+
+Boundary Condition 1
+  Name
+    String "Inflow"
+
+  Target Boundaries = 1
+
+  Velocity 1 = Variable Coordinate 2
+   Real MATC "l=10*0.0127; s=2*tx/l-1; 1-s^2"
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries(2) = 2 3
+
+  Velocity 2 = 0
+  Pressure   = 0
+End
+
+Boundary Condition 3
+  Target Boundaries(4) = 4 5 6 7
+
+  Noslip Wall BC = Logical True
+End
+
+
+Solver 1 :: Reference Norm = Real 0.39914767
+Solver 1 :: Reference Norm Tolerance = Real 1e-3
+RUN

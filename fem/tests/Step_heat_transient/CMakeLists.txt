@@ -1,0 +1,9 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( Step_heat_transient.sif Step_heat_transient.sif COPYONLY)
+CONFIGURE_FILE(stabilized.sif stabilized.sif COPYONLY)
+
+file(COPY ELMERSOLVER_STARTINFO Step.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(Step_heat_transient LABELS heateq)

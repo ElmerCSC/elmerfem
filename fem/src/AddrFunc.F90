@@ -8,7 +8,7 @@ FUNCTION AddrFunc(fn) RESULT(faddr)
         SUBROUTINE dummysubr() bind(C)
         END SUBROUTINE
     END INTERFACE
-    PROCEDURE(dummysubr) :: fn  
+    PROCEDURE(dummysubr) :: fn
     INTEGER(KIND=AddrInt) :: faddr
 
     TYPE(C_FUNPTR) :: cptr

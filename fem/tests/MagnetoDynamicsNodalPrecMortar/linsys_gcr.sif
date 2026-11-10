@@ -1,0 +1,31 @@
+Solver 3
+
+  Linear System Preconditioning = "none"
+
+  Linear System Symmetric = True
+  Linear System Row Equilibration = False 
+  Linear System Scaling = True
+
+  Linear System Solver = String "Iterative"
+  Linear System Iterative Method = String "bicgstabl" !gcr"
+  BiCGstabl polynomial degree = Integer 4 
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Residual Output = 1
+  Linear system abort not converged = False
+
+! Note: this is tuned so that the solver fails if >5 iterations needed!
+  Linear System Max Iterations = 3000
+  Linear System Residual Output = 50
+  Linear System Robust = True
+
+!  Linear System Scaling = False
+
+  Apply Mortar BCs = True
+End
+
+
+
+Boundary Condition 5
+  Projector Skip Nodes = Logical True
+End 

@@ -40,7 +40,7 @@ End
 Solver 1
   Equation = "StatCurrent"
   Variable = "Potential"
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
 
   Linear System Solver = "Iterative"
   Linear System Iterative Method = "bicgstab"

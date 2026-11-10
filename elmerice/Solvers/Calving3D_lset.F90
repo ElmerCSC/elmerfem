@@ -71,6 +71,7 @@
          EdgeLineNodes(:), NodePositions(:), FrontToLateralConstraint(:), UnfoundConstraints(:)
 #ifdef ELMER_BROKEN_MPI_IN_PLACE
    INTEGER, ALLOCATABLE :: buffer2(:)
+   REAL(KIND=dp) :: buffer3
 #endif
    REAL(KIND=dp) :: FrontOrientation(3), &
         RotationMatrix(3,3), UnRotationMatrix(3,3), NodeHolder(3), MaxMeshDist,&
@@ -205,7 +206,13 @@
       CrevPenetration = 0.0_dp
     END IF
 
-    CALL MPI_ALLREDUCE(MPI_IN_PLACE, CrevPenetration, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
+#ifdef ELMER_BROKEN_MPI_IN_PLACE
+    buffer3 = CrevPenetration
+    CALL MPI_ALLREDUCE(buffer3, &
+#else
+    CALL MPI_ALLREDUCE(MPI_IN_PLACE, &
+#endif
+        CrevPenetration, 1, MPI_DOUBLE_PRECISION, MPI_MAX, ELMER_COMM_WORLD, ierr)
 
     PRINT*, 'CrevPenetration: ', CrevPenetration
 

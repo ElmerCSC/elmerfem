@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -31,7 +31,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 20 Nov 2001
 ! *
@@ -75,7 +75,7 @@ END SUBROUTINE SaveDependence_init
 !> This subroutine saves 1D dependence of a given property.
 !------------------------------------------------------------------------------
 SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
-  
+
   USE Types
   USE Lists
   USE DefUtils
@@ -96,7 +96,7 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
   INTEGER :: i,j,n,NoPar,NormInd,IOUnit
   TYPE(ValueList_t), POINTER :: Params
   LOGICAL :: Found, GotIt, TakeDer
-  
+
   IF( ParEnv % PEs > 1 ) THEN
     IF( ParEnv % MyPE > 0 ) RETURN
   END IF
@@ -118,7 +118,7 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
 
   CALL SolverOutputDirectory( Solver, Filename, OutputDirectory )
   Filename = TRIM(OutputDirectory)// '/' //TRIM(Filename)
-  
+
   IF( GetLogical(Params,'Filename Numbering',GotIt)) THEN
     Filename = NextFreeFilename( Filename )
   END IF
@@ -151,31 +151,31 @@ SUBROUTINE SaveDependence( Model,Solver,dt,TransientSimulation )
     x = x0 + w*(x1-x0)
 
     WRITE (IOUnit,'(I6,ES15.6)',ADVANCE='NO') i,x
-    
+
     DO j=1,NoPar
       WRITE (ParName,'(A,I0)') 'Expression ',j
       IF( TakeDer ) THEN
         f = ListGetFun( Params,ParName,x,Dfdx=Dfdx )
-        WRITE (IOUnit,'(2ES15.6)',ADVANCE='NO') f, dfdx     
+        WRITE (IOUnit,'(2ES15.6)',ADVANCE='NO') f, dfdx
       ELSE
         f = ListGetFun( Params,ParName,x)
-        WRITE (IOUnit,'(ES15.6)',ADVANCE='NO') f     
+        WRITE (IOUnit,'(ES15.6)',ADVANCE='NO') f
       END IF
-        
+
       IF( NormInd == j ) Norm = Norm + f*f
     END DO
 
-    WRITE (IOUnit,'(A)') ' '     
+    WRITE (IOUnit,'(A)') ' '
   END DO
-  
-  CLOSE( IOUnit ) 
+
+  CLOSE( IOUnit )
 
   IF( NormInd > 0 ) THEN
     Norm = SQRT( Norm / n )
     Solver % Variable % Values = Norm
     Solver % Variable % Norm = Norm
   END IF
-  
+
 END SUBROUTINE SaveDependence
 !------------------------------------------------------------------------------
 

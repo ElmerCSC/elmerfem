@@ -67,7 +67,7 @@ End
 Solver 1
   Equation = StatCurrent
   Variable = Potential
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
 
 !  Calculate Conductivity Matrix = Logical True
 

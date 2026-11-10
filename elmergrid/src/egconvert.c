@@ -3369,7 +3369,7 @@ int LoadComsolMesh(struct FemType *data,struct BoundaryType *bound,char *prefix,
 {
   int noknots,noelements,maxnodes,material;
   int allocated,dim=0, elemnodes=0, elembasis=0, elemtype;
-  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen,entitydim;
+  int debug,domains,mindom,minbc,maxdom,maxbc,maxlabel,elemdim=0,entitylen,entitydim=0;
   int *bclabel, *domlabel, n_label=0, offset, bcoffset, domoffset, *bcinfo;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
   char entityname[MAXNAMESIZE];
@@ -3884,7 +3884,7 @@ static int LoadGmshInput1(struct FemType *data,struct BoundaryType *bound,
   int noknots = 0,noelements = 0,maxnodes,dim;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, regphys, regelem, elemnodes,maxelemtype;
+  int elemno, gmshtype, regphys, regelem, elemnodes=0,maxelemtype;
   FILE *in;
   char *cp,line[MAXLINESIZE];
 
@@ -4039,23 +4039,23 @@ allocate:
 
 
 static int LoadGmshInput2(struct FemType *data,struct BoundaryType *bound,
-			  char *filename,int usetaggeom, int keeporphans, int info)
+			  char *filename,int usetaggeom, int keeporphans, int gmshbinary, int info)
 {
-  int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
+  int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags,nodenum;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes,maxelemtype;
-  int tagmat,verno;
+  int elemno, gmshtype, tagphys=0, taggeom=0, tagpart, elemnodes=0,maxelemtype;
+  int tagmat,verno,frcount;
   int physvolexist, physsurfexist;
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE];
 
-  if ((in = fopen(filename,"r")) == NULL) {
+  if ((in = fopen(filename,"rb")) == NULL) {
     printf("LoadGmshInput2: The opening of the mesh file %s failed!\n",filename);
     return(1);
   }
-  if(info) printf("Loading mesh in Gmsh format 2.0 from file %s\n",filename);
+  if(info) printf("Loading mesh in Gmsh format 2 from file %s\n",filename);
 
   allocated = FALSE;
   dim = data->dim;
@@ -4074,39 +4074,57 @@ omstart:
 
     if(strstr(line,"$MeshFormat")) {
       GETLINE;
-      cp = line;
-      verno = next_int(&cp);
-
-      if(verno != 2) {
-	printf("Version number is not compatible with the parser: %d\n",verno);
+      if(gmshbinary) {
+        int one;
+        fread(&one, sizeof(int), 1, in);
+        if(one != 1) {
+          printf("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!\n");
+          bigerror("Gmsh binary file needs to swap bytes, not implemented in ElmerGrid. Exiting!");
+        }
+        GETLINE;
       }
-
       GETLINE;
       if(!strstr(line,"$EndMeshFormat")) {
 	printf("$MeshFormat section should end to string $EndMeshFormat:\n%s\n",line);
       }      
     }
-      
+
     else if(strstr(line,"$Nodes")) {
       GETLINE;
       cp = line;
       noknots = next_int(&cp);
 
       for(i=1; i <= noknots; i++) {
-	GETLINE;
-	cp = line;
+        double dataIn3[3];
+        if(gmshbinary) {
+          frcount = fread(&nodenum, sizeof(int), 1, in);
+          if(frcount != 1)
+            printf("23 fread error, frcount = %d, not equal to %d\n",frcount,1);
+          frcount = fread(dataIn3, sizeof(double), 3, in);
+          if(frcount != 3)
+            printf("24 fread error, frcount = %d, not equal to %d\n",frcount,3);
+        }
+        else {
+          GETLINE;
+          cp = line;
+          nodenum = next_int(&cp);
+          dataIn3[0] = next_real(&cp);
+          dataIn3[1] = next_real(&cp);
+          dataIn3[2] = next_real(&cp);
+        }
 
-	j = next_int(&cp);
-	if(allocated) {
-	  if(maxindx > noknots) revindx[j] = i;
-	  data->x[i] = next_real(&cp);
-	  data->y[i] = next_real(&cp);
-	  if(dim > 2) data->z[i] = next_real(&cp);
-	}
-	else {
-	  maxindx = MAX(j,maxindx);
-	}
+        if(allocated) {
+          if(maxindx > noknots) revindx[nodenum] = i;
+          data->x[i] = dataIn3[0];
+          data->y[i] = dataIn3[1];
+          data->z[i] = dataIn3[2];
+        }
+        else {
+          maxindx = MAX(nodenum,maxindx);
+        }
       }
+
+      if(gmshbinary) GETLINE;
       GETLINE;
       if(!strstr(line,"$EndNodes")) {
 	printf("$Nodes section should end to string $EndNodes:\n%s\n",line);
@@ -4118,9 +4136,69 @@ omstart:
       cp = line;
       noelements = next_int(&cp);
 
+      int inElems[126];
+      // inElems size is based on gmsh element type 93, 125-node fourth order hexahedron
+      // if newer and larger elements are added, then increase nodeTag size to match
+      if(elemnodes > 125) {
+        printf("error: number of nodes per element of %d, exceeds 125\n",elemnodes);
+        printf("increase size of inElems and recompile. Exiting!\n");
+        bigerror("number of nodes per element exceeds 125. Exiting!");
+      }
+
       for(i=1; i <= noelements; i++) {
-	GETLINE;
-	
+        if(gmshbinary) {
+          int dataIn4[4];
+          int numTags;
+          int inTag[5];
+
+          frcount = fread(dataIn4, sizeof(int), 4, in);
+          if(frcount != 4)
+            printf("25 fread error, frcount = %d, not equal to %d\n",frcount,4);
+          gmshtype = dataIn4[0];
+          numTags  = dataIn4[2];
+          elemno   = dataIn4[3];
+          frcount = fread(inTag, sizeof(int), numTags, in);
+          if(frcount != numTags)
+            printf("26 fread error, frcount = %d, not equal to %d\n",frcount,numTags);
+          elementtype = GmshToElmerType(gmshtype);
+          elemnodes = elementtype % 100;
+          frcount = fread(inElems, sizeof(int), elemnodes, in);
+          if(frcount != elemnodes)
+            printf("27 fread error, frcount = %d, not equal to %d\n",frcount,elemnodes);
+
+          if(allocated) {
+            elemnodes = elementtype % 100;
+            data->elementtypes[i] = elementtype;
+
+            /* Point does not seem to have physical properties */
+            notags = numTags;
+            if(notags > 0) tagphys = inTag[0];
+            if(notags > 1) taggeom = inTag[1];
+            if(notags > 2) tagpart = inTag[2];
+
+            if(tagphys) {
+              tagmat = tagphys;
+            }
+            else {
+              tagmat = taggeom;
+              usetaggeom = TRUE;
+            }
+
+            data->material[i] = tagmat;
+            for(j=0; j<elemnodes; j++)
+              elemind[j] = inElems[j];
+
+            GmshToElmerIndx(elementtype,elemind);
+
+            for(j=0; j<elemnodes; j++)
+              data->topology[i][j] = elemind[j];
+          }
+          else {
+            maxelemtype = MAX(maxelemtype,elementtype);
+          }
+        }
+        else {
+          GETLINE;
 	cp = line;
 	elemno = next_int(&cp);
 	gmshtype = next_int(&cp);
@@ -4158,8 +4236,10 @@ omstart:
 	else {
 	  maxelemtype = MAX(maxelemtype,elementtype);
 	}
-	
-      }
+    }
+    }
+
+      if(gmshbinary) GETLINE;
       GETLINE;
       if(!strstr(line,"$EndElements")) {
 	printf("$Elements section should end to string $EndElements:\n%s\n",line);
@@ -4276,9 +4356,9 @@ static int LoadGmshInput4(struct FemType *data,struct BoundaryType *bound,
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes=0,maxelemtype;
   int tagmat,verno;
-  int physvolexist, physsurfexist,**tagmap,tagsize,maxtag[4];
+  int physvolexist, physsurfexist,**tagmap=NULL,tagsize=0,maxtag[4];
   FILE *in;
   const char manifoldname[4][10] = {"point", "line", "surface", "volume"};
   char *cp,line[MAXLINESIZE],longline[LONGLINESIZE];
@@ -4719,9 +4799,9 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   int noknots = 0,noelements = 0,nophysical = 0,maxnodes,dim,notags;
   int elemind[MAXNODESD2],elementtype;
   int i,j,k,l,allocated,*revindx=NULL,maxindx;
-  int elemno, gmshtype, tagphys=0, tagpart, elemnodes,maxelemtype;
-  int tagmat,verno,meshdim,tagdim,frcount;
-  int physvolexist, physsurfexist,**tagmap,tagsize;
+  int elemno, gmshtype, tagphys=0, tagpart, elemnodes=0,maxelemtype;
+  int tagmat,verno,meshdim,tagdim,frcount,renumber;
+  int physvolexist, physsurfexist,**tagmap=NULL,tagsize=0;
   int maxtag[4],mintag[4],maxreadtag[4],minreadtag[4];
   int maxphystag[4],minphystag[4],tagoffset[4],phystagoffset[4];
   FILE *in;
@@ -4735,6 +4815,7 @@ static int LoadGmshInput41(struct FemType *data,struct BoundaryType *bound,
   if(info) printf("Loading mesh in Gmsh format 4.1 from file %s\n",filename);
 
   allocated = FALSE;
+  renumber = FALSE;
   dim = data->dim;
   meshdim = 0;
   maxnodes = 0;
@@ -4844,10 +4925,11 @@ omstart:
           if( 0 && numNodes > 1 ) printf("block %d node %d tagNode %lu %d\n",j,i,(unsigned long)tagNode,k+i);
 
           if(allocated) {
-            if(maxindx > noknots) revindx[tagNode] = k+i;
+            if(renumber) revindx[tagNode] = k+i;
           }
           else {
             maxindx = MAX(tagNode,maxindx);
+	    if(k+i != tagNode) renumber = TRUE;
           }
         }
 
@@ -5424,7 +5506,8 @@ omstart:
     if(info) printf("Allocating for %d knots and %d elements.\n",noknots,noelements);
     AllocateKnots(data);
 
-    if(maxindx > noknots) {
+    if(maxindx > noknots) renumber = TRUE;
+    if(renumber) {
       revindx = Ivector(1,maxindx);
       for(i=1;i<=maxindx;i++) revindx[i] = 0;
     }
@@ -5433,7 +5516,7 @@ omstart:
     goto omstart;
   }
 
-  if(maxindx > noknots) {
+  if(renumber) {
     int cnt1,cnt2,cnt3,cnt4;
     printf("Renumbering the Gmsh nodes from %d to %d\n",maxindx,noknots);
 
@@ -5492,7 +5575,7 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
 {
   FILE *in;
   char line[MAXLINESIZE],filename[MAXFILESIZE];
-  int errnum,usetaggeom,i;
+  int errnum=0,usetaggeom=0,i;
 
   /* keeprophans - Should we keep lower order elements not associated to any 
      higher order entity? ElmerGUI certainly does not like it. */
@@ -5529,13 +5612,11 @@ int LoadGmshInput(struct FemType *data,struct BoundaryType *bound,
     // gmshversion is a float, hence the ugly decimal points to insure proper comparisons
     if(gmshversion < 2.99) {
       if(gmshbinary) {
-        printf("Gmsh input file format is type %5.1f, binary is not supported.\n",gmshversion);
-        printf("If binary is needed, use Gmsh format 4.1 for output from Gmsh\n");
-        bigerror("Gmsh input file in format 2.x, binary is not supported!");
+        printf("Gmsh input file format is type %5.1f in binary.\n",gmshversion);
       } else {
         printf("Gmsh input file format is type %5.1f in ASCII.\n",gmshversion);
-        errnum = LoadGmshInput2(data,bound,filename,usetaggeom,keeporphans,info);
       }
+      errnum = LoadGmshInput2(data,bound,filename,usetaggeom,keeporphans,gmshbinary,info);
     } else if(gmshversion < 3.99) {
       printf("Gmsh input file of format type %5.1f, is not supported. Exiting!\n",gmshversion);
       printf("Please use Gmsh 4 versions for output from Gmsh\n");
@@ -5877,12 +5958,16 @@ static int UnvToElmerType(int unvtype)
 
   case 11: 
   case 21:
+  case 31:
+  case 171:
     elmertype = 202;
     break;
 
   case 22:
   case 23:
   case 24:
+  case 32:
+  case 172:
     elmertype = 203;
     break;
 
@@ -5938,6 +6023,10 @@ static int UnvToElmerType(int unvtype)
     elmertype = 510;
     break;
 
+  case 312:
+    elmertype = 605;
+    break;
+    
   case 101:
   case 112:
     elmertype = 706;
@@ -5962,7 +6051,7 @@ static int UnvToElmerType(int unvtype)
     elmertype = 0;
     if(0) printf("Unknown elementtype in universal mesh format: %d\n",unvtype);
   }
-
+  
   return(elmertype);
 }
 
@@ -6002,6 +6091,7 @@ static void UnvToElmerIndx(int elemtype,int *topology)
   int order306[]={1,3,5,2,4,6};
   int order510[]={1,3,5,10,2,4,6,7,8,9};
   int order408[]={1,3,5,7,2,4,6,8};
+  int order715[]={1,3,5,10,12,14,2,4,6,11,13,15,7,8,9}; 
   int order820[]={1,3,5,7,13,15,17,19,2,4,6,8,9,10,11,12,14,16,18,20};
 
 
@@ -6027,6 +6117,11 @@ static void UnvToElmerIndx(int elemtype,int *topology)
   case 408:        
     reorder = TRUE;
     porder = &order408[0];
+    break;
+
+  case 715:        
+    reorder = TRUE;
+    porder = &order715[0];
     break;
 
   case 820:        
@@ -6220,7 +6315,7 @@ omstart:
 	  printf("line %d: %s\n",linenumber,line);
 	  bigerror("done");
 	}
-
+	
 	if (!allocated) {
 	  minphys = MIN( minphys, physind );
 	  maxphys = MAX( maxphys, physind );	 
@@ -6239,13 +6334,15 @@ omstart:
 	Getrow(line,in,FALSE);
 	cp = line;
 
-	if(elmertype == 510 ) 	   
-	  lines = 1;
-	else if(elmertype == 820 ) 
-	  lines = 2;
-	else
-	  lines = 0;
 
+	if(!allocated && elmertype % 100 != nonodes) {
+	  printf("Conflicting nonodes = %d elemtype = %d elid = %d\n",nonodes,elmertype,elid);
+	}
+	nonodes = elmertype % 100;
+	  	
+	/* A row can have maximum 8 nodes, then we have a new line. */
+	lines = (nonodes-1)/8;
+	
 	if(allocated) {
 	  if(reorderelements) u2eelem[elid] = noelements;
 
@@ -6254,11 +6351,6 @@ omstart:
 	    printf("new elementtype in elmer: %d (unv: %d)\n",elmertype,unvtype);
 	  }
 
-	  if(elmertype % 100 != nonodes) {
-	    printf("nonodes = %d elemtype = %d elid = %d\n",nonodes,elmertype,elid);
-	    nonodes = elmertype % 100;
-	  }
-	  
 	  data->elementtypes[noelements] = elmertype;
 	  for(i=0;i<nonodes;i++) {
 	    if( lines > 0 && i >= 8 ) {
@@ -6718,16 +6810,22 @@ end:
     }
   }
 
+#if 0
   /* This is here for debugging of the nodal order */
+  k = 0;
   if(FALSE) for(j=1;j<=noelements;j++) {
-    int elemtype = data->elementtypes[j];
-    printf("element = %d\n",j);
-    for(i=0;elemtype%100;i++) {
-      k = data->topology[j][i];
-      printf("node i=%d %.3le %.3le %.3le\n",i,data->x[k],data->z[k],data->y[k]);
+      int elemtype = data->elementtypes[j];
+      if(elemtype==715 && !k) {
+	printf("elemtype %d %d\n",elemtype,j);
+	for(i=0;i<elemtype%100;i++) {
+	  k = data->topology[j][i];
+	  printf("node i=%d %.3le %.3le %.3le\n",i+1,data->x[k],data->z[k],data->y[k]);
+	}
+	break;
+      }
     }
-  }
-      
+#endif
+  
   
   /* Until this far all elements have been listed as bulk elements. 
      Now separate the lower dimensional elements to be boundary elements. */
@@ -6921,7 +7019,7 @@ int LoadFluxMesh(struct FemType *data,struct BoundaryType *bound,
 /* Load the mesh from format of Flux Cedrat in TRA format. */
 {
   int noknots,noelements,maxnodes,dim,elmertype;
-  int nonodes,matind,noregions,mode;
+  int nonodes,matind,noregions=0,mode;
   int debug;
   int *elementtypes;
   char filename[MAXFILESIZE],line[MAXLINESIZE],*cp;
@@ -7259,7 +7357,7 @@ int LoadFluxMesh3D(struct FemType *data,struct BoundaryType *bound,
 /* Load the mesh from format of Flux Cedrat in PF3 format. */
 {
   int noknots,noelements,maxnodes,dim,elmertype;
-  int nonodes,matind,noregions,mode;
+  int nonodes,matind,noregions=0,mode;
   int dimplusone, maxlinenodes, nodecnt;
   int debug;
   int *elementtypes;

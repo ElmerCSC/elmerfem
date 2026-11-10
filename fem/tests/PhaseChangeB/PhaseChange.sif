@@ -43,7 +43,14 @@ End
  
 Solver 1
   Exec Solver = "Always"
+! "Check Latent Heat Release" (the adaptive dt-halving substep scheme,
+! previously unsupported here) is now implemented in HeatSolveVec's
+! HeatSolver via CheckLatentHeatVec. Verified against legacy HeatSolve on
+! this exact test: identical dt-halving schedule (all 6 events, character
+! for character) and the same final Reference Norm to within legacy's own
+! run-to-run roundoff level (~5e-10 relative).
   Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

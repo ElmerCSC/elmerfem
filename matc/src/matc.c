@@ -247,7 +247,7 @@ void mtc_init( FILE *input_file, FILE *output_file, FILE *error_file )
 
 char * mtc_domath( char *str )
 {
-  setlocale(LC_ALL, "C");
+  setlocale(LC_NUMERIC, "C");
 
   VARIABLE *headsave;            /* this should not be here */
 
@@ -921,7 +921,7 @@ void *mtc_compile(char *str)
 
     if (!str || !*str) return NULL;
 
-    setlocale(LC_ALL, "C");
+    setlocale(LC_NUMERIC, "C");
 
     /* Isolate parse-tree allocations so they survive across eval calls */
     saved = (LIST *)ALLOC_HEAD;
@@ -959,6 +959,19 @@ char *mtc_eval(void *handle)
     jmp_buf jmp, *savejmp;
 
     if (!compiled) return NULL;
+
+    /* Force period-decimal formatting for the result string regardless of
+     * the process's ambient locale. mtc_compile() does the same before
+     * parsing; this call was dropped from the eval hot path for performance
+     * (commit 21a648a9e), but on a machine whose Windows regional format
+     * uses a non-'.' decimal separator (e.g. Finnish, most of Europe:
+     * comma), the number this formats (e.g. "2,857142857") gets misread by
+     * Fortran's list-directed READ, which treats the comma as an item
+     * separator and silently truncates the value at the decimal point
+     * (2,857142857 -> 2.0). setlocale() is a cheap no-op when the locale
+     * hasn't actually changed, so this isn't the hot-path cost the removal
+     * was chasing. */
+    setlocale(LC_NUMERIC, "C");
 
     savejmp = jmpbuf;
     jmpbuf = &jmp;

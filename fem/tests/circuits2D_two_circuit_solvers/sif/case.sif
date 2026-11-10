@@ -1,0 +1,220 @@
+! Two circuit solvers in one run.
+!
+! Two coil regions of the 1381 mesh are driven by two circuit solvers, each on
+! its own magnetodynamics solver. The two are entirely independent: they share
+! the core and the air, but each A solver is active on its own coil only, so
+! neither contributes to the other's matrix. The reference norms are therefore
+! the ones each half produces on its own, and any leak between the two circuit
+! models - one set of circuit structures, one MATC namespace, one Lagrange
+! multiplier serving both - shows up as a changed norm.
+!
+! Exercised here:
+!   - one CircuitModel_t container per circuit solver
+!   - "Circuit Namespace", so the two read their own definitions out of the one
+!     MATC namespace
+!   - both directions of the binding: "Master Solver" on the first circuit
+!     solver, the host's "Circuit Solver" on the second
+!   - distinct "Lagrange Multiplier Name" on the two A solvers
+
+Check Keywords "Warn"
+INCLUDE sif/circuits-a.definitions
+INCLUDE sif/circuits-b.definitions
+INCLUDE 1381/mesh.names
+
+Header 1
+   Mesh DB "." "1381"
+End
+
+Simulation 1
+   Max Output Level = 5
+   Coordinate System = Axi symmetric
+   Simulation Type = Steady
+   Steady State Max Iterations = 1
+   Angular Frequency = 314.159265359
+End
+
+Solver 1
+   Exec Solver = Before All
+   Procedure = "Poisson" "PoissonSolver"
+   Linear System Solver = Iterative
+   Linear System Iterative Method = CG
+   Linear System Max Iterations = 1000
+   Linear System Convergence Tolerance = 1.0e-10
+   Linear System Preconditioning = ILU0
+   Linear System Abort Not Converged = True
+   Linear System Residual Output = 0
+   Equation = Direction
+   Variable = -nooutput Alpha
+End
+
+! ---------------- first circuit solver and its A solver ----------------
+! Bound from this end: this solver names its host, which also puts it in the
+! host's "Pre Solvers" slot and takes it out of the solver list.
+Solver 2
+   Equation = Circuits A
+   Variable = XA
+   No Matrix = Logical True
+   Circuit Namespace = String "ca"
+   Master Solver = 3
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 3
+   Equation = "MagA"
+   Variable = A1[A1 re:1 A1 im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Lagrange Multiplier Name = String "lagrange multiplier a"
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor = 1
+   Linear System Solver = Direct
+   Linear System Direct Method = UMFPACK
+   Linear System Complex = Logical True
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 4
+   Equation = Circuits Output A
+   Master Solver = 3
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+! ---------------- second circuit solver and its A solver ----------------
+! Bound from the other end: the host claims both of them, which is the exact
+! inverse of "Master Solver" and does the same wiring.
+Solver 5
+   Equation = Circuits B
+   Variable = XB
+   No Matrix = Logical True
+   Circuit Namespace = String "cb"
+   Procedure = "CircuitsAndDynamics" "CircuitsAndDynamicsHarmonic"
+End
+
+Solver 6
+   Equation = "MagB"
+   Circuit Solver(2) = 5 7
+   Variable = A2[A2 re:1 A2 im:1]
+   Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+   Lagrange Multiplier Name = String "lagrange multiplier b"
+   Export Lagrange Multiplier = Logical True
+   Linear System Symmetric = True
+   NonLinear System Relaxation Factor = 1
+   Linear System Solver = Direct
+   Linear System Direct Method = UMFPACK
+   Linear System Complex = Logical True
+   Steady State Convergence Tolerance = 1e-06
+End
+
+Solver 7
+   Equation = Circuits Output B
+   Procedure = "CircuitsAndDynamics" "CircuitsOutput"
+End
+
+Equation 1
+   Name = "shared core and air"
+   Active Solvers(2) = 3 6
+End
+
+Equation 2
+   Name = "coil of circuit A"
+   Active Solvers(4) = 1 2 3 4
+End
+
+Equation 3
+   Name = "coil of circuit B"
+   Active Solvers(4) = 1 5 6 7
+End
+
+Material 1
+   Name = iron
+   Electric Conductivity = 0
+   Relative Permeability = 2000
+End
+
+Material 2
+   Name = air
+   Electric Conductivity = 0
+   Relative Permeability = 1
+End
+
+Material 3
+   Name = aluminium
+   Relative Permeability = 1
+   Electric Conductivity = 1e7
+End
+
+Body 1
+   Name = Core
+   Target Bodies(5) = 2 3 4 5 6
+   Equation = 1
+   Material = 1
+End
+
+Body 2
+   Name = air
+   Target Bodies(2) = 9 7
+   Equation = 1
+   Material = 2
+End
+
+Body 3
+   Name = coil a
+   Target Bodies = 8
+   Equation = 2
+   Material = 3
+End
+
+! Carved out of the core, so that the two circuits have disjoint coil bodies.
+! They have to: a body carries one "Component", so one body cannot serve two.
+Body 4
+   Name = coil b
+   Target Bodies = 1
+   Equation = 3
+   Material = 3
+End
+
+Component 1
+   Name = String coil a
+   Master Bodies = Integer 3
+   Coil Type = String stranded
+   Number of Turns = Real 1000
+End
+
+Component 2
+   Name = String coil b
+   Master Bodies = Integer 4
+   Coil Type = String stranded
+   Number of Turns = Real 500
+End
+
+Body Force 1
+   Name = "Circuit sources"
+   sourcea Re = Real 1.41421356237
+   sourcea Im = Real 0.0
+   sourceb Re = Real 0.0
+   sourceb Im = Real 2.82842712475
+End
+
+Boundary Condition 1
+   Target Boundaries(4) = $ center0 center1 center2 center3
+   A1 re = Real 0
+   A1 im = Real 0
+   A2 re = Real 0
+   A2 im = Real 0
+End
+
+Boundary Condition 2
+   Target Boundaries(2) = 4 6
+   Name = "Air Gap"
+   Air Gap = logical True
+   Air Gap Length = Real 0.0001
+   Air Gap Relative Permeability = Real 1
+End
+
+Boundary Condition 3
+   Target Boundaries(7) = 10 13 14 17 18 19 27
+   Infinity BC = Logical True
+End
+
+Solver 3 :: Reference Norm = 2.52325659E-03
+Solver 6 :: Reference Norm = 9.69602662E-05

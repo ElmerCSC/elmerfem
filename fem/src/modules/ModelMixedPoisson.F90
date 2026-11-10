@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,18 +13,18 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-! *  Solve the mixed formulation of the generalized Poisson equation by using 
+! *  Solve the mixed formulation of the generalized Poisson equation by using
 ! *  div-conforming (face) finite elements.
 ! *
-! *  NOTE: It is assumed that the last bubble DOF is used for approximating 
-! *        the scalar variable. That is, the scalar variable is approximated 
+! *  NOTE: It is assumed that the last bubble DOF is used for approximating
+! *        the scalar variable. That is, the scalar variable is approximated
 ! *        as an elementwise constant.
 ! *
 ! *  Authors: Mika Malinen
@@ -32,7 +32,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: Feb 13, 2019
 ! *
@@ -60,7 +60,7 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
   SecondFamily = GetLogical(SolverPars, 'Second Kind Basis', Found)
 
   csys = ListGetString(Model % Simulation, 'Coordinate System', Found)
-  IF (.NOT. Found) THEN 
+  IF (.NOT. Found) THEN
     IF (.NOT. ListCheckPresent(SolverPars, 'Element')) &
         CALL Fatal('MixedPoisson_Init0', 'The keyword Element should be specified')
   ELSE
@@ -88,22 +88,22 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
 
     CASE DEFAULT
       IF (.NOT. ListCheckPresent(SolverPars, 'Element')) &
-          CALL Fatal('MixedPoisson_Init0', 'The keyword Element should be specified')     
+          CALL Fatal('MixedPoisson_Init0', 'The keyword Element should be specified')
     END SELECT
   END IF
 
   CALL ListAddNewLogical(SolverPars, 'Bubbles in Global System', .TRUE.)
-  
+
   ! Add scalar variable if not present, and get its name
   CALL ListAddNewString(SolverPars,'Potential Variable','mixedpot' )
   VarName = ListGetString(SolverPars,'Potential Variable')
-    
+
   CALL ListAddString( SolverPars,NextFreeKeyword(&
       'Exported Variable',SolverPars),'-elem '//TRIM(VarName))
 
   CALL ListAddString( SolverPars,NextFreeKeyword(&
       'Exported Variable',SolverPars), TRIM(VarName))
-  
+
   CALL ListAddNewString(SolverPars,'Flux Variable','mixedflux' )
   VarName = ListGetString(SolverPars,'Flux Variable')
 
@@ -118,7 +118,7 @@ SUBROUTINE MixedPoisson_Init0(Model, Solver, dt, TransientSimulation)
 
   ! This solver always needs PostSolver since primary fields are not very intuitive
   CALL ListAddLogical( SolverPars,'PostSolver Active',.TRUE.)
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson_Init0
 !------------------------------------------------------------------------------
@@ -179,16 +179,16 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
     Element => GetActiveElement(t)
     n  = GetElementNOFNodes() ! Nodes count corresponding to the background mesh
     nd = GetElementNOFDOFs()  ! The total number of degrees of freedom
-    nb = SIZE(Element % BubbleIndexes(:)) ! The number of elementwise degrees 
+    nb = SIZE(Element % BubbleIndexes(:)) ! The number of elementwise degrees
                                           ! of freedom. NOTE: GetElementNOFBDOFs()
-                                          ! doesn't return the right value here 
+                                          ! doesn't return the right value here
 
     ! Get element local matrix and rhs vector:
     !----------------------------------------
     CALL LocalMatrix(Stiff, Mass, Force, Element, n, nd, nb, dim, SecondFamily, &
         TransientSimulation, InitHandles )
 
-    IF (TransientSimulation) CALL Default1stOrderTime(Mass, Stiff, Force)  
+    IF (TransientSimulation) CALL Default1stOrderTime(Mass, Stiff, Force)
 
     ! Update global matrix and rhs vector from local matrix & vector:
     !---------------------------------------------------------------
@@ -216,7 +216,7 @@ SUBROUTINE MixedPoisson(Model, Solver, dt, TransientSimulation)
   CALL DefaultFinishAssembly()
   CALL DefaultDirichletBCs()
 
-  Norm = DefaultSolve()  
+  Norm = DefaultSolve()
 
 CONTAINS
 
@@ -246,7 +246,7 @@ CONTAINS
     REAL(KIND=dp) :: FaceBasis(MaxFaceBasisDim,3), DivFaceBasis(MaxFaceBasisDim)
     REAL(KIND=dp) :: Basis(nd), DetJ, s
     TYPE(ValueHandle_t), SAVE :: SourceField_h, ConvVelo_h, MatPar_h, MatTensor_h
-    
+
 !------------------------------------------------------------------------------
     IF(InitHandles ) THEN
       CALL ListInitElementKeyword( SourceField_h, 'Body Force','Source Field')
@@ -255,7 +255,7 @@ CONTAINS
       ! Hence we need to separate the two!
       CALL ListInitElementKeyword( MatPar_h,'Material','Material Parameter',DefRValue=1.0_dp)
       CALL ListInitElementKeyword( MatTensor_h,'Material','Material Tensor')
-      
+
       CALL ListInitElementKeyword( ConvVelo_h,'Material','Convection Velocity',InitVec3D=.TRUE.)
       InitHandles = .FALSE.
     END IF
@@ -269,12 +269,12 @@ CONTAINS
 
     !------------------------------------------------------------------------
     ! The reference element is chosen to be that used for p-approximation,
-    ! so we need to switch to using a quadrature which would not be used 
+    ! so we need to switch to using a quadrature which would not be used
     ! otherwise
     !------------------------------------------------------------------------
     IF( .FALSE. ) THEN
       ! This rule should be ok, but there seems to be two sets of IPs for
-      ! reference element. 
+      ! reference element.
       IP = GaussPointsAdapt( Element, PReferenceElement = .TRUE. )
     ELSE
       SELECT CASE( GetElementFamily(Element) )
@@ -301,9 +301,9 @@ CONTAINS
       PRINT *,'IP s:',IP % s(1:n)
     END IF
 #endif
-    
+
     ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
-    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
+    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
 
     DO t=1,IP % n
       stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
@@ -314,17 +314,17 @@ CONTAINS
       s = detJ * IP % s(t)
 
       !----------------------------------------------------------------
-      ! The following branch could be used to produce the 
+      ! The following branch could be used to produce the
       ! Galerkin projection of the pressure for visualization.
       !------------------------------------------------------------------
       IF (np > 0) THEN
         DO p = 1,n
-          DO q = 1,n       
-            Stiff(p,q) = Stiff(p,q) + Basis(p) * Basis(q) * s    
+          DO q = 1,n
+            Stiff(p,q) = Stiff(p,q) + Basis(p) * Basis(q) * s
           END DO
 
           DO q = nd,nd
-            Stiff(p,q) = Stiff(p,q) - Basis(p) * 1.0d0 * s            
+            Stiff(p,q) = Stiff(p,q) - Basis(p) * 1.0d0 * s
           END DO
         END DO
       END IF
@@ -342,7 +342,7 @@ CONTAINS
             DO q = 1,nd-np-1
               j = np + q
               Stiff(i,j) = Stiff(i,j) + mu * &
-                  SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s           
+                  SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s
             END DO
           END DO
         ELSE IF (mu_rank == 1 ) THEN
@@ -351,7 +351,7 @@ CONTAINS
             DO q = 1,nd-np-1
               j = np + q
               tmp = SUM(mu_tensor(1:dim,1)*FaceBasis(q,1:dim))
-              Stiff(i,j) = Stiff(i,j) + & 
+              Stiff(i,j) = Stiff(i,j) + &
                   SUM( tmp(1:dim) * FaceBasis(p,1:dim) ) * s
             END DO
           END DO
@@ -361,25 +361,25 @@ CONTAINS
             DO q = 1,nd-np-1
               j = np + q
               tmp = MATMUL(mu_tensor(1:dim,1:dim),FaceBasis(q,1:dim))
-              Stiff(i,j) = Stiff(i,j) + & 
+              Stiff(i,j) = Stiff(i,j) + &
                   SUM( tmp(1:dim) * FaceBasis(p,1:dim) ) * s
             END DO
           END DO
         END IF
       ELSE
         ! If this is not given then it is defaulted to one.
-        a = ListGetElementReal( MatPar_h, Basis, Element, Found, GaussPoint = t )      
+        a = ListGetElementReal( MatPar_h, Basis, Element, Found, GaussPoint = t )
         DO p = 1,nd-np-1
           i = np + p
           DO q = 1,nd-np-1
             j = np + q
             Stiff(i,j) = Stiff(i,j) + (1.0_dp / a ) * &
-                SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s           
+                SUM( FaceBasis(q,1:dim) * FaceBasis(p,1:dim) ) * s
           END DO
         END DO
       END IF
 
-        
+
       DO p = 1,nd-np-1
         i = np + p
         DO q = nd,nd
@@ -399,7 +399,7 @@ CONTAINS
 
       ! Contribution of convection
       !-----------------------------------------------------
-      v = ListGetElementReal3D( ConvVelo_h, Basis, Element, Found, GaussPoint = t )      
+      v = ListGetElementReal3D( ConvVelo_h, Basis, Element, Found, GaussPoint = t )
       IF ( Found ) THEN
         DO p = nd,nd
           DO q = 1,nd-np-1
@@ -411,10 +411,10 @@ CONTAINS
 
       ! Contribution of source term
       !-----------------------------------------------------
-      f = ListGetElementReal( SourceField_h, Basis, Element, Found, GaussPoint = t )      
+      f = ListGetElementReal( SourceField_h, Basis, Element, Found, GaussPoint = t )
       IF ( Found ) THEN
         DO p = nd,nd
-          Force(p) = Force(p) - f * 1.0d0 * s 
+          Force(p) = Force(p) - f * 1.0d0 * s
         END DO
       END IF
 
@@ -460,7 +460,7 @@ CONTAINS
     REAL(KIND=dp) :: Force(nd), Basis(n), TraceBasis(nd), WorkTrace(nd)
     REAL(KIND=dp) :: detJ, s, u, v, w, g
     TYPE(ValueHandle_t), SAVE :: ScalarField_h
- 
+
     SAVE Nodes
 !------------------------------------------------------------------------------
     Family = GetElementFamily(Element)
@@ -476,9 +476,9 @@ CONTAINS
     END IF
     IF (ScalarField_h % NotPresentAnywhere) RETURN
 
-    ! 
+    !
     ! The sign reversion of basis will be checked via the parent element:
-    ! 
+    !
     Parent => Element % BoundaryInfo % Left
     IF (.NOT. ASSOCIATED(Parent)) THEN
       Parent => Element % BoundaryInfo % Right
@@ -486,7 +486,7 @@ CONTAINS
     IF (.NOT. ASSOCIATED(Parent)) RETURN
     ParentFamily = GetElementFamily(Parent)
     !
-    ! Identify the face representing the element among the faces of 
+    ! Identify the face representing the element among the faces of
     ! the parent element:
     !
     CALL PickActiveFace(Mesh, Parent, Element, Face, ActiveFaceId)
@@ -507,7 +507,7 @@ CONTAINS
       SELECT CASE(Family)
       CASE(2)
         !
-        ! Check whether the parametrization of the element conforms with the global positive 
+        ! Check whether the parametrization of the element conforms with the global positive
         ! orientation of the edge:
         !
         FaceMap => GetEdgeMap(GetElementFamily(Parent))
@@ -521,10 +521,10 @@ CONTAINS
         IF (FDOFs /= 3) CALL Fatal('ModelMixedPoisson', '3-DOF faces expected')
         TetraFaceMap(1,:) = (/ 2, 1, 3 /)
         TetraFaceMap(2,:) = (/ 1, 2, 4 /)
-        TetraFaceMap(3,:) = (/ 2, 3, 4 /) 
+        TetraFaceMap(3,:) = (/ 2, 3, 4 /)
         TetraFaceMap(4,:) = (/ 3, 1, 4 /)
 
-        !FaceMap => TetraFaceMap 
+        !FaceMap => TetraFaceMap
 
         CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
 
@@ -542,7 +542,7 @@ CONTAINS
       SELECT CASE(GetElementFamily(Parent))
       CASE(8)
         IF (FDOFs /= 4) CALL Fatal('ModelMixedPoisson', '4-DOF faces expected')
- 
+
         BrickFaceMap(1,:) = (/ 2, 1, 4, 3 /)
         BrickFaceMap(2,:) = (/ 5, 6, 7, 8 /)
         BrickFaceMap(3,:) = (/ 1, 2, 6, 5 /)
@@ -551,14 +551,14 @@ CONTAINS
         BrickFaceMap(6,:) = (/ 4, 1, 5, 8 /)
 
         CALL FaceElementBasisOrdering(Parent, FDofMap, ActiveFaceId)
-        
+
         IF (ANY(Element % NodeIndexes(1:4) /= Parent % NodeIndexes(BrickFaceMap(ActiveFaceId,1:4)))) THEN
           !
           ! The parent element face is indexed differently, reorder and revert afterwards:
           !
           OriginalIndices(1:4) = Element % NodeIndexes(1:4)
           Element % NodeIndexes(1:4) = Parent % NodeIndexes(BrickFaceMap(ActiveFaceId,1:4))
-          RevertIndices = .TRUE.        
+          RevertIndices = .TRUE.
         END IF
       END SELECT
     END IF
@@ -586,7 +586,7 @@ CONTAINS
       !
       ! NOTE: Here the effect of the Piola transformation is taken into account
       !       such that the multiplication with DetJ is not needed
-      ! TO CONSIDER: Get the traces of vector-values basis functions 
+      ! TO CONSIDER: Get the traces of vector-values basis functions
       !              by calling a subroutine
       !
       SELECT CASE(Family)
@@ -645,7 +645,7 @@ CONTAINS
       IF (AssembleForce) THEN
         DO p = 1,nd-np
           j = np + p
-          Force(j) = Force(j) + g * TraceBasis(p) * w 
+          Force(j) = Force(j) + g * TraceBasis(p) * w
         END DO
       END IF
     END DO
@@ -670,7 +670,7 @@ END SUBROUTINE MixedPoisson
 
 
 !------------------------------------------------------------------------------
-! Postprocessing utility for the main solver. 
+! Postprocessing utility for the main solver.
 !------------------------------------------------------------------------------
 SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
 !------------------------------------------------------------------------------
@@ -682,7 +682,7 @@ SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 !------------------------------------------------------------------------------
-  TYPE(ValueList_t), POINTER :: Params 
+  TYPE(ValueList_t), POINTER :: Params
   TYPE(Mesh_t), POINTER :: Mesh
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
   LOGICAL :: Found
@@ -699,7 +699,7 @@ SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
   Params => GetSolverParams()
 
   SecondFamily = GetLogical(Params, 'Second Kind Basis', Found)
-  
+
   Mesh => GetMesh()
   Var => Solver % Variable
   dim = CoordinateSystemDimension()
@@ -707,23 +707,23 @@ SUBROUTINE MixedPoisson_post(Model, Solver, dt, TransientSimulation)
   n = Solver % Mesh % MaxElementDOFs
   ALLOCATE( Indexes(n) )
   ALLOCATE( Flux_x(n), Flux_y(n), Flux_z(n))
-  
+
   ! Get the elemental pressure variable where postprocessing is saved to
   VarName = ListGetString(Params,'Potential Variable')
-  pVar => VariableGet( Mesh % Variables, VarName ) 
+  pVar => VariableGet( Mesh % Variables, VarName )
 
   VarName = ListGetString(Params,'Flux Variable')
-  fVar => VariableGet( Mesh % Variables, VarName ) 
-  
+  fVar => VariableGet( Mesh % Variables, VarName )
+
   active = GetNOFActive()
-  
+
   DO t=1,active
     Element => GetActiveElement(t)
-    n  = GetElementNOFNodes() 
-    nd = GetElementDOFs( Indexes, Element )  
+    n  = GetElementNOFNodes()
+    nd = GetElementDOFs( Indexes, Element )
     nb = SIZE(Element % BubbleIndexes(:))
 
-    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
+    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
 
     ! last bubble dofs is the pressure
     val = Var % Values( Var % Perm(Indexes(nd)) )
@@ -745,7 +745,7 @@ CONTAINS
 
     INTEGER :: n, nval
     REAL(KIND=dp) :: vals(:)
-    !------------------------------------------------------------------------   
+    !------------------------------------------------------------------------
     REAL(KIND=dp) :: MASS(n,n), FORCE_x(n), FORCE_y(n), FORCE_z(n)
     INTEGER, PARAMETER :: MaxFaceBasisDim = 48
     TYPE(GaussIntegrationPoints_t) :: IP
@@ -758,7 +758,7 @@ CONTAINS
 
     !------------------------------------------------------------------------
     ! The reference element is chosen to be that used for p-approximation,
-    ! so we need to switch to using a quadrature which would not be used 
+    ! so we need to switch to using a quadrature which would not be used
     ! otherwise
     !------------------------------------------------------------------------
     SELECT CASE( GetElementFamily(Element) )
@@ -781,7 +781,7 @@ CONTAINS
     FORCE_y = 0._dp
     FORCE_z = 0._dp
     ! Set np = n, if nodal dofs are employed; otherwise set np = 0:
-    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)    
+    np = n * Solver % Def_Dofs(GetElementFamily(Element), Element % BodyId, 1)
 
     DO t=1,IP % n
       stat = FaceElementInfo(Element, Nodes, IP % U(t), IP % V(t), &
@@ -808,6 +808,6 @@ CONTAINS
   END SUBROUTINE GetFlux
 
 
-!------------------------------------------------------------------------------        
+!------------------------------------------------------------------------------
 END SUBROUTINE MixedPoisson_post
 !-----------------------------------------------------------------------------

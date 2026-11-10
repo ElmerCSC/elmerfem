@@ -1,0 +1,25 @@
+  Linear System Symmetric = True
+
+  Linear System Solver = "Feti"
+
+! Switched by runtest.cmake so the case is run both ways.
+  Total Feti = Logical False
+
+  Linear System Iterative Method = "CPG"
+
+! Deliberately not "MumpsLocal": that hands the singular local matrices to Mumps
+! and never touches the kernel handling here. With "umfpack" the kernel is the
+! one found in Feti.F90, and when it is removed by Lagrange coefficients the
+! local matrix is assembled with the constraint rows attached -- which is the
+! path that has three DOFs per node here and only one in the Poisson case.
+  Linear System Direct Method = "umfpack"
+
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Abort Not Converged = True
+  Linear System Preconditioning = None
+
+  Feti Preconditioning = Logical True
+  Feti CPG Projection Iterative = Logical True
+
+  Skip Zero Rhs Test = Logical True

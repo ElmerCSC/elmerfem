@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -159,16 +159,16 @@ MODULE NavierStokesCylindrical
      INTEGER :: i,j,k,l,m,c,p,q,t,DIM,N_Integ,NBasis
 
      REAL(KIND=dp) :: s,u,v,w,x,y,z
-  
+
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
- 
+
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
      INTEGER, POINTER :: EdgeMap(:,:)
 
      TYPE(ElementType_t), POINTER :: LinearType, SaveType
      INTEGER :: LinearBasis, LinearCode(3:8) = (/ 303,404,504,605,706,808 /)
-  
+
      LOGICAL :: stat,CylindricSymmetry,Stabilize,Bubbles,PBubbles,P2P1
 
      INTEGER :: IMap(3) = (/ 1,2,4 /)
@@ -308,8 +308,8 @@ MODULE NavierStokesCylindrical
       END IF
 
       IF(PseudoCompressible) THEN
-        Pressure = SUM( NodalPressure(1:n) * Basis(1:n) )        
-        Compress = Density * SUM(NodalCompressibility(1:n)*Basis(1:n))      
+        Pressure = SUM( NodalPressure(1:n) * Basis(1:n) )
+        Compress = Density * SUM(NodalCompressibility(1:n)*Basis(1:n))
       END IF
 
 !------------------------------------------------------------------------------
@@ -333,7 +333,7 @@ MODULE NavierStokesCylindrical
           END IF
         END DO
       END IF
-!  
+!
 !------------------------------------------------------------------------------
 !     Force at the integration point
 !------------------------------------------------------------------------------
@@ -351,7 +351,7 @@ MODULE NavierStokesCylindrical
       IF( CylindricSymmetry ) THEN
         Force(3) = SUM( LoadVector(3,1:n)*Basis(1:n) )/(Density*x)
         Force(4) = SUM( LoadVector(4,1:n)*Basis(1:n) )
-      ELSE 
+      ELSE
         Force(3) = 0.0_dp
         Force(4) = SUM( LoadVector(3,1:n)*Basis(1:n) )
       END IF
@@ -372,7 +372,7 @@ MODULE NavierStokesCylindrical
       ELSE
         Force(1:2) = Force(1:2) + LrF(1:2) / Density
       END IF
-      
+
       IF ( Compressible ) Force(4) = Force(4) / Temperature
 
 !------------------------------------------------------------------------------
@@ -380,13 +380,13 @@ MODULE NavierStokesCylindrical
 !     viscous drag in porous media.
 !------------------------------------------------------------------------------
 
-      IF(PotentialForce) THEN        
+      IF(PotentialForce) THEN
         Force(1) = Force(1) - SUM( PotentialCoefficient(1:n) * Basis(1:n) ) * &
             SUM(  PotentialField(1:n) * dBasisdx(1:n,1) )
         Force(2) = Force(2) - SUM( PotentialCoefficient(1:n) * Basis(1:n) ) * &
             SUM(  PotentialField(1:n) * dBasisdx(1:n,2) ) / x
       END IF
-      
+
       IF(Porous) THEN
         DO i=1,DIM
           Drag(i) = SUM( NodalDrag(i,1:n) * Basis(1:n) )
@@ -410,14 +410,14 @@ MODULE NavierStokesCylindrical
        END DO
 !------------------------------------------------------------------------------
 !      VNorm = SQRT( SUM(Velo(1:dim)**2) )
- 
+
        IF ( Convect ) THEN
          Vnorm = 0.0D0
          DO i=1,DIM
             Vnorm = Vnorm + Velo(i) * Velo(i) / Metric(i)
          END DO
          Vnorm = MAX( SQRT( Vnorm ), 1.0d-12 )
- 
+
          Re = MIN( 1.0D0, Density * mK * hK * VNorm / (4 * Viscosity) )
 
          Tau = 0.0D0
@@ -656,7 +656,7 @@ MODULE NavierStokesCylindrical
           A(1,3) = A(1,3) + Density * Symb(3,3,1) * Basis(q) * Velo(3) * Basis(p)
           A(3,1) = A(3,1) + Density * Symb(1,3,3) * Basis(q) * Velo(3) * Basis(p)
           A(3,3) = A(3,3) + Density * Symb(3,1,3) * Basis(q) * Velo(1) * Basis(p)
- 
+
 !------------------------------------------------------------------------------
 !      Convection terms, Newton linearization
 !------------------------------------------------------------------------------
@@ -685,7 +685,7 @@ MODULE NavierStokesCylindrical
          DO i=1,dim
            A(i,c) = A(i,c) - Metric(i) * Basis(q) * dBasisdx(p,i)
          END DO
-         A(1,c) = A(1,c) + Metric(3) * Basis(q) * Symb(3,3,1) * Basis(p)  
+         A(1,c) = A(1,c) + Metric(3) * Basis(q) * Symb(3,3,1) * Basis(p)
        END IF
 
 !
@@ -730,10 +730,10 @@ MODULE NavierStokesCylindrical
            A(c,1) = A(c,1) + Symb(1,3,3) * Basis(q) * BaseP
          END IF
        END IF
-  
+
 !------------------------------------------------------------------------------
 !      Artificial Compressibility, affects only the continuity equation
-!------------------------------------------------------------------------------  
+!------------------------------------------------------------------------------
 
        IF(PseudoCompressible) THEN
          A(c,c) = A(c,c) + Compress * Basis(q) * Basis(p)
@@ -786,13 +786,13 @@ MODULE NavierStokesCylindrical
            DO j=1,3
              StiffMatrix( 3*(p-1)+i,3*(q-1)+j ) = &
                  StiffMatrix( 3*(p-1)+i,3*(q-1)+j ) + s*A(IMap(i),IMap(j))
-             
+
              MassMatrix(  3*(p-1)+i,3*(q-1)+j ) =  &
                 MassMatrix(  3*(p-1)+i,3*(q-1)+j ) + s*Mass(IMap(i),IMap(j))
            END DO
          END DO
        END IF
- 
+
      END DO
      END DO
 
@@ -822,7 +822,7 @@ MODULE NavierStokesCylindrical
          Force(3) = Force(3) + Symb(3,1,3) * UVelo(1) * UVelo(3)
          Force(3) = Force(3) + Symb(1,3,3) * UVelo(3) * UVelo(1)
        END IF
-     END IF 
+     END IF
 
      DO p=1,NBasis
        Load = 0.0d0
@@ -853,7 +853,7 @@ MODULE NavierStokesCylindrical
        END IF
      END DO
 
-   END DO 
+   END DO
 
    IF ( CylindricSymmetry ) THEN
      k = 4
@@ -991,7 +991,7 @@ MODULE NavierStokesCylindrical
 !------------------------------------------------------------------------------
 !
    DO t=1,N_Integ
-     
+
      u = U_Integ(t)
      v = V_Integ(t)
      w = W_Integ(t)
@@ -1053,7 +1053,7 @@ MODULE NavierStokesCylindrical
        Tangent(3) =  0.0_dp
        Tangent2   =  0.0_dp
      CASE(2)
-       CALL TangentDirections( Normal, Tangent, Tangent2 ) 
+       CALL TangentDirections( Normal, Tangent, Tangent2 )
      END SELECT
 
      IF ( ANY( NodalSlipCoeff(1:dim,1:n) /= 0.0d0 ) ) THEN
@@ -1114,7 +1114,7 @@ MODULE NavierStokesCylindrical
          BoundaryVector(k) = BoundaryVector(k) + s * TangentForce(i) * Basis(q)
        END DO
        k = (q-1)*c + 1
-       
+
        BoundaryVector(k) = BoundaryVector(k) - s * Alpha * Basis(q) * Symb(3,1,3)
      END DO
    END DO

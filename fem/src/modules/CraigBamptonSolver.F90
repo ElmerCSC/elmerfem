@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16.3.2016
 ! *
@@ -98,10 +98,10 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
   CALL Info('CraigBamptonSolver','Performing Craig-Bampton model reduction')
-  
+
   Params => GetSolverParams()
 
-  str = ListGetString( Params,'Elasticity Solver Name',Found ) 
+  str = ListGetString( Params,'Elasticity Solver Name',Found )
   IF( .NOT. Found ) THEN
     CALL Fatal('CraigBamptonSolver','> Elasticity Solver Name < not given!')
   END IF
@@ -117,7 +117,7 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
     CALL Fatal('CraigBamptonSolver','No solver with Equation name: '//TRIM(str))
   END IF
 
-  ESolver => Model % Solvers(SolverId) 
+  ESolver => Model % Solvers(SolverId)
   EVar => ESolver % Variable
 
   A => ESolver % Matrix
@@ -149,7 +149,7 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
   CALL Info('CraigBamptonSolver','Number of constraint modes: '&
       //I2S(NoConstraintModes),Level=7)
   NoComponentModes = NoEigenModes + NoConstraintModes
-  
+
 
   CALL SaveReductionDofs()
 
@@ -164,7 +164,7 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
 
   IF( SaveThis ) THEN
     ALLOCATE( Ahat(NoComponentModes,NoComponentModes))
-    Ahat = 0.0_dp    
+    Ahat = 0.0_dp
     ALLOCATE( Ax(A % NumberOfRows) )
 
     ! 1) stiffness matrix reduction
@@ -190,10 +190,10 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
           x = EVar % EigenVectors(k,:)
         ELSE
           x = Evar % ConstraintModes(k-NoEigenModes,:)
-        END IF 
+        END IF
 
         CALL MatrixVectorMultiply( A,x,Ax )
-      
+
         DO l=1,NoComponentModes
 
           IF( l <= NoEigenModes ) THEN
@@ -202,22 +202,22 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
             x = Evar % ConstraintModes(l-NoEigenModes,:)
           END IF
 
-          Ahat(l,k) = SUM( x * Ax ) 
+          Ahat(l,k) = SUM( x * Ax )
         END DO
       END DO
-      
+
       CALL SaveReductionMatrix()
 
       IF( ListGetLogical( Solver % Values,'Calculate Matrix Norm',Found ) ) THEN
-        Norm = FrobeniusNorm( Ahat, NoComponentModes ) 
+        Norm = FrobeniusNorm( Ahat, NoComponentModes )
         IF( MatrixNo == 1 ) THEN
-          Solver % Variable % Values = Norm 
+          Solver % Variable % Values = Norm
           Solver % Variable % Norm = Norm
         END IF
         IF( MatrixNo == 1 ) THEN
-          WRITE( Message,'(A,ES15.6)') 'Matrix norm for reduced stiffness matrix: ',Norm 
+          WRITE( Message,'(A,ES15.6)') 'Matrix norm for reduced stiffness matrix: ',Norm
         ELSE
-          WRITE( Message,'(A,ES15.6)') 'Matrix norm for reduced mass matrix: ',Norm 
+          WRITE( Message,'(A,ES15.6)') 'Matrix norm for reduced mass matrix: ',Norm
         END IF
         CALL Info('CraigBamptonSolver',Message,Level=5)
       END IF
@@ -227,19 +227,19 @@ SUBROUTINE CraigBamptonSolver( Model,Solver,dt,TransientSimulation )
 
 
   A % Values => SaveValues
-  DEALLOCATE( Ahat ) 
-  
+  DEALLOCATE( Ahat )
+
   CALL Info('CraigBamptonSolver','All done for now',Level=5)
 
 
-CONTAINS 
+CONTAINS
 
 
-  FUNCTION FrobeniusNorm( A, n ) RESULT ( Norm ) 
+  FUNCTION FrobeniusNorm( A, n ) RESULT ( Norm )
     REAL(KIND=dp) :: A(:,:)
     INTEGER :: n
     REAL(KIND=dp) :: Norm
-    
+
     INTEGER :: i,j
 
     Norm = 0.0_dp
@@ -248,8 +248,8 @@ CONTAINS
         Norm = Norm + A(i,j)**2
       END DO
     END DO
-    Norm = SQRT( Norm ) 
-    
+    Norm = SQRT( Norm )
+
   END FUNCTION FrobeniusNorm
 
 
@@ -268,7 +268,7 @@ CONTAINS
     DO i=1,A % NumberOfRows
       j = Evar % ConstraintModesIndeces(i)
       IF( j == 0 ) CYCLE
-      WRITE(IOUnit,'(I0)') i 
+      WRITE(IOUnit,'(I0)') i
     END DO
     CLOSE(IOUnit)
 
@@ -290,7 +290,7 @@ CONTAINS
         DO l = 1, Dofs
           IF( k <= NoEigenModes ) THEN
             val = EVar % EigenVectors(k,Dofs*(j-1)+l)
-          ELSE 
+          ELSE
             val = EVar % ConstraintModes(k-NoEigenModes,Dofs*(j-1)+l)
           END IF
           WRITE(IOUnit,'(ES16.7)',ADVANCE='NO') val
@@ -298,7 +298,7 @@ CONTAINS
       END DO
       WRITE(IOUnit,'(A)') ' '
     END DO
-    CLOSE( IOUnit ) 
+    CLOSE( IOUnit )
   END SUBROUTINE SaveReductionBasis
 
 
@@ -309,7 +309,7 @@ CONTAINS
     DO k=1,NoComponentModes
       WRITE(IOUnit,*) Ahat(k,:)
     END DO
-    CLOSE(IOUnit) 
+    CLOSE(IOUnit)
   END SUBROUTINE SaveReductionMatrix
 
 !------------------------------------------------------------------------------

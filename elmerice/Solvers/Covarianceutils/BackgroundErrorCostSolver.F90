@@ -78,25 +78,15 @@
       INTEGER :: ierr
       INTEGER :: MeshDim
 
-      TYPE(Solver_t), POINTER, SAVE :: MSolver,KMSolver
-      REAL(kind=dp),allocatable,save :: aap(:) ! matrix in packed format
-      REAL(kind=dp),allocatable,save :: x(:),y(:)
-      REAL(kind=dp),allocatable,save :: One(:)
       REAL(kind=dp) :: Cost,Cost_S
 
-      INTEGER,SAVE  :: nn
-      INTEGER, ALLOCATABLE, SAVE :: ActiveNodes(:),InvPerm(:)
-      INTEGER,SAVE :: PbDim
-
-      CHARACTER(LEN=MAX_NAME_LEN),SAVE :: CovType
-      REAL(kind=dp),SAVE :: std
       CHARACTER(LEN=MAX_NAME_LEN) :: Ctype
       REAL(kind=dp) :: CRange,Cm
       INTEGER :: p
       REAL(kind=dp) :: sigma2
       INTEGER :: Op
 
-      LOGICAL, SAVE :: Firsttime=.TRUE.
+      TYPE(CovarianceState_t), POINTER :: State
       LOGICAL :: Reset
       LOGICAL :: Found
       Logical :: Parallel
@@ -109,6 +99,7 @@
 
 
       SolverParams => GetSolverParams()
+      State => GetCovarianceState(Solver)
 
       VarName = ListGetString(SolverParams,"Variable name",UnFoundFatal=.TRUE.)
       GradVarName = ListGetString(SolverParams,"Gradient Variable name",UnFoundFatal=.TRUE.)
@@ -143,21 +134,21 @@
       IF (Reset) CostVar % Values=0.0_dp
 
       !! some initialisation
-      IF (Firsttime) THEN
-        CALL GetActiveNodesSet(Solver,nn,ActiveNodes,InvPerm,PbDim)
+      IF (.NOT. State % Initialized) THEN
+        CALL GetActiveNodesSet(Solver,State % nn,State % ActiveNodes,State % InvPerm,State % PbDim)
 
         !! The covariance type
-        CovType = ListGetString(SolverParams,"Covariance type",UnFoundFatal=.TRUE.)
+        State % CovType = ListGetString(SolverParams,"Covariance type",UnFoundFatal=.TRUE.)
 
-       std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
+       State % std = ListGetConstReal(SolverParams,"standard deviation",UnFoundFatal=.TRUE.)
 
        IF (ParEnv%MyPE.EQ.0) THEN
          open(10,file=TRIM(CostFile))
-           write(10,*) '# Covariance type: ',TRIM(CovType)
-           write(10,*) '# standard deviation: ',std
+           write(10,*) '# Covariance type: ',TRIM(State % CovType)
+           write(10,*) '# standard deviation: ',State % std
        END IF
 
-        SELECT CASE (CovType)
+        SELECT CASE (State % CovType)
 
           CASE('diagonal')
             CALL INFO(SolverName,"Using diagonal covariance",level=3)
@@ -166,8 +157,8 @@
             CALL INFO(SolverName,"Using full matrix covariance",level=3)
 
             Op=3
-            ALLOCATE(aap(nn*(nn+1)/2))
-            CALL CovarianceInit(Solver,nn,InvPerm,aap,Op,PbDim)
+            ALLOCATE(State % aap(State % nn*(State % nn+1)/2))
+            CALL CovarianceInit(Solver,State % nn,State % InvPerm,State % aap,Op,State % PbDim)
 
             Ctype = ListGetString(SolverParams,"correlation type",UnFoundFatal=.TRUE.)
             IF (ParEnv%MyPE.EQ.0) &
@@ -191,7 +182,7 @@
           CASE('diffusion operator')
             CALL INFO(SolverName,"Using diffusion operator covariance",level=3)
 
-            CALL CovarianceInit(Solver,MSolver,KMSolver)
+            CALL CovarianceInit(Solver,State % MSolver,State % KMSolver)
 
             Cm = ListGetInteger(SolverParams,"Matern exponent m",UnFoundFatal=.TRUE.)
             Crange = ListGetConstReal(SolverParams,"correlation range", UnFoundFatal=.TRUE.)
@@ -207,45 +198,48 @@
         IF (ParEnv%MyPE.EQ.0) &
          close(10)
 
-       allocate(x(nn),y(nn),One(nn))
+       allocate(State % x(State % nn),State % y(State % nn),State % One(State % nn))
        ! normalisation vector; usefull for parallel
-       One=1._dp
-       IF (Parallel) CALL ParallelSumVector(Solver%Matrix, One)
+       State % One=1._dp
+       IF (Parallel) CALL ParallelSumVector(Solver%Matrix, State % One)
 
-       Firsttime=.FALSE.
+       State % Initialized = .TRUE.
       END IF
 
       Cost=0._dp
       DO i=1,DOFS
 
         !(x-x_b)
-         x(Solver%Variable%Perm(ActiveNodes(1:nn))) = Values(DOFs*(Perm(ActiveNodes(1:nn))-1)+i)- &
-                 Values_b(DOFs*(Perm_b(ActiveNodes(1:nn))-1)+i)
+         State % x(Solver%Variable%Perm(State % ActiveNodes(1:State % nn))) = &
+                 Values(DOFs*(Perm(State % ActiveNodes(1:State % nn))-1)+i)- &
+                 Values_b(DOFs*(Perm_b(State % ActiveNodes(1:State % nn))-1)+i)
 
-        SELECT CASE (CovType)
+        SELECT CASE (State % CovType)
 
           CASE('diagonal')
-            sigma2=std**2
-            y(1:nn) = x(1:nn)/sigma2
+            sigma2=State % std**2
+            State % y(1:State % nn) = State % x(1:State % nn)/sigma2
 
           CASE('full matrix')
-            CALL InvCovarianceVectorMultiply(Solver,nn,aap,x,y)
+            CALL InvCovarianceVectorMultiply(Solver,State % nn,State % aap,State % x,State % y)
 
           CASE('diffusion operator')
             ! y = SIGMA^1 C^1 SIGMA^1 . (x-x_b)
-            CALL InvCovarianceVectorMultiply(Solver,MSolver,KMSolver,nn,x,y)
+            CALL InvCovarianceVectorMultiply(Solver,State % MSolver,State % KMSolver,State % nn,State % x,State % y)
 
         END SELECT
 
        ! gradient = SIGMA^1 C^1 SIGMA^1 . (x-x_b)
        ! gradients are gathered in the optimisation step; so also normalize by One.
-        DJDValues(DOFS*(DJDPerm(ActiveNodes(1:nn))-1)+i)=DJDValues(DOFS*(DJDPerm(ActiveNodes(1:nn))-1)+i)+ &
-                 y(Solver%Variable%Perm(ActiveNodes(1:nn)))/One(Solver%Variable%Perm(ActiveNodes(1:nn)))
+        DJDValues(DOFS*(DJDPerm(State % ActiveNodes(1:State % nn))-1)+i) = &
+                 DJDValues(DOFS*(DJDPerm(State % ActiveNodes(1:State % nn))-1)+i)+ &
+                 State % y(Solver%Variable%Perm(State % ActiveNodes(1:State % nn)))/ &
+                 State % One(Solver%Variable%Perm(State % ActiveNodes(1:State % nn)))
 
 
         ! 1/2 (x-x_b) . SIGMA^1 C^1 SIGMA^1 . (x-x_b)
         ! normalisation by one insure that shared nodes are not counted twice...
-        Cost=Cost+0.5*SUM(x(1:nn)*y(1:nn)/One(1:nn))
+        Cost=Cost+0.5*SUM(State % x(1:State % nn)*State % y(1:State % nn)/State % One(1:State % nn))
 
       END DO
 

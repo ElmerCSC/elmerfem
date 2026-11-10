@@ -1,0 +1,136 @@
+! Same problem as ../ThermalCompress, with Solver 2 switched from the legacy
+! FlowSolve to IncompressibleNS, exercising its new "Compressibility Model =
+! Thermal" (see IncompressibleNS.F90, LocalBulkMatrix). No "Stabilize"/
+! "Pressure Stabilization" is set on Solver 2, so it takes the default velocity
+! bubble element -- the only stabilisation path this model currently accepts.
+Header
+  Mesh DB "." "ThermalCompress_vec"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Steady State Max Iterations  = 50
+  Output Intervals = 1
+! Post File =  "ThermalCompress_vec.vtu"
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force  = 1
+  Initial Condition = 1
+End
+
+$ RefT=293
+
+Initial Condition 1
+  Temperature = $RefT
+End
+
+Body Force 1
+  Flow BodyForce 2 = -10
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = Temperature
+  Stabilize = True
+
+  Exec Solver = Never
+
+  Nonlinear System Max Iterations = 2
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+  Linear System Solver = Direct
+  Linear System Iterative Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+
+Solver 2
+  Equation = Navier-Stokes
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+
+  Nonlinear Pre Solvers = 1
+
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+
+Equation 1
+  Navier-Stokes = True
+  Heat Equation = True
+  Convection = Computed
+End
+
+Material 1
+  Density = 1
+  Viscosity = 1
+  Heat Capacity = 1000
+  Heat Conductivity  = 1.36986
+  Reference Temperature = $RefT
+  Compressibility Model = Thermal
+  Heat Expansion Coefficient = 0.25
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  pressure  = 0
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = $RefT+0.5
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = Variable Coordinate 1
+    Real MATC "RefT-tx+0.5"
+End
+
+
+Boundary Condition 4
+  Target Boundaries = 4
+
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = $RefT-0.5
+End
+
+! ../ThermalCompress runs this same problem (same mesh, same Compressibility
+! Model = Thermal) on the legacy FlowSolve, which converges to 3.31988E-03 --
+! 0.58% away from the norm below, consistent with the discretisation
+! difference between FlowSolve's PSPG-forced bubble scheme and this solver's
+! own MINI-element one, not a sign either is wrong.
+Solver 2 :: Reference Norm = Real 3.30048782E-03
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
+RUN

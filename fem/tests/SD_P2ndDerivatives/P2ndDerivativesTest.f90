@@ -174,7 +174,7 @@ CONTAINS
           print*,ddxFromNodaldx(i,2,:), ddbasisddx(i,2,:)
           PRINT*,ddxFromNodaldx(i,3,:), ddbasisddx(i,3,:)
           PRINT *,"ddx did not match"
-          STOP 
+          ERROR STOP 
         END IF
       END DO
       diff=0
@@ -269,7 +269,7 @@ CONTAINS
      scal = MAX(ABS(f1),ABS(f2))
      IF(ABS(f1-f2)>scal*eps) THEN
        PRINT*,str,":",f1,f2,ABS(f1-f2), '>', scal*eps
-       STOP  
+       ERROR STOP  
      END IF
 !------------------------------------------------------------------------------
    END SUBROUTINE CheckValue

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -63,7 +63,7 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
   INTEGER :: NanCount(3)
   INTEGER, ALLOCATABLE :: CohortCount(:,:)
 !------------------------------------------------------------------------------
-  
+
   CALL Info('ElementStats','------------------------------',Level=6)
   CALL Info('ElementStats','Studying elements of the mesh')
 
@@ -71,12 +71,12 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
   Mesh => GetMesh()
   IsParallel = GetLogical( Params,'Reduce Parallel',Found)
   IsParallel = IsParallel .AND. ( ParEnv % PEs > 1 )
-  
+
   ! Do cohorst only if requested
-  DoCohorts = GetLogical( Params,'Create Histogram',Found ) 
+  DoCohorts = GetLogical( Params,'Create Histogram',Found )
   IF( DoCohorts ) THEN
-    NoCohorts = GetInteger( Params,'Histogram Intervals',Found ) 
-    IF( .NOT. Found ) NoCohorts = 10 
+    NoCohorts = GetInteger( Params,'Histogram Intervals',Found )
+    IF( .NOT. Found ) NoCohorts = 10
     ALLOCATE( CohortCount( NoCohorts, 3 ) )
     CohortCount = 0
   END IF
@@ -93,70 +93,70 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
   StopAtNans = GetLogical( Params,'Stop At Nans', Found )
 
   NanCount = 0
-  
+
   ! Go through bulk and boundary elements separately
   DO is_bc = 0, bc_max
 
     IF( is_bc == 0 ) THEN
       t0 = 0
       FirstElem = 1
-      LastElem = Mesh % NumberOfBulkElements 
+      LastElem = Mesh % NumberOfBulkElements
       Str = 'bulk'
     ELSE
       t0 = Mesh % NumberOfBulkElements
       FirstElem = 1
-      LastElem = Mesh % NumberOfBoundaryElements 
+      LastElem = Mesh % NumberOfBoundaryElements
       Str = 'boundary'
     END IF
-    
+
     IF( FirstElem > LastElem ) CYCLE
-    
+
     CALL Info('ElementStats','Going through '//TRIM(Str)//' elements')
-    
+
     ! Initialize separately for bulk and boundary
-    !WarnSize = EPSILON( WarnSize ) 
+    !WarnSize = EPSILON( WarnSize )
     LocalMinF = HUGE( LocalMinF )
-    LocalMaxF = -HUGE( LocalMaxF ) 
+    LocalMaxF = -HUGE( LocalMaxF )
     LocalAveF = 0.0_dp
     DoingCohorts = .FALSE.
     LocalElementCount = 0
     ElementCount = 0
-    
+
 100 DO t=FirstElem, LastElem
-      
+
       Element => Mesh % Elements(t0+t)
       Model % CurrentElement => Element
-      
+
       n = GetElementNOFNodes(Element)
       m = GetElementCode(Element)
 
       IF(.NOT. DoingCohorts ) THEN
         LocalElementCount(m) = LocalElementCount(m) + 1
       END IF
-              
-      DO OperNo = 1,3 
+
+      DO OperNo = 1,3
 
         SELECT CASE(OperNo)
-        CASE( 1 ) 
+        CASE( 1 )
           CALL ElementSizeStudy( Element, n, f, HaveNan )
-          
+
         CASE(2)
           CALL ElementSkewStudy( Element, n, f, HaveNan )
-          
+
         CASE(3)
           CALL ElementRatioStudy( Element, n, f, HaveNan )
-          
+
         END SELECT
 
         IF(HaveNan) THEN
           NanCount( OperNo ) = NanCount( OperNo ) + 1
           CYCLE
         END IF
-        
-        IF( .NOT. DoingCohorts ) THEN        
+
+        IF( .NOT. DoingCohorts ) THEN
           LocalMinF( OperNo ) = MIN( f, LocalMinF( OperNo ) )
           LocalMaxF( OperNo ) = MAX( f, LocalMaxF( OperNo ) )
-          LocalAveF( OperNo ) = f + LocalAveF( OperNo )          
+          LocalAveF( OperNo ) = f + LocalAveF( OperNo )
         ELSE
           i = CEILING( NoCohorts * (f-LocalMinF(OperNo))/(LocalMaxF(OperNo)-LocalMinF(OperNo)) )
           i = MAX( 1, MIN( i, NoCohorts ) )
@@ -164,10 +164,10 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
         END IF
       END DO
     END DO
-   
-    
+
+
     LocalElmntCnt = LastElem - FirstElem + 1
-    
+
     IF (IsParallel) THEN
       NanCount(1) = ParallelReduction( NanCount(1) )
       NanCount(2) = ParallelReduction( NanCount(2) )
@@ -193,8 +193,8 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     IF(NanCount(3) > 0 ) THEN
       CALL Info('ElementStats','***** Number of extreme element edge ratios: '//I2S(NanCount(3)),Level=3)
     END IF
-    
-    
+
+
     ! If we study cohorst we need a second sweep over the elements
     IF( DoCohorts .AND. .NOT. DoingCohorts ) THEN
       DoingCohorts = .TRUE.
@@ -204,16 +204,16 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     IF( LastElem > FirstElem ) THEN
       AveF = AveF / ElmntCnt
     END IF
-      
-    
-    DO OperNo = 1,3     
+
+
+    DO OperNo = 1,3
       SELECT CASE(OperNo)
-      CASE( 1 ) 
+      CASE( 1 )
         OperName = 'Element size'
-        
+
       CASE(2)
         OperName = 'Element skew (degs)'
-        
+
       CASE(3)
         OperName = 'Element ratio'
       END SELECT
@@ -222,14 +222,14 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
         PRINT *,'Minimum values '//TRIM(OperName)//': ',MinF(OperNo)
         PRINT *,'Maximum values '//TRIM(OperName)//': ',MaxF(OperNo)
         PRINT *,'Average values '//TRIM(OperName)//': ',AveF(OperNo)
-        
+
         IF( OperNo == 1 ) THEN
           PRINT *,'Ratio of element sizes: ',MaxF(OperNo) / MinF(OperNo)
         END IF
-        
+
         PRINT *,' '
 
-        IF( DoCohorts ) THEN        
+        IF( DoCohorts ) THEN
           PRINT *,'Histogram:'
           dF = ( MaxF(OperNo) - MinF(OperNo) ) / NoCohorts
           DO i=1,NoCohorts
@@ -244,7 +244,7 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
     ! Warning/Stopping in case of Minf falling below threshold
     IF (ApplyWarn .AND. (MinF(1) <= WarnSize) .AND. ParEnv % MyPE == 0 ) THEN
       WRITE(Message,*) 'Minimum Element size ', Minf(1),' below given threshold', WarnSize
-      IF (WarnFatal) THEN        
+      IF (WarnFatal) THEN
         CALL Fatal('ElementStats',Message)
       ELSE
         CALL Warn('ElementStats',Message)
@@ -255,7 +255,7 @@ SUBROUTINE ElementStats( Model,Solver,dt,TransientSimulation )
   IF( StopAtNans .AND. SUM(NanCount) > 0 )  THEN
     CALL Fatal('ElementStats','Mesh has elements of invalid sized or proportion')
   END IF
-  
+
   CALL Info('ElementStats','------------------------------',Level=6)
 
 
@@ -296,17 +296,17 @@ CONTAINS
 
       IF(.NOT. Stat) EXIT
     END DO
-    
+
     IF(.NOT. (ElemSize == ElemSize ) .OR. ElemSize >= HUGE(ElemSize) .OR. .NOT. Stat ) THEN
       !PRINT *,'Element too small: ',Element % ElementIndex, ElemSize
       HaveNan = .TRUE.
       ElemSize = 0.0_dp
     END IF
-    
+
     !IF( ElemSize < EPSILON( ElemSize ) ) THEN
     !  PRINT *,'Element too small: ',Element % ElementIndex, ElemSize
     !END IF
-      
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ElementSizeStudy
 !------------------------------------------------------------------------------
@@ -319,7 +319,7 @@ CONTAINS
     INTEGER :: n
     TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: q
-    LOGICAL :: HaveNan 
+    LOGICAL :: HaveNan
 !------------------------------------------------------------------------------
     INTEGER :: ElemFamily
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -328,26 +328,26 @@ CONTAINS
     TYPE(Nodes_t) :: Nodes
     SAVE Nodes
 !------------------------------------------------------------------------------
-    
+
     CALL GetElementNodes( Nodes )
-    ElemFamily = GetElementFamily( Element )    
+    ElemFamily = GetElementFamily( Element )
     EdgeMap => GetEdgeMap( ElemFamily )
-    
+
     s2max = 0.0_dp
-    s2min = HUGE( s2min ) 
+    s2min = HUGE( s2min )
     HaveNan = .FALSE.
     q = 0.0_dp
-    
+
     DO k=1,Element % Type % NumberOfEdges
       i1 = EdgeMap(k,1)
       i2 = EdgeMap(k,2)
-      
+
       ri(1) = Nodes % x(i2) - Nodes % x(i1)
       ri(2) = Nodes % y(i2) - Nodes % y(i1)
       ri(3) = Nodes % z(i2) - Nodes % z(i1)
-      
+
       s2 = SQRT( SUM( ri * ri ) )
-      
+
       s2max = MAX( s2max, s2 )
       s2min = MIN( s2min, s2 )
     END DO
@@ -359,7 +359,7 @@ CONTAINS
       HaveNan = .TRUE.
       q = 0.0_dp
     END IF
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ElementRatioStudy
 !------------------------------------------------------------------------------
@@ -371,7 +371,7 @@ CONTAINS
     INTEGER :: n
     TYPE(Element_t), TARGET :: Element
     REAL(KIND=dp) :: alpha
-    LOGICAL :: HaveNan 
+    LOGICAL :: HaveNan
 !------------------------------------------------------------------------------
     INTEGER :: ElemFamily
     INTEGER, POINTER :: EdgeMap(:,:)
@@ -382,59 +382,59 @@ CONTAINS
     SAVE Nodes
 !------------------------------------------------------------------------------
 
-    
+
     CALL GetElementNodes( Nodes )
-    ElemFamily = GetElementFamily( Element )    
+    ElemFamily = GetElementFamily( Element )
     EdgeMap => GetEdgeMap( ElemFamily )
-    
+
 
     Alpha = 0.0_dp
     HaveNan = .FALSE.
-    
+
     SELECT CASE ( ElemFamily )
-      
+
     CASE(4) ! quads
       NoEdgePairs = 2
       EdgePairs(1:2*NoEdgePairs) = (/1,3,2,4/)
       ! I.e. the edge pairs to study are 1 & 3, and 2 & 4
-      
+
     CASE(6) ! pyramids
       NoEdgePairs = 2
       EdgePairs(1:2*NoEdgePairs) = (/1,3,2,4/)
-      
+
     CASE(7) ! wedges/prisms
       NoEdgePairs = 6
       EdgePairs(1:2*NoEdgePairs) = (/1,4,7,8,2,5,8,9,3,6,9,7/)
-      
+
     CASE(8) ! hexas
       NoEdgePairs = 12
       EdgePairs(1:2*NoEdgePairs) = &
-          (/1,3,2,4,5,7,6,8,1,5,9,10,2,6,10,11,3,7,11,12,4,8,12,9/)      
+          (/1,3,2,4,5,7,6,8,1,5,9,10,2,6,10,11,3,7,11,12,4,8,12,9/)
 
     CASE DEFAULT
       RETURN
-            
+
     END SELECT
-        
+
     MaxBeta = 0.0_dp
-    
+
     DO k=1,NoEdgePairs
       i1 = EdgeMap(EdgePairs(2*k-1),1)
       i2 = EdgeMap(EdgePairs(2*k-1),2)
       j1 = EdgeMap(EdgePairs(2*k),1)
       j2 = EdgeMap(EdgePairs(2*k),2)
-      
+
       ri(1) = Nodes % x(i2) - Nodes % x(i1)
       ri(2) = Nodes % y(i2) - Nodes % y(i1)
       ri(3) = Nodes % z(i2) - Nodes % z(i1)
-      
+
       rj(1) = Nodes % x(j2) - Nodes % x(j1)
       rj(2) = Nodes % y(j2) - Nodes % y(j1)
       rj(3) = Nodes % z(j2) - Nodes % z(j1)
-      
+
       ri_len = SQRT( SUM( ri * ri ) )
       rj_len = SQRT( SUM( rj * rj ) )
-      
+
       IF( ri_len * rj_len > 0 ) THEN
         beta = ACOS( SUM( ri * rj ) / ( ri_len * rj_len ) )
         beta = MIN( ABS( beta ), ABS( PI - beta ) )
@@ -443,8 +443,8 @@ CONTAINS
     END DO
 
     ! Transform angle to degrees
-    Alpha = 180 * MaxBeta / PI 
-    
+    Alpha = 180 * MaxBeta / PI
+
 !------------------------------------------------------------------------------
   END SUBROUTINE ElementSkewStudy
 !------------------------------------------------------------------------------

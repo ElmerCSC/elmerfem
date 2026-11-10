@@ -66,10 +66,10 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   TYPE(Element_t), TARGET :: TriangleElement
   TYPE(Nodes_t) :: Nodes, LineNodes, FaceNodes, ElementNodes
   TYPE(Variable_t), POINTER :: Variable2D, Var, StressVar, PwVar, FlowVar, &
-       SurfCrevVar, BasalCrevVar, HitCountVar, Crev3DVar, ElevVar
+       SurfCrevVar, BasalCrevVar, HitCountVar, Crev3DVar, ElevVar, GMVar
   TYPE(ValueList_t), POINTER :: Params, Material
   TYPE(Mesh_t), POINTER :: Mesh2D, Mesh3D, Mesh
-  REAL(KIND=dp), POINTER :: StressValues(:), PwValues(:), Crev3DValues(:), ElevValues(:)
+  REAL(KIND=dp), POINTER :: StressValues(:), PwValues(:), Crev3DValues(:), ElevValues(:), Pw_solver(:)
   REAL(KIND=dp), POINTER :: Basis(:)
   REAL(KIND=dp), POINTER :: PlaneX(:), PlaneY(:), PlaneZ(:)
   REAL(KIND=dp), POINTER :: VolumeX(:), VolumeY(:), VolumeZ(:)
@@ -325,7 +325,14 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
         PwValues => PwVar % Values
         PwPerm => PwVar % Perm
 
-        ValueTable3D(2) % Values => PwValues
+        GMVar => VariableGet( Mesh3D % Variables, "GroundedMask", .TRUE. )
+        ALLOCATE(PW_solver(SIZE(PWValues)))
+        Pw_solver = PwValues
+        DO i=1, Mesh3D % NumberOfNodes
+          IF(GMVar % Values(GMVar % Perm(i)) < -0.5) Pw_solver(PwPerm(i)) = -1.0_dp
+        END DO
+
+        ValueTable3D(2) % Values => Pw_solver
         ValueTable3D(2) % Perm => PwPerm
      END IF
   END IF
@@ -351,6 +358,10 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
 
       IF(PwFromVar) THEN
         PW = PwValues(PwPerm(i))
+        IF (PW .LE. 0) THEN
+          PW_base = -1.0 * (Mesh3D % Nodes % z(i) - ElevValues(ElevPerm(i)) - SeaLevel) * g * RhoWS
+          PW = PW_base - (ElevValues(ElevPerm(i)) * g * RhoWF)
+        END IF
       ELSE
         PW_base = -1.0 * (Mesh3D % Nodes % z(i) - ElevValues(ElevPerm(i)) - SeaLevel) * g * RhoWS
         PW = PW_base - (ElevValues(ElevPerm(i)) * g * RhoWF)
@@ -484,7 +495,6 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
      MinWidth3D(t) = MINVAL(ElementNodes % x(1:n))
      MaxWidth3D(t) = MAXVAL(ElementNodes % x(1:n))
   END DO
-
 
   !
   ! allocate space for 3d face intersections / 2d point:
@@ -649,6 +659,7 @@ SUBROUTINE ProjectCalving( Model,Solver,dt,TransientSimulation )
   DEALLOCATE(ElementNodes % x, ElementNodes % y, ElementNodes % z, Basis )
   DEALLOCATE(LineNodes % x, LineNodes % y, LineNodes % z)
   DEALLOCATE(FaceNodes % x, FaceNodes % y, FaceNodes % z)
+  DEALLOCATE(Pw_solver)
 
   WRITE( Message,'(A,4I8)' ) 'Basic search loops: ',Loops(2:5)
   CALL Info( SolverName, Message, LEVEL=4 )
@@ -775,7 +786,7 @@ CONTAINS
 
     REAL(KIND=dp) :: dz_dsigma, dsigma_dz, dpw_dz, dz_dpw, dcindex_dz, dz_dcindex,&
          Pw1, Pw2, PW_base, CIndex1, CIndex2, Stress1, Stress2, BContour, SContour, &
-         ZeroContour, myEps
+         ZeroContour, myEps, PW_base_g, PW_base_c
 
     LOGICAL :: Found,Waterline,Crevasseline
 
@@ -860,7 +871,13 @@ CONTAINS
       Found = .FALSE.
 
       !Calculate Pw at the base of the column, based on sea level and salt water density
-      PW_base = -1.0 * (IntExtent(NoInt) - SeaLevel) * g * RhoWS
+      IF(PwFromVar) THEN
+        PW_base_g = IntValues(2,IntOrder(NoInt))
+        PW_base_c = -1.0 * (IntExtent(NoInt) - SeaLevel) * g * RhoWS
+        PW_base = MAX(PW_base_g, PW_base_c)
+      ELSE
+        PW_base = -1.0 * (IntExtent(NoInt) - SeaLevel) * g * RhoWS
+      END IF
 
       !Cycle nodes in ascending order
       DO j=NoInt, 2, -1
@@ -869,15 +886,17 @@ CONTAINS
 
          Stress1 = IntValues(1,k)
          Stress2 = IntValues(1,k2)
-         IF(PwFromVar) THEN
-            Pw1 = IntValues(2,k)
-            Pw2 = IntValues(2,k2)
-         ELSE
+         !IF(PwFromVar) THEN
+         !   Pw1 = IntValues(2,k)
+         !   IF (Pw1 .LE. 0.0) Pw1 = PW_base - (IntExtent(j) - IntExtent(NoInt)) * g * RhoWF
+         !   Pw2 = IntValues(2,k2)
+         !   IF (Pw2 .LE. 0.0) Pw2 = PW_base - (IntExtent(j-1) - IntExtent(NoInt)) * g * RhoWF
+         !ELSE
             !In-crevasse pressure only equals sea pressure at base of ice
             !then drops at a rate of dz * RhoWF, not dz * RhoWS
-            Pw1 = PW_base - (IntExtent(j) - IntExtent(NoInt)) * g * RhoWF
-            Pw2 = PW_base - (IntExtent(j-1) - IntExtent(NoInt)) * g * RhoWF
-         END IF
+         Pw1 = PW_base - (IntExtent(j) - IntExtent(NoInt)) * g * RhoWF
+         Pw2 = PW_base - (IntExtent(j-1) - IntExtent(NoInt)) * g * RhoWF
+         !END IF
 
          CIndex1 = Stress1
          CIndex2 = Stress2

@@ -1,0 +1,53 @@
+! Second-order basis functions with a p-multigrid preconditioner, smoothed by
+! the composite complex smoother "cjacobi+isgs": a complex Jacobi sweep over the
+! owned-rows matrix, then InternalComplexSGS over the local vectors, which skips
+! the interface rows a Gauss-Seidel cannot update without communication, then a
+! closing Jacobi sweep that carries the interior's improvement out to those rows
+! and exchanges them again. This is the csgs setup of
+! VectorHelmholtzWaveguideCsgs with the smoother swapped, so the two share a
+! reference norm.
+!
+! The composite is the complex smoother meant for several partitions. "icsgs" on
+! its own is only its second half: it leaves the interface rows unsmoothed and
+! never exchanges them, so it is not a standalone parallel smoother by design.
+! Note that the composite weakens as partitions are added, since more rows fall
+! on an interface and only the Jacobi sweeps reach those: the residual reduction
+! per sweep on this mesh runs 0.37, 0.73, 0.79, 0.99 at one, two, three and four
+! partitions and exceeds one by six, where it stops being a contraction at all.
+! That is the nature of the smoother rather than a defect -- the blocks it
+! relaxes exactly are the partition interiors, so more of them means a weaker
+! preconditioner -- but it is why the task counts here stay modest. Four is left
+! out as too close to the edge to gate on.
+
+  Use Piola Transform = True
+  Quadratic Approximation = True
+  Gradient Basis Functions = True
+
+! Outer iteration
+  Linear System Solver = iterative
+  Linear System Iterative Method = GCR
+  Linear System Max Iterations = 100
+  Linear System GCR Restart = 50
+  Linear System Convergence Tolerance = 1.0e-7
+  Linear System Residual Output = 1
+  Linear System Scaling = True
+
+  Linear System Preconditioning = multigrid
+
+! MG parameters only active when preconditioning is set as "multigrid"
+  Edge Basis = True
+  MG Method = p
+  MG Levels = 2
+  MG Max Iterations = 1
+  MG Smoother = cjacobi+isgs
+  MG Pre Smoothing iterations = 6
+  MG Post Smoothing Iterations = 6
+  MG Smoother Relaxation Factor = $ 1/6
+
+  MG Lowest Linear Solver = Direct
+  mglowest: Linear System Scaling = True
+  mglowest: Linear System Direct Method = umfpack
+
+! The reference norm is inherited from the serial cjacobi variant, so the norm
+! has to be counted the same way when the case is run on several partitions.
+  Nonlinear System Consistent Norm = True

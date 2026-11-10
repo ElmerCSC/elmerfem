@@ -55,6 +55,10 @@
 #include <strings.h>
 #  include <dlfcn.h>
 #  include <sys/stat.h>
+#  include <unistd.h>
+#  ifdef __APPLE__
+#    include <mach-o/dyld.h>
+#  endif
 #define ELMER_PATH_SEPARATOR ":"
 #endif
 
@@ -137,6 +141,57 @@ void STDCALLBULL FC_FUNC(getsolverhome,GETSOLVERHOME)
 }
 
 /*--------------------------------------------------------------------------
+  Return the directory holding the running executable, without a trailing
+  separator.  ElmerSolver spawns ViewFactors and Radiators when the radiation
+  factor files are missing; resolving those through PATH picks up whichever
+  build happens to come first there, which need not be the one this solver was
+  built or installed with.  Both live in the same directory as ElmerSolver
+  itself -- fem/src in a build tree, bin/ once installed -- so that is what to
+  ask for.  *len is left 0 when the path cannot be determined, and the caller
+  is then expected to fall back to the bare command name.
+  -------------------------------------------------------------------------*/
+#ifdef USE_ISO_C_BINDINGS
+void STDCALLBULL getexedir( char *exeDir, int *len )
+#else
+void STDCALLBULL FC_FUNC(getexedir,GETEXEDIR) ( char *exeDir, int *len )
+#endif
+{
+  char path[MAX_PATH_LEN];
+  char *sep = NULL;
+  int n = 0;
+
+  *len = 0;
+
+#if defined(WIN32) || defined(MINGW32)
+  n = (int)GetModuleFileName( NULL, path, MAX_PATH_LEN );
+  if( n <= 0 || n >= MAX_PATH_LEN ) return;
+  path[n] = '\0';
+  sep = strrchr( path, '\\' );
+  if( sep == NULL ) sep = strrchr( path, '/' );
+#elif defined(__APPLE__)
+  {
+    uint32_t bufsize = MAX_PATH_LEN;
+    if( _NSGetExecutablePath( path, &bufsize ) != 0 ) return;
+    path[MAX_PATH_LEN-1] = '\0';
+    sep = strrchr( path, '/' );
+  }
+#else
+  n = (int)readlink( "/proc/self/exe", path, MAX_PATH_LEN-1 );
+  if( n <= 0 ) return;
+  path[n] = '\0';
+  sep = strrchr( path, '/' );
+#endif
+
+  if( sep == NULL ) return;
+
+  n = (int)(sep - path);
+  if( n <= 0 || n > MAX_PATH_LEN ) return;
+
+  strncpy( exeDir, path, n );
+  *len = n;
+}
+
+/*--------------------------------------------------------------------------
   This routine will create a directory given name of the directory.
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
@@ -215,7 +270,7 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
     for( i=0 ; i<strlen(mangled) ; i++ ) /* to lower case */
     {
       if ( mangled[i] >= 'A'  && mangled[i] <= 'Z' )
-	mangled[i] += 'a' - 'A';
+        mangled[i] += 'a' - 'A';
     }
   }
   if(ELMER_LINKTYP == 2)
@@ -223,7 +278,7 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
     for( i=0; i<strlen(mangled); i++ ) /* to upper case */
     {
       if ( mangled[i] >= 'a'  && mangled[i] <= 'z' )
-	mangled[i] += 'A' - 'a';
+        mangled[i] += 'A' - 'a';
     }
   }
 
@@ -236,7 +291,7 @@ static void STDCALLBULL fortranMangle(char *orig, char *mangled)
     uscore = 0;
     for( i=0; i<strlen(mangled); i++ )
       if(mangled[i] == '_')
-	uscore++;
+        uscore++;
 
     if(uscore == 0)
     {
@@ -395,19 +450,19 @@ void *STDCALLBULL FC_FUNC(loadfunction,LOADFUNCTION) ( int *Quiet, int *abort_no
          strncat( ElmerLib, "/share/elmersolver/lib", 2*MAX_PATH_LEN-1 );
       } else {
 #if defined(WIN32) || defined(MINGW32)
-	/* Should not get here unless WIN32 implements DLOPEN_API */
-	GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
-	exeName = strrchr(appPath, '\\');
-	n = (int)(exeName - appPath);
-	if(n < 0) n = 0;
-	if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
+        /* Should not get here unless WIN32 implements DLOPEN_API */
+        GetModuleFileName(NULL, appPath, MAX_PATH_LEN);
+        exeName = strrchr(appPath, '\\');
+        n = (int)(exeName - appPath);
+        if(n < 0) n = 0;
+        if(n > MAX_PATH_LEN) n = MAX_PATH_LEN;
         strncat(ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1);
-	strncat(ElmerLib, appPath, n);
-	strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN-1);
+        strncat(ElmerLib, appPath, n);
+        strncat(ElmerLib, "\\..\\share\\elmersolver\\lib", 2*MAX_PATH_LEN-1);
 #else
         strncat( ElmerLib, ELMER_PATH_SEPARATOR, 2*MAX_PATH_LEN-1 );
-	strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN-1 );
-	strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN-1 );
+        strncat( ElmerLib, ELMER_SOLVER_HOME, 2*MAX_PATH_LEN-1 );
+        strncat( ElmerLib, "/lib", 2*MAX_PATH_LEN-1 );
 #endif
       }
    }
@@ -479,8 +534,7 @@ static void DoubleArrayExec(
    Execute given function returning double value
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void STDCALLBULL execrealarrayfunction_c( f_ptr Function, void *Model,
-										int *Node, double *Value, double *Array )
+void STDCALLBULL execrealarrayfunction_c( f_ptr Function, void *Model, int *Node, double *Value, double *Array )
 #else
 void STDCALLBULL FC_FUNC(execrealarrayfunction,EXECREALARRAYFUNCTION)
      ( f_ptr Function,
@@ -506,8 +560,7 @@ static double DoubleExec(
    Execute given function returning double value
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-double STDCALLBULL execrealfunction_c( f_ptr Function, void *Model,
-									 int *Node, double *Value )
+double STDCALLBULL execrealfunction_c( f_ptr Function, void *Model, int *Node, double *Value )
 #else
 double STDCALLBULL FC_FUNC(execrealfunction,EXECREALFUNCTION)
      ( f_ptr Function, void *Model,
@@ -533,8 +586,7 @@ static double ConstDoubleExec(
    Execute given function returning double value
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model,
-										  double *x, double *y, double *z )
+double STDCALLBULL execconstrealfunction_c( f_ptr Function, void *Model, double *x, double *y, double *z )
 #else
 double STDCALLBULL FC_FUNC(execconstrealfunction,EXECCONSTREALFUNCTION)
      ( f_ptr Function, void *Model,
@@ -574,8 +626,7 @@ static void DoExecSolver(
    Call solver routines at given address
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-void STDCALLBULL execsolver_c( f_ptr *SolverProc, void *Model, void *Solver,
-								void *dt, void *Transient )
+void STDCALLBULL execsolver_c( f_ptr *SolverProc, void *Model, void *Solver, void *dt, void *Transient )
 #else
 void STDCALLBULL FC_FUNC(execsolver,EXECSOLVER)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *dt, void *Transient )
@@ -602,8 +653,8 @@ static int DoLinSolveProcs(
    Call lin. solver routines at given address
    -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
-int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver,
-						void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
+int STDCALLBULL execlinsolveprocs_c( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix,
+                  void *b, void *x, void *n, void *DOFs, void *Norm )
 #else
 int STDCALLBULL FC_FUNC(execlinsolveprocs,EXECLINSOLVEPROCS)
      ( f_ptr *SolverProc, void *Model, void *Solver, void *Matrix, void *b, void *x, void *n, void *DOFs, void *Norm )
@@ -857,7 +908,7 @@ static double DoViscFunction(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 double STDCALLBULL materialuserfunction_c( f_ptr Function, void *Model, void *Element,
-		void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
+    void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
 #else
 double STDCALLBULL FC_FUNC(materialuserfunction,MATERIALUSERFUNCTION)
   ( f_ptr Function, void *Model, void *Element, void *Nodes, void *n, void *nd, void *Basis, void *GradBasis, void *Viscosity, void *Velo, void *gradV )
@@ -956,7 +1007,7 @@ static void DoLocalCall(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL execlocalproc_c( f_ptr localProc, void *Model,void *Solver,
-								void *G, void *F, void *Element,void *n,void *nd )
+      void *G, void *F, void *Element,void *n,void *nd )
 #else
 void STDCALLBULL FC_FUNC(execlocalproc, EXECLOCALPROC )
      ( f_ptr localProc, void *Model,void *Solver,void *G, void *F, void *Element,void *n,void *nd )
@@ -984,9 +1035,8 @@ static void DoLocalAssembly(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL execlocalassembly_c( f_ptr LocalAssembly, void *Model,
-		         void *Solver,void *dt,void *transient,
-		         void *M, void *D, void *S,void *F,
-		         void *Element,void *n,void *nd )
+          void *Solver,void *dt,void *transient, void *M, void *D, void *S,void *F,
+                       void *Element,void *n,void *nd )
 #else
 void STDCALLBULL FC_FUNC(execlocalassembly, EXECLOCALASSEMBLY )
      ( f_ptr LocalAssembly, void *Model,void *Solver,void *dt,void *transient,void *M, void *D, void *S,void *F,void *Element,void *n,void *nd )
@@ -1014,7 +1064,7 @@ static void DoMatVecSubr(
   -------------------------------------------------------------------------*/
 #ifdef USE_ISO_C_BINDINGS
 void STDCALLBULL matvecsubrext_c( f_ptr matvec, void **SpMV, void *n, void *rows,
-		                          void *cols, void *vals, void *u, void *v,void *reinit )
+               void *cols, void *vals, void *u, void *v,void *reinit )
 #else
 void STDCALLBULL FC_FUNC(matvecsubr, MMATVECSUBR)
      ( f_ptr matvec, void **SpMV, void *n, void *rows, void *cols, void *vals, void *u, void *v,void *reinit )

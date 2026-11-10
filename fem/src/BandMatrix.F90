@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1998
 ! *
@@ -36,13 +36,13 @@
 
 #include "huti_fdefs.h"
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !-------------------------------------------------------------------------------
 !>  Module defining utility routines & matrix storage for band matrix format.
-!>  This module is currently of no or, only little use as the default 
-!> matrix storage format is CRS. 
+!>  This module is currently of no or, only little use as the default
+!> matrix storage format is CRS.
 !-------------------------------------------------------------------------------
 
 MODULE BandMatrix
@@ -78,7 +78,7 @@ CONTAINS
     TYPE(Matrix_t) :: A  !< Structure holding matrix
     INTEGER :: n                  !< Row number to be zerod
 !------------------------------------------------------------------------------
- 
+
     INTEGER :: j,k
 
     IF ( A % Format == MATRIX_BAND ) THEN
@@ -92,7 +92,7 @@ CONTAINS
     END IF
   END SUBROUTINE Band_ZeroRow
 !------------------------------------------------------------------------------
-  
+
 !------------------------------------------------------------------------------
 !> Add a given element to the band matrix.
 !------------------------------------------------------------------------------
@@ -148,19 +148,19 @@ CONTAINS
     REAL(KIND=dp) :: value  !< Value to be obtained
 !------------------------------------------------------------------------------
     IF ( A % Format == MATRIX_BAND ) THEN
-      Value = A % Values(BAND_INDEX(i,j))  
+      Value = A % Values(BAND_INDEX(i,j))
     ELSE
-      IF ( j <= i ) Value = A % Values(SBAND_INDEX(i,j)) 
+      IF ( j <= i ) Value = A % Values(SBAND_INDEX(i,j))
     END IF
   END FUNCTION Band_GetMatrixElement
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-!> Add a set of values (.i.e. element stiffness matrix) to a Band format matrix. 
+!> Add a set of values (.i.e. element stiffness matrix) to a Band format matrix.
 !------------------------------------------------------------------------------
   SUBROUTINE Band_GlueLocalMatrix( A,N,Dofs,Indeces,LocalMatrix )
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
      REAL(KIND=dp) :: LocalMatrix(:,:)  !< A (N x Dofs) x ( N x Dofs) matrix holding the values to be
                                         !! added to the Band format matrix
      TYPE(Matrix_t) :: A   !< Structure holding matrix, values are affected in the process
@@ -416,7 +416,7 @@ CONTAINS
            u(i) = v(i)
         END IF
       END DO
-    ELSE 
+    ELSE
       DO i=1,n
         k = SBAND_INDEX(i,i)
         IF  ( ABS(Values(k)) > AEPS ) THEN

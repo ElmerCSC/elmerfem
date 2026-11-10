@@ -1877,7 +1877,7 @@ int CreatePoints(struct CellType *cell,struct FemType *data,
 		 struct BoundaryType *bound,
 		 int param1,int param2,int pointmode,int pointtype,int info)
 {
-  int size,i,no,corner,times,elem,node;
+  int size,i,no,corner,times,elem=0,node;
 
   bound->created = FALSE;
   bound->nosides = 0;    
@@ -2926,7 +2926,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 		int nooverlap, int info)
 /* Unites two meshes for one larger mesh */
 {
-  int i,j,k;
+  int i,j,k=0;
   int noelements,noknots,nonodes,maxnodes;
   int **newtopo=NULL,*newmaterial=NULL,*newelementtypes=NULL;
   Real *newx=NULL,*newy=NULL,*newz=NULL;
@@ -3009,7 +3009,6 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       }
     }
 
-
     /* And finally number the conflicting joined bodies and BCs */
     for(i=1;i<=data2->noelements;i++) {
       mat = data2->material[i];
@@ -3020,12 +3019,14 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	  if(info) printf("Renumbering body %d to %d\n",mat,k);
 	  bodynameis[mat] = k;	  
 	  bodyused[k] = TRUE;
-	  if(!data1->bodyname[k]) data1->bodyname[k] = Cvector(0,MAXNAMESIZE);
-  	  strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	  if(data2->bodyname[mat]) {
+	    if(!data1->bodyname[k]) data1->bodyname[k] = Cvector(0,MAXNAMESIZE);
+	    strcpy(data1->bodyname[k],data2->bodyname[mat]);
+	  }
 	}
       }
     }
-
+    
     for(j=0;j < MAXBOUNDARIES;j++) {
       if(!bound2[j].created) continue;     
       for(i=1; i <= bound2[j].nosides; i++) {
@@ -3038,8 +3039,10 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
 	    if(info) printf("Renumbering boundary %d to %d\n",mat,k);
 	    boundarynameis[mat] = k;
 	    boundaryused[k] = TRUE;
-	    if(!data1->boundaryname[k]) data1->boundaryname[k] = Cvector(0,MAXNAMESIZE);
-	    strcpy(data1->boundaryname[k],data2->boundaryname[mat]);
+	    if(data2->boundaryname[mat]) {
+	      if(!data1->boundaryname[k]) data1->boundaryname[k] = Cvector(0,MAXNAMESIZE);
+	      strcpy(data1->boundaryname[k],data2->boundaryname[mat]);
+	    }
 	  }
 	}
       }
@@ -3086,7 +3089,6 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
       printf("Max(body1) is %d and Min(body2) is %d, using body offset %d for mesh 2!\n",bodymax1,bodymin2,bodyoffset);
     }
   }
-  
 
 
   for(j=0;j < MAXBOUNDARIES;j++) {
@@ -3123,6 +3125,7 @@ int UniteMeshes(struct FemType *data1,struct FemType *data2,
     }
   }
 
+  
   data1->maxnodes = maxnodes;
   newtopo = Imatrix(1,noelements,0,maxnodes-1);
   newmaterial = Ivector(1,noelements);
@@ -7060,7 +7063,7 @@ void ElementsToBoundaryConditions(struct FemType *data,
 {
   int i,j,k,l,sideelemtype,sideelemtype2,elemind,elemind2,sideelem,sameelem;
   int sideind[MAXNODESD1],sideind2[MAXNODESD1],elemsides,side,hit,same,minelemtype;
-  int sidenodes,sidenodes2,maxelemtype,elemtype,elemdim,sideelements,material;
+  int sidenodes,sidenodes2=0,maxelemtype,elemtype,elemdim,sideelements,material;
   int *moveelement=NULL,*parentorder=NULL,*possible=NULL,**invtopo=NULL;
   int noelements,maxpossible,noknots,maxelemsides,twiceelem,sideelemdim,minelemdim,maxelemdim;
   int debug,unmoved,removed,elemhits,loopdim,lowdimbulk;
@@ -8147,7 +8150,7 @@ int CreateBoundaryLayer(struct FemType *data,struct BoundaryType *bound,
 /* Create Boundary layers that may be used to solve accurately fluid
    flow problems and similar equations. */
 {
-  int i,j,k,l,m,n,i2,i3,nonodes,maxbc,newbc;
+  int i,j,k,l,m,n,i2,i3,nonodes,maxbc,newbc=0;
   int noknots,noelements,elemindx,nodeindx,elemtype;
   int oldnoknots,oldnoelements,maxelemtype,oldmaxnodes;
   int nonewnodes,nonewelements,dolayer,dim,order,midpoints;

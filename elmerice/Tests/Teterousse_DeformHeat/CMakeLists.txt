@@ -2,6 +2,7 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
   INCLUDE(${CMAKE_CURRENT_SOURCE_DIR}/../test_macros.cmake)
 
   CONFIGURE_FILE(test.sif test.sif COPYONLY)
+  CONFIGURE_FILE(stabilized.sif stabilized.sif COPYONLY)
 
   ADD_ELMERICETEST_MODULE(Teterousse_DeformHeat USF_TR ./PROG/USF_TR.f90)
 

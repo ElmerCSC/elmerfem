@@ -141,6 +141,7 @@ Boundary Condition 2
   Target Boundaries(1) = 58
 
   Mortar BC = Integer 3
+  Contact Type = String "slide"
   Mortar BC Nonlinear = Logical True
   Contact Depth Offset Initial = Real 1.0e-3
   !Contact Active Set Minimum = Integer 1

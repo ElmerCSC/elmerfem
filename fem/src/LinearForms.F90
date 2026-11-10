@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 31 May 2017
 ! *
@@ -44,7 +44,8 @@
 #include "../config.h"
 
 MODULE LinearForms
-  USE Types, ONLY: dp, VECTOR_BLOCK_LENGTH, VECTOR_SMALL_THRESH
+  USE Types, ONLY: dp, VECTOR_BLOCK_LENGTH, VECTOR_SMALL_THRESH, &
+                   VECTOR_DGEMM_MIN_BLK, VECTOR_DGEMM_MIN_N
   USE Messages
   IMPLICIT NONE
   PRIVATE
@@ -57,7 +58,7 @@ MODULE LinearForms
         LinearForms_UdotF, LinearForms_ProjectToU, LinearForms_UdotV
 CONTAINS
 
-  ! Compute bilinear form G=G+(alpha grad u, grad u) = grad u .dot. (alpha grad u) 
+  ! Compute bilinear form G=G+(alpha grad u, grad u) = grad u .dot. (alpha grad u)
   SUBROUTINE LinearForms_GradUdotGradU(m, n, dim, GradU, weight, G, alpha)
     IMPLICIT NONE
 
@@ -81,12 +82,13 @@ CONTAINS
     DO ii=1,m,VECTOR_BLOCK_LENGTH
       iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
       blklen=iin-ii+1
-      
-      IF (blklen < VECTOR_SMALL_THRESH) THEN
+
+      IF (blklen < VECTOR_SMALL_THRESH .AND. &
+          (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
         ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
         IF (noAlphaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -99,7 +101,7 @@ CONTAINS
           END DO
         ELSE
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -115,14 +117,14 @@ CONTAINS
         DO k=1, dim
           IF (noAlphaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*GradU(i,j,k)
               END DO
             END DO
           ELSE
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*alpha(i)*GradU(i,j,k)
               END DO
@@ -137,7 +139,7 @@ CONTAINS
     END DO ! Vector blocks
   END SUBROUTINE LinearForms_GradUdotGradU
 
-  ! Compute bilinear form G=G+(alpha grad u, u) = u .dot. (alpha grad u) 
+  ! Compute bilinear form G=G+(alpha grad u, u) = u .dot. (alpha grad u)
   SUBROUTINE LinearForms_GradUdotU(m, n, dim, GradU, U, weight, G, alpha, beta)
     IMPLICIT NONE
 
@@ -163,12 +165,13 @@ CONTAINS
     DO ii=1,m,VECTOR_BLOCK_LENGTH
       iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
       blklen=iin-ii+1
-      
-      IF (blklen < VECTOR_SMALL_THRESH) THEN
+
+      IF (blklen < VECTOR_SMALL_THRESH .AND. &
+          (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
         ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
         IF (noAlphaWeight .AND. noBetaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -181,7 +184,7 @@ CONTAINS
           END DO
         ELSE IF (.NOT. noAlphaWeight .AND. noBetaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -194,7 +197,7 @@ CONTAINS
           END DO
         ELSE IF (noAlphaWeight .AND. .NOT. noBetaWeight) THEN
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -207,7 +210,7 @@ CONTAINS
           END DO
         ELSE
           DO j=1,n
-            !_ELMER_OMP_SIMD PRIVATE(l,k)
+            ELMER_OMP_SIMD_CLAUSE((PRIVATE(l,k)))
             DO i=1,n
 !DIR$ LOOP COUNT MAX=3
 !DIR$ UNROLL
@@ -223,28 +226,28 @@ CONTAINS
         DO k=1, dim
           IF (noAlphaWeight .AND. noBetaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*GradU(i,j,k)
               END DO
             END DO
           ELSE IF (.NOT. noAlphaWeight .AND. noBetaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*alpha(i)*GradU(i,j,k)
               END DO
             END DO
           ELSE IF (noAlphaWeight .AND. .NOT. noBetaWeight) THEN
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*beta(i,k)*GradU(i,j,k)
               END DO
             END DO
           ELSE
             DO j=1,n
-              !_ELMER_OMP_SIMD
+              ELMER_OMP_SIMD
               DO i=ii,iin
                 wrk(i-ii+1,j)=weight(i)*alpha(i)*beta(i,k)*GradU(i,j,k)
               END DO
@@ -258,7 +261,7 @@ CONTAINS
       END IF
     END DO ! Vector blocks
   END SUBROUTINE LinearForms_GradUdotU
-  
+
 
   ! Compute bilinear form G=G+(alpha u, v), where u and v can be different basis functions
   SUBROUTINE LinearForms_UdotV(m, n, dim, U, V, weight, G, alpha)
@@ -285,7 +288,8 @@ CONTAINS
        iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
        blklen=iin-ii+1
 
-       IF (blklen < VECTOR_SMALL_THRESH) THEN
+       IF (blklen < VECTOR_SMALL_THRESH .AND. &
+           (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
           ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
           IF (noAlphaWeight) THEN
              DO j=1,n
@@ -299,7 +303,7 @@ CONTAINS
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD PRIVATE(l)
+                ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -311,14 +315,14 @@ CONTAINS
        ELSE
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*V(i,j)
                 END DO
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*alpha(i)*V(i,j)
                 END DO
@@ -332,7 +336,7 @@ CONTAINS
     END DO ! Vector blocks
   END SUBROUTINE LinearForms_UdotV
 
-  ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u) 
+  ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u)
   SUBROUTINE LinearForms_UdotU(m, n, dim, U, weight, G, alpha)
     IMPLICIT NONE
 
@@ -357,11 +361,12 @@ CONTAINS
        iin=MIN(ii+VECTOR_BLOCK_LENGTH-1,m)
        blklen=iin-ii+1
 
-       IF (blklen < VECTOR_SMALL_THRESH) THEN
+       IF (blklen < VECTOR_SMALL_THRESH .AND. &
+           (blklen < VECTOR_DGEMM_MIN_BLK .OR. n < VECTOR_DGEMM_MIN_N)) THEN
           ! Do not attempt to call BLAS for small cases to avoid preprocessing overhead
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !_ELMER_OMP_SIMD PRIVATE(l)
+                ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -371,7 +376,7 @@ CONTAINS
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD PRIVATE(l)
+                ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
                 DO i=1,n
                    !DIR$ LOOP COUNT MAX=3
                    DO l=ii,iin
@@ -383,14 +388,14 @@ CONTAINS
        ELSE
           IF (noAlphaWeight) THEN
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*U(i,j)
                 END DO
              END DO
           ELSE
              DO j=1,n
-                !_ELMER_OMP_SIMD
+                ELMER_OMP_SIMD
                 DO i=ii,iin
                    wrk(i-ii+1,j)=weight(i)*alpha(i)*U(i,j)
                 END DO
@@ -420,12 +425,12 @@ CONTAINS
     INTEGER, INTENT(IN) :: m, n
     REAL(KIND=dp) CONTIG, INTENT(IN) :: U(:,:), F(:,:)
     REAL(KIND=dp) CONTIG, INTENT(INOUT) :: ProjectToU(:,:)
-    
+
     CALL DGEMM('N', 'N', m, SIZE(F,2), n, 1D0, U, SIZE(U,1), F, SIZE(F,1), &
             0D0, ProjectToU, SIZE(ProjectToU,1))
   END SUBROUTINE LinearForms_ProjectToU_rankn
 
-  ! Compute linear form UdotF=UdotF+(u,f) 
+  ! Compute linear form UdotF=UdotF+(u,f)
   SUBROUTINE LinearForms_UdotF(m, n, U, weight, F, UdotF, alpha)
     IMPLICIT NONE
 
@@ -449,14 +454,14 @@ CONTAINS
 
       IF (blklen < VECTOR_SMALL_THRESH) THEN
         IF (noAlphaWeight) THEN
-          !_ELMER_OMP_SIMD PRIVATE(l)
+          ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
           DO i=1,n
             DO l=ii,iin
               UdotF(i) = UdotF(i) + U(l,i)*F(l)*weight(l)
             END DO
           END DO
         ELSE
-          !_ELMER_OMP_SIMD PRIVATE(l)
+          ELMER_OMP_SIMD_CLAUSE((PRIVATE(l)))
           DO i=1,n
             DO l=ii,iin
               UdotF(i) = UdotF(i) + U(l,i)*F(l)*weight(l)*alpha(l)
@@ -465,12 +470,12 @@ CONTAINS
         END IF
       ELSE
         IF (noAlphaWeight) THEN
-          !_ELMER_OMP_SIMD
+          ELMER_OMP_SIMD
           DO i=ii,iin
             wrk(i-ii+1) = weight(i)*F(i)
           END DO
         ELSE
-          !_ELMER_OMP_SIMD 
+          ELMER_OMP_SIMD
           DO i=ii,iin
             wrk(i-ii+1) = weight(i)*F(i)*alpha(i)
           END DO

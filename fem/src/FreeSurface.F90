@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -34,13 +34,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 02 Jun 1997
 ! *
 ! ****************************************************************************/
 
-!> Internal free surface utilities. 
+!> Internal free surface utilities.
 !> \deprecated
 !> \ingroup ElmerLib
 !> \{
@@ -58,7 +58,7 @@ MODULE FreeSurface
 CONTAINS
 !-------------------------------------------------------------------------------
 !
-! 
+!
    SUBROUTINE MeanCurvature( Model )
 !-------------------------------------------------------------------------------
      TYPE(Model_t) :: Model
@@ -72,7 +72,7 @@ CONTAINS
 
     REAL(KIND=dp), ALLOCATABLE :: dxdu(:),dydu(:),dzdu(:)
     REAL(KIND=dp), ALLOCATABLE :: dxdv(:),dydv(:),dzdv(:)
- 
+
     REAL(KIND=dp), TARGET :: nx(16),ny(16),nz(16),Nrm(3)
     REAL(KIND=dp), POINTER :: Curvature(:)
 
@@ -106,7 +106,7 @@ CONTAINS
 
         Boundary => Model % Elements(t)
         IF ( Boundary % BoundaryInfo % Constraint /= BC ) CYCLE
-  
+
         n = Boundary % Type % NumberOfNodes
         DO i=1,n
           j = Boundary % NodeIndexes(i)
@@ -117,7 +117,7 @@ CONTAINS
           Visited(j) = Visited(j) + 1
         END DO
       END DO
-    END DO 
+    END DO
 !-------------------------------------------------------------------------------
 ! If no free surfaces, return
 !-------------------------------------------------------------------------------
@@ -262,7 +262,7 @@ nodes % z => nz(1:n)
           x = Model % Nodes % x(NodeIndexes(i))
           y = Model % Nodes % y(NodeIndexes(i))
           z = Model % Nodes % z(NodeIndexes(i))
-  
+
           IF  (CurrentCoordinateSystem() /= Cartesian ) THEN
             CALL CoordinateSystemInfo( Metric,SqrtMetric,Symbols,dSymbols,X,Y,Z )
           END IF
@@ -411,7 +411,7 @@ print*,'----------------------'
 
     REAL(KIND=dp) :: dxdu,dydu,dzdu, FEPS
     REAL(KIND=dp) :: dxdv,dydv,dzdv,x1,x2,y1,y2,z1,z2
- 
+
     REAL(KIND=dp), TARGET :: N1,N2,N3,Nrm(3)
     REAL(KIND=dp), POINTER :: Curvature(:)
 
@@ -472,7 +472,7 @@ print*,'----------------------'
     DO t = 1,Mesh % NumberOfBoundaryElements
       Boundary => GetBoundaryElement(t)
       BC => GetBC()
-      
+
       IF ( .NOT. ASSOCIATED(BC) ) CYCLE
       IF ( .NOT.GetLogical(BC, 'Free Surface',L) ) CYCLE
       IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -576,7 +576,7 @@ print*,'----------------------'
        DO t=1,Mesh % NumberOfBoundaryElements
          Boundary => GetBoundaryElement(t)
          BC => GetBC()
-         
+
          IF ( .NOT. ASSOCIATED(BC) ) CYCLE
          IF (.NOT.GetLogical(BC, 'Free Surface',L)) CYCLE
          IF ( .NOT. ActiveBoundaryElement() ) CYCLE
@@ -765,7 +765,7 @@ print*,'----------------------'
     END IF
 
     DEALLOCATE( Visited,Turned,XCoord,YCoord,ZCoord,AvarageNormal )
- 
+
     ALLOCATE( ElementNodes % x(Model % MaxElementNodes) )
     ALLOCATE( ElementNodes % y(Model % MaxElementNodes) )
     ALLOCATE( ElementNodes % z(Model % MaxElementNodes) )
@@ -779,7 +779,7 @@ print*,'----------------------'
       CALL StabParam( Element, ElementNodes, n, &
                Element % StabilizationMK, Element % hK )
     END DO
-   
+
     DEALLOCATE( ElementNodes % x, ElementNodes % y, ElementNodes % z)
 !-------------------------------------------------------------------------------
   END SUBROUTINE MoveBoundary
@@ -853,7 +853,7 @@ print*,'----------------------'
     END IF
 
 !------------------------------------------------------------------------------
- 
+
     CALL CRS_ZeroMatrix( CMatrix )
     ForceVector = 0.0D0
 

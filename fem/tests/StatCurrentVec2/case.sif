@@ -32,7 +32,7 @@ End
 Solver 1
   Equation = StaticCurrentA
   Variable = PotA
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
   NameSpace = "a:"
 
   Linear System Solver = Direct
@@ -48,7 +48,7 @@ End
 Solver 2
   Equation = StaticCurrentB
   Variable = PotB
-  Procedure = "StatCurrentSolveVec" "StatCurrentSolver"
+  Procedure = "StatCurrentSolve" "StatCurrentSolver"
   NameSpace = "b:"
 
   Linear System Solver = Direct

@@ -1,0 +1,8 @@
+INCLUDE(test_macros)
+INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+CONFIGURE_FILE( PhaseChange.sif PhaseChange.sif COPYONLY)
+
+file(COPY Mesh ELMERSOLVER_STARTINFO Mesh1.mif  DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+ADD_ELMER_TEST(HeatSolveVecPhaseChange LABELS transient)

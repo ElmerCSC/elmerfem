@@ -108,7 +108,7 @@ SUBROUTINE CostSolver_Robin( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp),allocatable :: Nodalvn(:,:),Nodalvd(:,:),Nodalvelon(:,:),Nodalvelod(:,:)
   REAL(KIND=dp),allocatable :: Basis(:), PBasis(:),dBasisdx(:,:),PdBasisdx(:,:)
 
-  CHARACTER*10 :: date,temps
+  CHARACTER(LEN=10) :: date,temps
 
   save Firsttime,Parallel,CostFile,DIM,ElementNodes,ParentNodes
   save SolverName,NeumannSolName,DirichletSolName,VarSolname,CostSolName

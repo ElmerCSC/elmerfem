@@ -677,7 +677,7 @@ TopoDS_Shape CadView::readBrep(QString fileName) {
   BRep_Builder builder;
   Standard_Boolean result;
 
-  result = BRepTools::Read(shape, fileName.toLatin1().data(), builder);
+  result = BRepTools::Read(shape, fileName.toLocal8Bit().data(), builder);
 
   if (!result)
     cout << "Read brep failed" << endl;

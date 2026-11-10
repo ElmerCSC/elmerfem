@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16 Apr 2024
 ! *
@@ -43,26 +43,27 @@
 !------------------------------------------------------------------------------
 MODULE ViewUtils
 
-     USE MeshBasics
+  USE MeshBasics
+  IMPLICIT NONE
 
 CONTAINS
 
 !------------------------------------------------------------------------------
   ! Find planar ares and reduce those, if found, to fewer elements
 !------------------------------------------------------------------------------
-  FUNCTION PlanarReduce( n, Normals, Coord, Mesh ) RESULT(MeshOut)
+  FUNCTION PlanarReduce( n, Normals, Coord, Mesh, FlattenBody, FlattenDir ) RESULT(MeshOut)
 !------------------------------------------------------------------------------
     TYPE(Mesh_t) :: Mesh
     TYPE(Mesh_t), POINTER :: MeshOut
     INTEGER :: n
     REAL(KIND=dp) :: Normals(:), Coord(:)
+    INTEGER :: FlattenBody, FlattenDir
 !------------------------------------------------------------------------------
-    INTEGER :: i, j, k, Usedn, Setn,  pn,nn
+    INTEGER :: i, j, k, Usedn, Setn,  pn,nn, mloc(1)
     LOGICAL, ALLOCATABLE :: Used(:)
     INTEGER, ALLOCATABLE :: Set(:), Ref(:)
-
-    LOGICAL  :: problems
-
+    LOGICAL  :: SkipElements, TestIt
+    TYPE(Element_t), POINTER :: Parent
     REAL(KIND=dp) :: t0,t1,t2
     TYPE(Mesh_t), POINTER :: Mesh2
 !------------------------------------------------------------------------------
@@ -97,12 +98,37 @@ CONTAINS
       Used(i) = .TRUE.
       Usedn = Usedn+1
 
+      ! Check if the 1st element may be skipped because we do a planar reduction.
+      ! If it can be, the whole set can be skipped.
+      SkipElements = .FALSE.
+      IF( FlattenBody > 0 ) THEN
+        TestIt = .FALSE.
+        Parent => Mesh % Elements(i) % BoundaryInfo % Left
+        IF(ASSOCIATED(Parent)) THEN
+          IF(Parent % BodyId == FlattenBody) TestIt = .TRUE.
+        END IF
+        Parent => Mesh % Elements(i) % BoundaryInfo % Right
+        IF(ASSOCIATED(Parent)) THEN
+          IF(Parent % BodyId == FlattenBody) TestIt = .TRUE.
+        END IF
+        IF( TestIt ) THEN
+          mloc = MAXLOC(ABS(Normals(3*i-2:3*i)))
+
+          IF(mloc(1)/=ABS(FlattenDir) .OR. Normals(3*(i-1)+mloc(1))*FlattenDir < 0 ) THEN
+            SkipElements = .TRUE.
+          END IF
+        END IF
+      END IF
+
       Setn = 1
       Set(1) = i
       CALL Traverse( N, i, Normals, Set, Setn, Used, Usedn, Mesh )
       pn = pn + 1
 
-      IF ( Setn<=2 ) THEN
+      IF( SkipElements ) THEN
+        CYCLE
+
+      ELSE IF ( Setn<=2 ) THEN
          DO j=1,Setn
            nn = nn + 1
 
@@ -118,329 +144,7 @@ CONTAINS
 
 
       ! Given one planar area, reduce it to one "element"
-      BLOCK
-        REAL(KIND=dp) ::  c(3),r,eps=1d-8
-        LOGICAL :: handled
-        INTEGER :: i2,j,k,l,Usedn2, Setn2, np2, pn2, ind(128,2), ind2(128,2)
-
-        TYPE(Element_t), POINTER :: el, ed
-
-        LOGICAL, ALLOCATABLE :: Used2(:)
-        INTEGER, ALLOCATABLE :: Set2(:)
-        REAL(KIND=dp), ALLOCATABLE :: DirVec2(:)
-
-        ALLOCATE(Set2(4*Setn), Used2(4*Setn), DirVec2(4*3*Setn))
-       
-        ALLOCATE( Mesh2 % Elements(n) )
-        DO j=1,Setn
-          Mesh2 % Elements(j) = Mesh % Elements(Set(j))
-          Mesh2 % Elements(j) % ElementIndex = j
-          k = Mesh % Elements(Set(j)) % Type % NumberOfNodes
-          ALLOCATE(Mesh2 % Elements(j) % NodeIndexes(k))
-          Mesh2 % Elements(j) % NodeIndexes = Mesh % Elements(Set(j)) % NodeIndexes
-        END DO
-        Mesh2 % NumberOfBulkElements = Setn
-        Mesh2 % NumberOfBoundaryElements = 0
-
-
-        ! Find outer edges, then reduce edge lines to #n 1d-sets
-        CALL FindMeshEdges2D(Mesh2)
-
-        np2 = 0
-        DO j=1,Mesh2 % NumberOfEdges
-          IF ( ASSOCIATED(Mesh2 % Edges(j) % BoundaryInfo % Right) ) CYCLE
-
-          ed => Mesh2 % Edges(j)
-          el => ed % BoundaryInfo % Left
-          np2 = np2 + 1
-
-          ! normal vector of  the edge in the plane of the parent element
-          BLOCK
-          REAL(KIND=dp) :: rr(3,3), d(3), e(3)
-
-          ! outer edge direction
-          k = 3*(ed % NodeIndexes(1)-1)+1
-          l = 3*(ed % NodeIndexes(2)-1)+1
-          c = Coord(k:k+2) - Coord(l:l+2)
-
-          ! 1st parent  edge
-          k = 3*(el % NodeIndexes(1)-1)+1
-          l = 3*(el % NodeIndexes(2)-1)+1
-          d = Coord(k:k+2) - Coord(l:l+2)
-
-          ! 2nd parent edge
-          l = 3*(el % NodeIndexes(3)-1)+1
-          e = Coord(k:k+2) - Coord(l:l+2)
-
-          ! d normal to parent
-          d = CrossProduct(d,e)
-
-          ! normal to edge in plane of the parent
-          d = CrossProduct(c,d)
-          d = d/SQRT(SUM(d**2))
-
-          ! parent "center point"
-          c = 0
-          DO l=1,3
-            m = 3*(el % NodeIndexes(l)-1)+1
-            c = c + Coord(m:m+2)
-          END DO
-
-          ! edge centerpoint
-          e = 0
-          DO l=1,2
-            m = 3*(ed % NodeIndexes(l)-1)+1
-            e = e + Coord(m:m+2)
-          END DO
-          ! direction vector from edge center to parent center 
-          c = c/3 - e/2
-
-          ! "outer" normal
-          IF ( SUM(d*c)>0 ) d=-d
-
-          k = 3*(np2-1)+1
-          DirVec2(k:k+2) = d
-          END BLOCK
-        END DO
-
-        np2 = 0
-        DO j=1,Mesh2 % NumberOfEdges
-          IF ( ASSOCIATED(Mesh2 % Edges(j) % BoundaryInfo % Right) ) CYCLE
-
-          np2 = np2 + 1
-          ed => Mesh2 % Edges(j)
-          el => Mesh2 % Elements(np2)
-          IF (np2<=Setn) DEALLOCATE(el % NodeIndexes)
-
-          el % ElementIndex = np2
-          ALLOCATE(el % NodeIndexes(2))
-          el % NodeIndexes = ed % NodeIndexes
-        END DO
-        Mesh2 % NumberOfBulkElements = np2
-
-        ! -----
-        DO j=1,Mesh2 % NumberOfEdges
-          DEALLOCATE(Mesh2 % Edges(j) % NodeIndexes)
-        END DO
-        DEALLOCATE(Mesh2 % Edges)
-        Mesh2 % Edges => NULL()
-        ! ----
-
-        CALL FindEdges0(Mesh2)
-
-        ! ... edge lines ...
-        pn2 = 0
-        i2 = 1
-        Usedn2 = 0;
-        Used2  = .FALSE.
-        np2 = Mesh2 % numberofbulkelements
-
-        DO WHILE( Usedn2 < np2 )
-          IF ( Used2(i2) ) THEN
-            i2=i2+1; CYCLE
-          END IF
-
-!         IF(i2>np2) EXIT
-
-          Used2(i2) = .TRUE.
-          Usedn2 = Usedn2 + 1
-          Setn2 = 1
-          Set2(1) = i2
-
-          CALL Traverse( np2, i2, DirVec2, Set2, Setn2, Used2, Usedn2, Mesh2 )
-          pn2 = pn2 + 1
-
-          ! ... pick exterme nodes of the 1d sets ...
-          Ref = 0
-          DO j=1,Setn2
-            el => Mesh2 % Elements(Set2(j))
-            Ref(el % NodeIndexes(1:2)) = Ref(el % NodeIndexes(1:2)) + 1
-          END DO
-
-          l = 0
-          DO j=1,Setn2
-            el => Mesh2 % Elements(Set2(j))
-            DO k=1,2
-              IF ( Ref(el % NodeIndexes(k))==1 ) THEN
-                 l = l + 1
-                 ind(pn2,l) = el % NodeIndexes(k)
-              END IF
-            END DO
-            IF ( l>= 2 ) EXIT
-          END DO
-
-          i2 = 1
-        END DO
-
-        ! ... order the points to a closed (hopefully) polygonal shape
-        ind2 = -1
-        ind2(1,:) = ind(1,:)
-        m = 1
-        ind(1,:)  = 0
-        DO k=2,pn2
-          j = ind2(k-1,2)
-          DO l=2,pn2
-            IF ( ind(l,1) == j ) THEN
-              ind2(k,:) = ind(l,:)
-              ind(l,:)  = 0
-              m = m + 1
-              EXIT
-            ELSE IF ( ind(l,2) == j ) THEN
-              ind2(k,1) = ind(l,2)
-              ind2(k,2) = ind(l,1)
-              ind(l,:)  = 0
-              m = m + 1
-              EXIT
-            END IF
-          END DO
-        END DO
-
-        ! Open chain = truly broken topology, cannot repair
-        IF ( ind2(m,2) /= ind2(1,1) ) THEN
-          CALL Info('PlanarReduce','Could not construct superelement? Using original elements.',Level=10)
-          DO j=1,Setn
-            nn = nn + 1
-            
-            MeshOut % Elements(nn) = Mesh % Elements(Set(j)) 
-            k = Mesh % Elements(Set(j)) % TYPE % NumberOfNodes
-            MeshOut % Elements(nn) % TYPE => Mesh % Elements(Set(j)) % Type
-            
-            ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(k))
-            MeshOut % Elements(nn) % NodeIndexes = &
-                Mesh % Elements(Set(j)) % NodeIndexes
-          END DO
-          GOTO 1 
-        END IF
-
-        ! Multiple closed loops: outer boundary + hole(s)
-        handled = .FALSE.
-        IF ( m < pn2 ) THEN
-          BLOCK
-            INTEGER :: ntri_h, ej_h
-            INTEGER, ALLOCATABLE :: tris_h(:,:)
-            REAL(KIND=dp) :: eplnorm_h(3)
-
-            ALLOCATE(tris_h(3, pn2+32))
-            eplnorm_h = Normals(3*(Set(1)-1)+1:3*(Set(1)-1)+3)
-            CALL BridgeHolesAndTriangulate(Coord, eplnorm_h,&
-                   ind2(1:m,1), m, ind(1:pn2,:), pn2, &
-                   tris_h, ntri_h)
-            DO ej_h = 1, ntri_h
-              nn = nn + 1
-              MeshOut % Elements(nn) % Type => GetElementType(303)
-              ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(3))
-              MeshOut % Elements(nn) % NodeIndexes(1:3) = tris_h(1:3,ej_h)
-            END DO
-            DEALLOCATE(tris_h)
-          END BLOCK
-          handled = .TRUE.
-        END IF
-
-        ! ----
-        DO j=1,Mesh2 % NumberOfBulkElements
-          DEALLOCATE(Mesh2 % Elements(j) % NodeIndexes)
-          DEALLOCATE(Mesh2 % Elements(j) % EdgeIndexes)
-        END DO
-        DEALLOCATE(Mesh2 % Edges)
-        DEALLOCATE(Mesh2 % Elements)
-        ! ----
-        IF ( .NOT. handled ) THEN
-          IF ( .NOT. IsConvex(Coord, ind2(1:pn2,1), pn2) ) THEN
-            ! Non-convex simple polygon: triangulate by ear clipping
-            BLOCK
-              INTEGER :: etris(3,pn2), entri, ej
-              REAL(KIND=dp) :: eplnorm(3)
-              eplnorm = Normals(3*(Set(1)-1)+1:3*(Set(1)-1)+3)
-              CALL EarClipTriangulate(Coord, ind2(1:pn2,1), pn2, eplnorm, etris, entri)
-              DO ej=1,entri
-                nn = nn + 1
-                MeshOut % Elements(nn) % Type => GetElementType(303)
-                ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(3))
-                MeshOut % Elements(nn) % NodeIndexes(1:3) = etris(1:3,ej)
-              END DO
-            END BLOCK
-          ELSE IF ( pn2 == 4 ) THEN
-            !  construct one quad
-            nn = nn + 1
-
-            MeshOut % Elements(nn) % Type => GetElementType(404)
-            ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(4))
-            MeshOut % Elements(nn) % NodeIndexes = ind2(1:4,1)
-          ELSE
-
-            ! construct a single circle or pn2-2 triangles (assumes convex area). ...
-            BLOCK
-              REAL(KIND=dp) :: cx, cy, cz, r, c(3),d(3)
-              LOGICAL :: Circle
-  
-              cx = SUM(Coord(3*(ind2(1:pn2,1)-1)+1))/pn2
-              cy = SUM(Coord(3*(ind2(1:pn2,1)-1)+2))/pn2
-              cz = SUM(Coord(3*(ind2(1:pn2,1)-1)+3))/pn2
-  
-              j = 3*(ind2(1,1)-1)
-              r0 = 0
-              r0 = r0 + (Coord(j+1) - cx)**2
-              r0 = r0 + (Coord(j+2) - cy)**2
-              r0 = r0 + (Coord(j+3) - cz)**2
-
-#ifdef use_circle_detection
-              Circle = .TRUE.
-              DO i=2,pn2
-                j = 3*(ind2(i,1)-1)
-                r = 0
-                r = r + (Coord(j+1) - cx)**2
-                r = r + (Coord(j+2) - cy)**2
-                r = r + (Coord(j+3) - cz)**2
-                IF ( ABS(r-r0) > 1d-8 ) Circle = .FALSE.
-              END DO
-#else
-              Circle = .FALSE.
-#endif
-
-              IF ( Circle ) THEN
-                k=3*(ind2(1,1)-1)+1
-                l=3*(ind2(2,1)-1)+1
-                c = Coord(l:l+2) - Coord(k:k+2)
-
-                l=3*(ind2(3,1)-1)+1
-                d = Coord(l:l+2) - Coord(k:k+2)
- 
-                c = CrossProduct(c,d)
-                c = c / SUM(SQRT(c**2))
-
-                nn = nn + 1
-
-                MeshOut % Elements(nn) % Type => GetElementType(101)
-
-                ALLOCATE(MeshOut % Elements(nn) % PropertyData)
-                MeshOut % Elements(nn) % PropertyData % Name = "circle"
-                ALLOCATE(MeshOut % Elements(nn) % PropertyData % Values(8))
-
-                MeshOut % Elements(nn) % PropertyData % Values(1) = 0        ! circle segment inner radius (not used)
-                MeshOut % Elements(nn) % PropertyData % Values(2) = SQRT(r)  ! outer radius...
-                MeshOut % Elements(nn) % PropertyData % Values(3) = cx       ! center point
-                MeshOut % Elements(nn) % PropertyData % Values(4) = cy
-                MeshOut % Elements(nn) % PropertyData % Values(5) = cz
-                MeshOut % Elements(nn) % PropertyData % Values(6) = c(1)     ! normal vector
-                MeshOut % Elements(nn) % PropertyData % Values(7) = c(2)
-                MeshOut % Elements(nn) % PropertyData % Values(8) = c(3)
-              ELSE
-                DO j=2,pn2-1
-                  nn = nn + 1
-
-                  ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(3))
-                  MeshOut % Elements(nn) % Type => GetElementType(303)
-                  MeshOut % Elements(nn) % NodeIndexes(1) = ind2(1,1)
-                  MeshOut % Elements(nn) % NodeIndexes(2) = ind2(j,1)
-                  MeshOut % Elements(nn) % NodeIndexes(3) = ind2(j+1,1)
-                END DO
-              END IF
-            END BLOCK
-          END IF
-        END IF  ! handled
-      END BLOCK
-
-1     CONTINUE
+      CALL ReducePlanarSet()
 
       i = 1
     END DO
@@ -453,14 +157,14 @@ CONTAINS
       DEALLOCATE(MeshOut % Elements)
       DEALLOCATE(MeshOut)
       MeshOut => NULL()
-      RETURN     
+      RETURN
     END IF
-    
+
     MeshOut % NumberOfBulkElements = nn
     MeshOut % NumberOfBoundaryElements = 0
 
     CALL Info('PlanarReduce','Reduced mesh number of elements: '//I2S(nn))
-   
+
     !t0 = cputime() - t0
     !PRINT*,' Shadow elments,and time spent ', nn, t0
 
@@ -483,7 +187,7 @@ CONTAINS
      el => Mesh % Elements(i)
 
      DO l = 1,el % Type % NumberOfEdges
-       ed => Mesh % Edges(el % EdgeIndexes(l)) 
+       ed => Mesh % Edges(el % EdgeIndexes(l))
 
        pel => ed % BoundaryInfo % Left
        IF ( ASSOCIATED(pel, el) ) THEN
@@ -512,11 +216,13 @@ CONTAINS
 
 
    ! ...  find "edges" of the 1d line elements (used to traverse connected elements)
-   SUBROUTINE FindEdges0(Mesh)
+   SUBROUTINE FindEdges0(Mesh, Pinched)
      TYPE(Mesh_t) :: Mesh
+     LOGICAL :: Pinched  ! out: some node has more than two line elements
      INTEGER :: i, j, maxi, n2
      TYPE(Element_t), POINTER :: el
 
+     Pinched = .FALSE.
      maxi = 0
      DO i=1,Mesh % NumberOfBulkElements
        Mesh % Elements(i) % Type => GetElementType(202)
@@ -525,7 +231,7 @@ CONTAINS
        maxi = MAX(maxi,Mesh % Elements(i) % NodeIndexes(2))
      END DO
 
-     ALLOCATE(Mesh % Edges(maxi)) 
+     ALLOCATE(Mesh % Edges(maxi))
 
      DO i=1,maxi
        ALLOCATE( Mesh % Edges(i) % BoundaryInfo )
@@ -552,11 +258,386 @@ CONTAINS
            CYCLE
          END IF
 
-         STOP 'k'
+         ! Boundary loops touching at a single node (a "pinch"): the loops
+         ! cannot be traced unambiguously, let the caller fall back.
+         Pinched = .TRUE.
        END DO
      END DO
      Mesh % NumberOfEdges = maxi
    END SUBROUTINE FindEdges0
+
+!------------------------------------------------------------------------------
+!> Reduce the connected planar set Set(1:Setn) into as few output elements as
+!> possible, and append them to MeshOut.
+!>
+!> This used to be an inline BLOCK construct with three further BLOCKs nested
+!> inside it (and a GOTO jumping out of them). Intel Fortran 20.0 miscompiles
+!> nested BLOCKs that declare allocatable/automatic arrays, so the whole thing
+!> is a contained procedure instead; the mesh and bookkeeping variables come in
+!> through host association exactly as they did through the BLOCK scoping.
+!------------------------------------------------------------------------------
+   SUBROUTINE ReducePlanarSet()
+!------------------------------------------------------------------------------
+     LOGICAL :: handled, Pinched
+     INTEGER :: i2, j, k, l, m, mm, Usedn2, Setn2, np2, pn2
+     INTEGER, ALLOCATABLE :: ind(:,:), ind2(:,:)
+     INTEGER :: nn_hole_start
+     REAL(KIND=dp) :: c(3), d(3), e(3)
+
+     TYPE(Element_t), POINTER :: el, ed
+
+     LOGICAL, ALLOCATABLE :: Used2(:)
+     INTEGER, ALLOCATABLE :: Set2(:)
+     REAL(KIND=dp), ALLOCATABLE :: DirVec2(:)
+
+     ! ... hole bridging (was a nested BLOCK)
+     INTEGER :: ntri_h, ej_h
+     INTEGER, ALLOCATABLE :: tris_h(:,:)
+
+     ! ... ear clipping (was a nested BLOCK)
+     INTEGER :: entri, ej
+     INTEGER, ALLOCATABLE :: etris(:,:)
+     REAL(KIND=dp) :: eplnorm(3)
+
+     ! ... circle / fan triangulation (was a nested BLOCK)
+     LOGICAL :: Circle
+     REAL(KIND=dp) :: cx, cy, cz, r0, cc(3), dd(3)
+#ifdef use_circle_detection
+     REAL(KIND=dp) :: r
+#endif
+!------------------------------------------------------------------------------
+     ! A planar set of Setn elements has at most 4*Setn outer edges, each of
+     ! which becomes a line element in Mesh2 below.
+     ALLOCATE(Set2(4*Setn), Used2(4*Setn), DirVec2(4*3*Setn))
+     ALLOCATE(ind(4*Setn,2), ind2(4*Setn,2))
+
+     ALLOCATE( Mesh2 % Elements(MAX(n,4*Setn)) )
+     DO j=1,Setn
+       Mesh2 % Elements(j) = Mesh % Elements(Set(j))
+       Mesh2 % Elements(j) % ElementIndex = j
+       k = Mesh % Elements(Set(j)) % Type % NumberOfNodes
+       ALLOCATE(Mesh2 % Elements(j) % NodeIndexes(k))
+       Mesh2 % Elements(j) % NodeIndexes = Mesh % Elements(Set(j)) % NodeIndexes
+     END DO
+     Mesh2 % NumberOfBulkElements = Setn
+     Mesh2 % NumberOfBoundaryElements = 0
+
+
+     ! Find outer edges, then reduce edge lines to #n 1d-sets
+     CALL FindMeshEdges2D(Mesh2)
+
+     np2 = 0
+     DO j=1,Mesh2 % NumberOfEdges
+       IF ( ASSOCIATED(Mesh2 % Edges(j) % BoundaryInfo % Right) ) CYCLE
+
+       ed => Mesh2 % Edges(j)
+       el => ed % BoundaryInfo % Left
+       np2 = np2 + 1
+
+       ! normal vector of the edge in the plane of the parent element
+       !
+       ! outer edge direction
+       k = 3*(ed % NodeIndexes(1)-1)+1
+       l = 3*(ed % NodeIndexes(2)-1)+1
+       c = Coord(k:k+2) - Coord(l:l+2)
+
+       ! 1st parent  edge
+       k = 3*(el % NodeIndexes(1)-1)+1
+       l = 3*(el % NodeIndexes(2)-1)+1
+       d = Coord(k:k+2) - Coord(l:l+2)
+
+       ! 2nd parent edge
+       l = 3*(el % NodeIndexes(3)-1)+1
+       e = Coord(k:k+2) - Coord(l:l+2)
+
+       ! d normal to parent
+       d = CrossProduct(d,e)
+
+       ! normal to edge in plane of the parent
+       d = CrossProduct(c,d)
+       d = d/SQRT(SUM(d**2))
+
+       ! parent "center point"
+       c = 0
+       DO l=1,3
+         mm = 3*(el % NodeIndexes(l)-1)+1
+         c = c + Coord(mm:mm+2)
+       END DO
+
+       ! edge centerpoint
+       e = 0
+       DO l=1,2
+         mm = 3*(ed % NodeIndexes(l)-1)+1
+         e = e + Coord(mm:mm+2)
+       END DO
+       ! direction vector from edge center to parent center
+       c = c/3 - e/2
+
+       ! "outer" normal
+       IF ( SUM(d*c)>0 ) d=-d
+
+       k = 3*(np2-1)+1
+       DirVec2(k:k+2) = d
+     END DO
+
+     np2 = 0
+     DO j=1,Mesh2 % NumberOfEdges
+       IF ( ASSOCIATED(Mesh2 % Edges(j) % BoundaryInfo % Right) ) CYCLE
+
+       np2 = np2 + 1
+       ed => Mesh2 % Edges(j)
+       el => Mesh2 % Elements(np2)
+       IF (np2<=Setn) DEALLOCATE(el % NodeIndexes)
+
+       el % ElementIndex = np2
+       ALLOCATE(el % NodeIndexes(2))
+       el % NodeIndexes = ed % NodeIndexes
+     END DO
+     Mesh2 % NumberOfBulkElements = np2
+
+     ! -----
+     DO j=1,Mesh2 % NumberOfEdges
+       DEALLOCATE(Mesh2 % Edges(j) % NodeIndexes)
+     END DO
+     DEALLOCATE(Mesh2 % Edges)
+     Mesh2 % Edges => NULL()
+     ! ----
+
+     CALL FindEdges0(Mesh2, Pinched)
+
+     ! ... edge lines ...
+     pn2 = 0
+     m = 0
+     IF ( .NOT. Pinched ) THEN
+     i2 = 1
+     Usedn2 = 0;
+     Used2  = .FALSE.
+     np2 = Mesh2 % numberofbulkelements
+
+     DO WHILE( Usedn2 < np2 )
+       IF ( Used2(i2) ) THEN
+         i2=i2+1; CYCLE
+       END IF
+
+       Used2(i2) = .TRUE.
+       Usedn2 = Usedn2 + 1
+       Setn2 = 1
+       Set2(1) = i2
+
+       CALL Traverse( np2, i2, DirVec2, Set2, Setn2, Used2, Usedn2, Mesh2 )
+       pn2 = pn2 + 1
+
+       ! ... pick exterme nodes of the 1d sets ...
+       Ref = 0
+       DO j=1,Setn2
+         el => Mesh2 % Elements(Set2(j))
+         Ref(el % NodeIndexes(1:2)) = Ref(el % NodeIndexes(1:2)) + 1
+       END DO
+
+       l = 0
+       DO j=1,Setn2
+         el => Mesh2 % Elements(Set2(j))
+         DO k=1,2
+           IF ( Ref(el % NodeIndexes(k))==1 ) THEN
+              l = l + 1
+              ind(pn2,l) = el % NodeIndexes(k)
+           END IF
+         END DO
+         IF ( l>= 2 ) EXIT
+       END DO
+
+       i2 = 1
+     END DO
+
+     ! ... order the points to a closed (hopefully) polygonal shape
+     ind2 = -1
+     ind2(1,:) = ind(1,:)
+     m = 1
+     ind(1,:)  = 0
+     DO k=2,pn2
+       j = ind2(k-1,2)
+       DO l=2,pn2
+         IF ( ind(l,1) == j ) THEN
+           ind2(k,:) = ind(l,:)
+           ind(l,:)  = 0
+           m = m + 1
+           EXIT
+         ELSE IF ( ind(l,2) == j ) THEN
+           ind2(k,1) = ind(l,2)
+           ind2(k,2) = ind(l,1)
+           ind(l,:)  = 0
+           m = m + 1
+           EXIT
+         END IF
+       END DO
+     END DO
+     END IF  ! .NOT. Pinched
+
+     IF ( .NOT. Pinched ) THEN
+       IF ( ind2(m,2) /= ind2(1,1) ) Pinched = .TRUE.   ! open chain
+     END IF
+
+     IF( SkipElements ) THEN
+       CALL Info('PlanarReduce','Skipping '//I2S(Setn)//' element when using planar plate approximation',Level=10)
+
+     ELSE IF ( Pinched ) THEN
+       ! Open chain or loops touching at a node, cannot repair
+       CALL Info('PlanarReduce','Could not construct superelement? Using original elements.',Level=10)
+       DO j=1,Setn
+         nn = nn + 1
+
+         MeshOut % Elements(nn) = Mesh % Elements(Set(j))
+         k = Mesh % Elements(Set(j)) % TYPE % NumberOfNodes
+         MeshOut % Elements(nn) % TYPE => Mesh % Elements(Set(j)) % Type
+
+         ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(k))
+         MeshOut % Elements(nn) % NodeIndexes = &
+             Mesh % Elements(Set(j)) % NodeIndexes
+       END DO
+
+     ELSE
+       ! Multiple closed loops: outer boundary + hole(s)
+       handled = .FALSE.
+       nn_hole_start = nn
+       IF ( m < pn2 ) THEN
+         ALLOCATE(tris_h(3, pn2+32))
+         eplnorm = Normals(3*(Set(1)-1)+1:3*(Set(1)-1)+3)
+         CALL BridgeHolesAndTriangulate(Coord, eplnorm,&
+                ind2(1:m,1), m, ind(1:pn2,:), pn2, &
+                tris_h, ntri_h)
+         DO ej_h = 1, ntri_h
+           nn = nn + 1
+           MeshOut % Elements(nn) % Type => GetElementType(303)
+           ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(3))
+           MeshOut % Elements(nn) % NodeIndexes(1:3) = tris_h(1:3,ej_h)
+         END DO
+         DEALLOCATE(tris_h)
+         handled = .TRUE.
+       END IF
+
+       IF ( .NOT. handled ) THEN
+         IF ( .NOT. IsConvex(Coord, ind2(1:pn2,1), pn2) ) THEN
+           ! Non-convex simple polygon: triangulate by ear clipping
+           ALLOCATE(etris(3,pn2))
+           eplnorm = Normals(3*(Set(1)-1)+1:3*(Set(1)-1)+3)
+           CALL EarClipTriangulate(Coord, ind2(1:pn2,1), pn2, eplnorm, etris, entri)
+           DO ej=1,entri
+             nn = nn + 1
+             MeshOut % Elements(nn) % Type => GetElementType(303)
+             ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(3))
+             MeshOut % Elements(nn) % NodeIndexes(1:3) = etris(1:3,ej)
+           END DO
+           DEALLOCATE(etris)
+
+         ELSE IF ( pn2 == 4 ) THEN
+           !  construct one quad
+           nn = nn + 1
+
+           MeshOut % Elements(nn) % Type => GetElementType(404)
+           ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(4))
+           MeshOut % Elements(nn) % NodeIndexes = ind2(1:4,1)
+
+         ELSE
+           ! construct a single circle or pn2-2 triangles (assumes convex area). ...
+           cx = SUM(Coord(3*(ind2(1:pn2,1)-1)+1))/pn2
+           cy = SUM(Coord(3*(ind2(1:pn2,1)-1)+2))/pn2
+           cz = SUM(Coord(3*(ind2(1:pn2,1)-1)+3))/pn2
+
+           j = 3*(ind2(1,1)-1)
+           r0 = 0
+           r0 = r0 + (Coord(j+1) - cx)**2
+           r0 = r0 + (Coord(j+2) - cy)**2
+           r0 = r0 + (Coord(j+3) - cz)**2
+
+#ifdef use_circle_detection
+           Circle = .TRUE.
+           DO j=2,pn2
+             k = 3*(ind2(j,1)-1)
+             r = 0
+             r = r + (Coord(k+1) - cx)**2
+             r = r + (Coord(k+2) - cy)**2
+             r = r + (Coord(k+3) - cz)**2
+             IF ( ABS(r-r0) > 1d-8 ) Circle = .FALSE.
+           END DO
+#else
+           Circle = .FALSE.
+#endif
+
+           IF ( Circle ) THEN
+             k=3*(ind2(1,1)-1)+1
+             l=3*(ind2(2,1)-1)+1
+             cc = Coord(l:l+2) - Coord(k:k+2)
+
+             l=3*(ind2(3,1)-1)+1
+             dd = Coord(l:l+2) - Coord(k:k+2)
+
+             cc = CrossProduct(cc,dd)
+             cc = cc / SUM(SQRT(cc**2))
+
+             nn = nn + 1
+
+             MeshOut % Elements(nn) % Type => GetElementType(101)
+
+             ALLOCATE(MeshOut % Elements(nn) % PropertyData)
+             MeshOut % Elements(nn) % PropertyData % Name = "circle"
+             ALLOCATE(MeshOut % Elements(nn) % PropertyData % Values(8))
+
+             MeshOut % Elements(nn) % PropertyData % Values(1) = 0        ! circle segment inner radius (not used)
+             MeshOut % Elements(nn) % PropertyData % Values(2) = SQRT(r0) ! outer radius...
+             MeshOut % Elements(nn) % PropertyData % Values(3) = cx       ! center point
+             MeshOut % Elements(nn) % PropertyData % Values(4) = cy
+             MeshOut % Elements(nn) % PropertyData % Values(5) = cz
+             MeshOut % Elements(nn) % PropertyData % Values(6) = cc(1)    ! normal vector
+             MeshOut % Elements(nn) % PropertyData % Values(7) = cc(2)
+             MeshOut % Elements(nn) % PropertyData % Values(8) = cc(3)
+           ELSE
+             DO j=2,pn2-1
+               nn = nn + 1
+
+               ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(3))
+               MeshOut % Elements(nn) % Type => GetElementType(303)
+               MeshOut % Elements(nn) % NodeIndexes(1) = ind2(1,1)
+               MeshOut % Elements(nn) % NodeIndexes(2) = ind2(j,1)
+               MeshOut % Elements(nn) % NodeIndexes(3) = ind2(j+1,1)
+             END DO
+           END IF
+         END IF
+       END IF  ! handled
+
+       ! Safety net: BridgeHolesAndTriangulate/EarClipTriangulate can fail to
+       ! triangulate a valid loop (e.g. degenerate/zero-width bridge edges
+       ! confusing the ear test) and return zero triangles without any error.
+       ! Silently swallowing the whole planar group in that case would drop
+       ! real boundary area from the shadow mesh, so fall back to emitting
+       ! the original, unreduced elements exactly like the open-chain case.
+       IF ( nn == nn_hole_start ) THEN
+         CALL Info('PlanarReduce', &
+             'Triangulation of planar area with hole(s) failed! Using original elements.',Level=5)
+         DO j=1,Setn
+           nn = nn + 1
+
+           MeshOut % Elements(nn) = Mesh % Elements(Set(j))
+           k = Mesh % Elements(Set(j)) % TYPE % NumberOfNodes
+           MeshOut % Elements(nn) % TYPE => Mesh % Elements(Set(j)) % Type
+
+           ALLOCATE(MeshOut % Elements(nn) % NodeIndexes(k))
+           MeshOut % Elements(nn) % NodeIndexes = &
+               Mesh % Elements(Set(j)) % NodeIndexes
+         END DO
+       END IF
+     END IF
+
+     ! ----
+     DO j=1,Mesh2 % NumberOfBulkElements
+       DEALLOCATE(Mesh2 % Elements(j) % NodeIndexes)
+       DEALLOCATE(Mesh2 % Elements(j) % EdgeIndexes)
+     END DO
+     DEALLOCATE(Mesh2 % Edges)
+     DEALLOCATE(Mesh2 % Elements)
+     ! ----
+!------------------------------------------------------------------------------
+   END SUBROUTINE ReducePlanarSet
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
  END FUNCTION PlanarReduce
@@ -614,21 +695,24 @@ CONTAINS
 !------------------------------------------------------------------------------
 !   Collect hole loops from the non-zero entries of holeSegs, bridge each hole
 !   to the outer polygon via a rightward-ray visibility cut, then ear-clip.
+!   outerV is just the loop traced first; the loop with the largest area is
+!   taken as the outer boundary. Returns ntri=0 on failure.
 !------------------------------------------------------------------------------
     REAL(KIND=dp), INTENT(IN)  :: Coord(:), planeNorm(3)
     INTEGER,       INTENT(IN)  :: nOuter, outerV(nOuter)
     INTEGER,       INTENT(IN)  :: nSegs, holeSegs(nSegs,2)
     INTEGER,       INTENT(OUT) :: ntri, tris(3,*)
 !------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: MAXV = 64, MAXH = 16
+    INTEGER, PARAMETER :: MAXV = 256, MAXH = 16, MAXM = MAXV+2*MAXH
 
-    INTEGER       :: holePoly(MAXV, MAXH), holeLen(MAXH), nHoles
-    INTEGER       :: merged(MAXV*2), nMerged
-    INTEGER       :: curOuter(MAXV*2), nCurOuter
-    REAL(KIND=dp) :: opx(MAXV*2), opy(MAXV*2)
+    INTEGER       :: holePoly(MAXV, MAXH+1), holeLen(MAXH+1), nHoles
+    INTEGER       :: merged(MAXM), nMerged
+    INTEGER       :: curOuter(MAXM), nCurOuter
+    REAL(KIND=dp) :: opx(MAXM), opy(MAXM)
     REAL(KIND=dp) :: hpxA(MAXV), hpyA(MAXV)
     REAL(KIND=dp) :: uu(3), vv(3), ref(3), tmp3(3)
-    INTEGER       :: ii, s, t, hh, hMax, bIdx, hlen, cur
+    REAL(KIND=dp) :: lArea(MAXH+1), lMaxX(MAXH+1)
+    INTEGER       :: ii, s, t, hh, k, hMax, bIdx, hlen, cur, iOut, nLoops, order(MAXH+1)
     LOGICAL       :: segUsed(nSegs), found, reverseHole
     REAL(KIND=dp) :: hpxMax, hpyRay, xi, minXi, tpar, denom
     REAL(KIND=dp) :: x1, y1, x2, y2, oArea, hArea
@@ -640,12 +724,15 @@ CONTAINS
     uu = uu / SQRT(SUM(uu**2))
     vv = CrossProduct(planeNorm, uu)
 
+    ntri = 0
+    IF (nOuter > MAXV) RETURN
+
     ! Collect hole loops from non-zero (unused) segments
     segUsed(1:nSegs) = (holeSegs(1:nSegs,1) == 0)
     nHoles = 0
     DO s = 1, nSegs
       IF (segUsed(s)) CYCLE
-      IF (nHoles >= MAXH) EXIT
+      IF (nHoles >= MAXH) RETURN
       nHoles = nHoles + 1
       segUsed(s) = .TRUE.
       holePoly(1, nHoles) = holeSegs(s,1)
@@ -668,14 +755,52 @@ CONTAINS
         END DO
         IF (.NOT. found) EXIT
       END DO
+      IF (cur /= holePoly(1,nHoles)) RETURN   ! open or too long loop
       holeLen(nHoles) = hlen - 1   ! last vertex == first; don't repeat
     END DO
 
-    ! Bridge each hole into the growing outer polygon
-    curOuter(1:nOuter) = outerV(1:nOuter)
-    nCurOuter = nOuter
+    ! Add the first traced loop to the set, and pick the one with the largest
+    ! area as the outer boundary.
+    nLoops = nHoles + 1
+    holePoly(1:nOuter, nLoops) = outerV(1:nOuter)
+    holeLen(nLoops) = nOuter
+    DO hh = 1, nLoops
+      lArea(hh) = 0.0_dp
+      lMaxX(hh) = -HUGE(1.0_dp)
+      DO ii = 1, holeLen(hh)
+        t = MOD(ii, holeLen(hh)) + 1
+        s = 3*(holePoly(ii,hh)-1)+1
+        x1 = SUM(Coord(s:s+2)*uu); y1 = SUM(Coord(s:s+2)*vv)
+        s = 3*(holePoly(t,hh)-1)+1
+        x2 = SUM(Coord(s:s+2)*uu); y2 = SUM(Coord(s:s+2)*vv)
+        lArea(hh) = lArea(hh) + x1*y2 - x2*y1
+        lMaxX(hh) = MAX(lMaxX(hh), x1)
+      END DO
+    END DO
+    iOut = MAXLOC(ABS(lArea(1:nLoops)), 1)
 
-    DO hh = 1, nHoles
+    curOuter(1:holeLen(iOut)) = holePoly(1:holeLen(iOut), iOut)
+    nCurOuter = holeLen(iOut)
+
+    ! Bridge holes in order of decreasing max x: the rightward ray from a
+    ! hole then cannot hit a hole that has not yet been merged.
+    nHoles = 0
+    DO hh = 1, nLoops
+      IF (hh == iOut) CYCLE
+      nHoles = nHoles + 1
+      order(nHoles) = hh
+    END DO
+    DO ii = 2, nHoles
+      k = order(ii); t = ii - 1
+      DO WHILE (t >= 1)
+        IF (lMaxX(order(t)) >= lMaxX(k)) EXIT
+        order(t+1) = order(t); t = t - 1
+      END DO
+      order(t+1) = k
+    END DO
+
+    DO k = 1, nHoles
+      hh = order(k)
       ! Project current outer polygon to 2D
       DO ii = 1, nCurOuter
         s = 3*(curOuter(ii)-1)+1
@@ -758,6 +883,8 @@ CONTAINS
       curOuter(1:nMerged) = merged(1:nMerged)
       nCurOuter = nMerged
     END DO
+    IF (nHoles == 0) merged(1:nCurOuter) = curOuter(1:nCurOuter)
+    nMerged = nCurOuter
 
     ! Ear-clip the fully merged polygon
     CALL EarClipTriangulate(Coord, merged(1:nMerged), nMerged, planeNorm, tris, ntri)
@@ -827,6 +954,11 @@ CONTAINS
         isEar = .TRUE.
         m = nxt(c)
         DO WHILE (m /= a)
+          ! Hole bridges duplicate vertices: a copy of a corner of the
+          ! candidate triangle is not "inside" it.
+          IF (iv(m)==iv(a) .OR. iv(m)==iv(b) .OR. iv(m)==iv(c)) THEN
+            m = nxt(m); CYCLE
+          END IF
           mx=px(m); my=py(m)
           ! Sign of each edge vs. query point
           d1 = (bx-ax)*(my-ay) - (by-ay)*(mx-ax)
@@ -861,6 +993,10 @@ CONTAINS
     IF (cnt == 3) THEN
       ntri = ntri + 1
       tris(1,ntri) = iv(prv(ii)); tris(2,ntri) = iv(ii); tris(3,ntri) = iv(nxt(ii))
+    ELSE
+      ! Gave up: a partial triangulation would silently drop area, so
+      ! report failure and let the caller fall back to the original elements.
+      ntri = 0
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE EarClipTriangulate
@@ -873,7 +1009,7 @@ CONTAINS
    CHARACTER(LEN=*) :: Name
    TYPE(Mesh_t), POINTER :: ShadowMesh
 
-   INTEGER :: i, j, ncnt, id, body, code, node(8), iostat
+   INTEGER :: i, j, ncnt, id, body, code, node(8), iostat, nofElements, nofNodes
    REAL(KIND=dp)  :: x,y,z
    CHARACTER(LEN=256) :: Line
 

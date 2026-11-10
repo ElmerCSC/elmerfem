@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,14 +13,14 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
-! 
+!
 !/******************************************************************************
 ! *
 ! *  Authors: Juha Ruokolainen
@@ -28,18 +28,18 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !------------------------------------------------------------------------------
-!> Linear Algebra: LU-decomposition & matrix inverse & nonsymmetric full 
-!>  matrix eigenvalues  (don't use this for anything big, use for example 
+!> Linear Algebra: LU-decomposition & matrix inverse & nonsymmetric full
+!>  matrix eigenvalues  (don't use this for anything big, use for example
 !>  LAPACK routines instead...)
 !------------------------------------------------------------------------------
 
@@ -55,7 +55,7 @@ MODULE LinearAlgebra
 
   SUBROUTINE InvertMatrix( A,n )
 
-    INTEGER :: n 
+    INTEGER :: n
     REAL(KIND=dp) :: A(:,:)
 
     REAL(KIND=dp) :: s
@@ -70,7 +70,7 @@ MODULE LinearAlgebra
 
    IF (erroneous) CALL Fatal('InvertMatrix', 'inversion needs successful LU-decomposition')
 
-   ! /*  
+   ! /*
    !  *  INV(U)
    !  */
    DO i=N-1,1,-1
@@ -95,8 +95,8 @@ MODULE LinearAlgebra
        A(j,i) = A(i,i)*s
      END DO
    END DO
-  
-   ! /* 
+
+   ! /*
    !  * A  = INV(AP)
    !  */
    DO i=1,n
@@ -132,7 +132,7 @@ MODULE LinearAlgebra
  SUBROUTINE LUSolve( n,A,x,pivot_in )
    REAL(KIND=dp) :: A(:,:)
    REAL(KIND=dp) :: x(n)
-   INTEGER :: n 
+   INTEGER :: n
    INTEGER, OPTIONAL :: pivot_in(:)
 
    REAL(KIND=dp) :: s
@@ -156,7 +156,7 @@ MODULE LinearAlgebra
       DO j=1,i-1
          s = s - A(i,j) * x(j)
       END DO
-      x(i) = A(i,i) * s 
+      x(i) = A(i,i) * s
    END DO
 
    !
@@ -182,10 +182,10 @@ MODULE LinearAlgebra
 
 !----------------------------------------------------------------------
 !> LU- decomposition by gaussian elimination. Row pivoting is used.
-!  
+!
 !> result : AP = L'U ; L' = LD; pivot[i] is the swapped column number
 !> for column i.
-! 
+!
 !> Result is stored in place of original matrix.
 !----------------------------------------------------------------------
   SUBROUTINE LUDecomp( a,n,pivot,erroneous )
@@ -248,7 +248,7 @@ MODULE LinearAlgebra
       IF ( ABS(A(i,i)) == 0.0d0 ) THEN
         CALL Error( 'LUSolve', 'Matrix is singular.' )
         IF (PRESENT(erroneous)) erroneous = .TRUE.
-        RETURN       
+        RETURN
       END IF
       A(i,i) = 1.0_dp / A(i,i)
     END DO
@@ -260,7 +260,7 @@ MODULE LinearAlgebra
   SUBROUTINE ComplexInvertMatrix( A,n )
 
     COMPLEX(KIND=dp), DIMENSION(:,:) :: A
-    INTEGER :: n 
+    INTEGER :: n
 
     COMPLEX(KIND=dp) :: s
     INTEGER :: i,j,k
@@ -277,12 +277,12 @@ MODULE LinearAlgebra
    DO i=1,n
      IF ( ABS(A(i,i))==0.0d0 ) THEN
        CALL Error( 'ComplexInvertMatrix', 'Matrix is singular.' )
-       RETURN       
+       RETURN
      END IF
      A(i,i) = 1.0D0/A(i,i)
    END DO
 
-   ! /*  
+   ! /*
    !  *  INV(U)
    !  */
    DO i=N-1,1,-1
@@ -307,8 +307,8 @@ MODULE LinearAlgebra
        A(j,i) = A(i,i)*s
      END DO
    END DO
-  
-   ! /* 
+
+   ! /*
    !  * A  = INV(AP)
    !  */
    DO i=1,n
@@ -343,7 +343,7 @@ MODULE LinearAlgebra
 !-------------------------------------------------------------------------
 !> LU- decomposition by gaussian elimination for complex valued linear system.
 !> Row pivoting is used.
-! 
+!
 !> result : AP = L'U ; L' = LD; pivot[i] is the swapped column number
 !> for column i.
 !
@@ -370,7 +370,7 @@ MODULE LinearAlgebra
 
       IF ( ABS(A(i,j))==0.0d0 ) THEN
         CALL Error( 'ComplexLUDecomp', 'Matrix is singular.' )
-        IF (PRESENT(erroneous)) erroneous = .TRUE.        
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
         RETURN
       END IF
 
@@ -406,6 +406,244 @@ MODULE LinearAlgebra
       CALL Error( 'ComplexLUDecomp', 'Matrix is (at least almost) singular.' )
     END IF
   END SUBROUTINE ComplexLUDecomp
+
+
+!----------------------------------------------------------------------
+!> Cholesky decomposition of a real symmetric positive definite matrix.
+!> No pivoting is needed (or possible) since positive definiteness
+!> guarantees the pivots stay away from zero.
+!
+!> Result : A = L L^T ; only the lower triangle of A is referenced and
+!> is overwritten by L. The upper triangle is left untouched.
+!----------------------------------------------------------------------
+  SUBROUTINE CholeskyDecomp( A,n,erroneous )
+
+    REAL(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: erroneous
+
+    INTEGER :: i,j
+    REAL(KIND=dp) :: s
+
+    IF (PRESENT(erroneous)) erroneous = .FALSE.
+
+    DO j=1,n
+      s = A(j,j) - SUM( A(j,1:j-1)**2 )
+      IF ( s <= 0.0d0 ) THEN
+        CALL Error( 'CholeskyDecomp', 'Matrix is not positive definite.' )
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
+        RETURN
+      END IF
+      A(j,j) = SQRT(s)
+
+      DO i=j+1,n
+        A(i,j) = ( A(i,j) - SUM( A(i,1:j-1)*A(j,1:j-1) ) ) / A(j,j)
+      END DO
+    END DO
+
+  END SUBROUTINE CholeskyDecomp
+
+
+!----------------------------------------------------------------------
+!> Solves A x = b given the Cholesky factor L (in the lower triangle of
+!> A, as produced by CholeskyDecomp) via forward/backward substitution.
+!> Set Factorized=.TRUE. to skip the decomposition when A already holds
+!> L from a previous call (e.g. to re-solve for several right sides).
+!----------------------------------------------------------------------
+  SUBROUTINE CholeskySolve( n,A,x,Factorized )
+    REAL(KIND=dp) :: A(:,:)
+    REAL(KIND=dp) :: x(n)
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: Factorized
+
+    REAL(KIND=dp) :: s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    IF ( .NOT. ( PRESENT(Factorized) .AND. Factorized ) ) THEN
+      CALL CholeskyDecomp( A,n,erroneous )
+      IF (erroneous) CALL Fatal('CholeskySolve', 'Cholesky decomposition fails')
+    END IF
+
+    ! Forward substitute: solve L y = b
+    DO i=1,n
+      s = x(i)
+      DO j=1,i-1
+        s = s - A(i,j) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+    ! Backward substitute: solve L^T z = y
+    DO i=n,1,-1
+      s = x(i)
+      DO j=i+1,n
+        s = s - A(j,i) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+  END SUBROUTINE CholeskySolve
+
+
+!----------------------------------------------------------------------
+!> Inverts a real symmetric positive definite matrix via its Cholesky
+!> factor: A = L L^T  =>  INV(A) = INV(L)^T INV(L). Result is symmetric
+!> and stored fully (both triangles).
+!----------------------------------------------------------------------
+  SUBROUTINE CholeskyInvertMatrix( A,n )
+
+    REAL(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+
+    REAL(KIND=dp) :: Linv(n,n), s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    CALL CholeskyDecomp( A,n,erroneous )
+    IF (erroneous) CALL Fatal('CholeskyInvertMatrix', 'inversion needs a positive definite matrix')
+
+    ! INV(L), lower triangular, computed column-by-column via forward
+    ! substitution against unit vectors (L is left untouched in A).
+    Linv = 0.0d0
+    DO j=1,n
+      Linv(j,j) = 1.0d0 / A(j,j)
+      DO i=j+1,n
+        s = SUM( A(i,j:i-1)*Linv(j:i-1,j) )
+        Linv(i,j) = -s / A(i,i)
+      END DO
+    END DO
+
+    ! A = INV(L)^T INV(L)
+    DO i=1,n
+      DO j=i,n
+        s = SUM( Linv(MAX(i,j):n,i)*Linv(MAX(i,j):n,j) )
+        A(i,j) = s
+        A(j,i) = s
+      END DO
+    END DO
+
+  END SUBROUTINE CholeskyInvertMatrix
+
+
+!----------------------------------------------------------------------
+!> Cholesky decomposition of a complex SYMMETRIC (not Hermitian) matrix,
+!> i.e. A = A^T as produced by Elmer's own complex FE assembly (no
+!> conjugation of test functions). No pivoting; can fail if a diagonal
+!> pivot lands at exactly zero, same caveat as ComplexLUDecomp.
+!
+!> Result : A = L L^T ; only the lower triangle of A is referenced and
+!> is overwritten by L. The upper triangle is left untouched.
+!----------------------------------------------------------------------
+  SUBROUTINE ComplexCholeskyDecomp( A,n,erroneous )
+
+    COMPLEX(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: erroneous
+
+    INTEGER :: i,j
+    COMPLEX(KIND=dp) :: s
+
+    IF (PRESENT(erroneous)) erroneous = .FALSE.
+
+    DO j=1,n
+      s = A(j,j) - SUM( A(j,1:j-1)**2 )
+      IF ( ABS(s) == 0.0d0 ) THEN
+        CALL Error( 'ComplexCholeskyDecomp', 'Matrix is singular.' )
+        IF (PRESENT(erroneous)) erroneous = .TRUE.
+        RETURN
+      END IF
+      A(j,j) = SQRT(s)   ! principal branch; sign choice is immaterial
+
+      DO i=j+1,n
+        A(i,j) = ( A(i,j) - SUM( A(i,1:j-1)*A(j,1:j-1) ) ) / A(j,j)
+      END DO
+    END DO
+
+  END SUBROUTINE ComplexCholeskyDecomp
+
+
+!----------------------------------------------------------------------
+!> Solves A x = b given the complex-symmetric Cholesky factor L (in the
+!> lower triangle of A, as produced by ComplexCholeskyDecomp). No
+!> conjugation, consistent with ComplexCholeskyDecomp's A = L L^T.
+!> Set Factorized=.TRUE. to skip the decomposition when A already holds
+!> L from a previous call.
+!----------------------------------------------------------------------
+  SUBROUTINE ComplexCholeskySolve( n,A,x,Factorized )
+    COMPLEX(KIND=dp) :: A(:,:)
+    COMPLEX(KIND=dp) :: x(n)
+    INTEGER :: n
+    LOGICAL, OPTIONAL :: Factorized
+
+    COMPLEX(KIND=dp) :: s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    IF ( .NOT. ( PRESENT(Factorized) .AND. Factorized ) ) THEN
+      CALL ComplexCholeskyDecomp( A,n,erroneous )
+      IF (erroneous) CALL Fatal('ComplexCholeskySolve', 'Cholesky decomposition fails')
+    END IF
+
+    ! Forward substitute: solve L y = b
+    DO i=1,n
+      s = x(i)
+      DO j=1,i-1
+        s = s - A(i,j) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+    ! Backward substitute: solve L^T z = y (no conjugation)
+    DO i=n,1,-1
+      s = x(i)
+      DO j=i+1,n
+        s = s - A(j,i) * x(j)
+      END DO
+      x(i) = s / A(i,i)
+    END DO
+
+  END SUBROUTINE ComplexCholeskySolve
+
+
+!----------------------------------------------------------------------
+!> Inverts a complex SYMMETRIC (not Hermitian) matrix via its complex
+!> Cholesky factor: A = L L^T  =>  INV(A) = INV(L)^T INV(L) (no
+!> conjugation). Result is symmetric and stored fully (both triangles).
+!----------------------------------------------------------------------
+  SUBROUTINE ComplexCholeskyInvertMatrix( A,n )
+
+    COMPLEX(KIND=dp), DIMENSION(:,:) :: A
+    INTEGER :: n
+
+    COMPLEX(KIND=dp) :: Linv(n,n), s
+    INTEGER :: i,j
+    LOGICAL :: erroneous
+
+    CALL ComplexCholeskyDecomp( A,n,erroneous )
+    IF (erroneous) CALL Fatal('ComplexCholeskyInvertMatrix', 'inversion needs successful Cholesky decomposition')
+
+    ! INV(L), lower triangular, computed column-by-column via forward
+    ! substitution against unit vectors (L is left untouched in A).
+    Linv = 0.0d0
+    DO j=1,n
+      Linv(j,j) = 1.0d0 / A(j,j)
+      DO i=j+1,n
+        s = SUM( A(i,j:i-1)*Linv(j:i-1,j) )
+        Linv(i,j) = -s / A(i,i)
+      END DO
+    END DO
+
+    ! A = INV(L)^T INV(L)  (no conjugation)
+    DO i=1,n
+      DO j=i,n
+        s = SUM( Linv(MAX(i,j):n,i)*Linv(MAX(i,j):n,j) )
+        A(i,j) = s
+        A(j,i) = s
+      END DO
+    END DO
+
+  END SUBROUTINE ComplexCholeskyInvertMatrix
 
 
 !------------------------------------------------------------------------------
@@ -457,7 +695,7 @@ MODULE LinearAlgebra
        g(1) = b(2) - s * b(1)
        g(2) = b(3) - t * b(1)
        CALL SolveLinSys2x2( C,y,g )
-       
+
        x(2) = y(1)
        x(3) = y(2)
        x(1) = q * ( b(1) - A(1,2) * x(2) - A(1,3) * x(3) )
@@ -469,7 +707,7 @@ MODULE LinearAlgebra
        C(1,2) = A(2,3) - s * A(1,3)
        C(2,1) = A(3,1) - t * A(1,1)
        C(2,2) = A(3,3) - t * A(1,3)
-       
+
        g(1) = b(2) - s * b(1)
        g(2) = b(3) - t * b(1)
        CALL SolveLinSys2x2( C,y,g )
@@ -499,12 +737,16 @@ MODULE LinearAlgebra
 !------------------------------------------------------------------------------
 
 
-!> Solves a small dense linear system using Lapack routines
+!> Solves a small dense linear system, dispatching to Lapack only once the
+!> system is large enough for its blocked routines to pay off.
 !------------------------------------------------------------------------------
   SUBROUTINE SolveLinSys( A, x, n )
 !------------------------------------------------------------------------------
      INTEGER :: n
      REAL(KIND=dp) :: A(n,n), x(n), b(n)
+
+     INTEGER :: pivot(n)
+     LOGICAL :: erroneous
 
      INTERFACE
        SUBROUTINE SolveLapack( N,A,x )
@@ -512,6 +754,10 @@ MODULE LinearAlgebra
          DOUBLE PRECISION  A(n*n),x(n)
        END SUBROUTINE
      END INTERFACE
+
+     ! Threshold measured against LAPACK's DGETRF+DGETRS (OpenBLAS-backed):
+     ! plain LUDecomp+LUSolve wins below n~25, loses beyond it.
+     INTEGER, PARAMETER :: LapackThreshold = 25
 
 !------------------------------------------------------------------------------
      SELECT CASE(n)
@@ -523,6 +769,10 @@ MODULE LinearAlgebra
      CASE(3)
        b = x
        CALL SolveLinSys3x3(A,x,b)
+     CASE(4:LapackThreshold)
+       CALL LUDecomp(A,n,pivot,erroneous)
+       IF (erroneous) CALL Fatal('SolveLinSys', 'LU-decomposition fails')
+       CALL LUSolve(n,A,x,pivot)
      CASE DEFAULT
        CALL SolveLapack(n,A,x)
      END SELECT
@@ -530,7 +780,52 @@ MODULE LinearAlgebra
   END SUBROUTINE SolveLinSys
 !------------------------------------------------------------------------------
 
-  
+
+!> Solves a small dense SYMMETRIC POSITIVE DEFINITE linear system,
+!> dispatching to Lapack's Cholesky only once the system is large enough
+!> for its blocked routines to pay off. A holds only the lower triangle
+!> on entry (as CholeskyDecomp expects); the upper triangle is ignored.
+!------------------------------------------------------------------------------
+  SUBROUTINE SymmetricSolveLinSys( A, x, n )
+!------------------------------------------------------------------------------
+     INTEGER :: n
+     REAL(KIND=dp) :: A(n,n), x(n), b(n)
+
+     LOGICAL :: erroneous
+
+     INTERFACE
+       SUBROUTINE SolveLapackSym( N,A,x )
+         INTEGER  N
+         DOUBLE PRECISION  A(n*n),x(n)
+       END SUBROUTINE
+     END INTERFACE
+
+     ! Threshold measured against LAPACK's DPOTRF+DPOTRS (OpenBLAS-backed):
+     ! plain CholeskyDecomp+CholeskySolve wins below n~20, loses beyond it.
+     INTEGER, PARAMETER :: LapackThreshold = 20
+
+!------------------------------------------------------------------------------
+     SELECT CASE(n)
+     CASE(1)
+       x(1) = x(1) / A(1,1)
+     CASE(2)
+       b = x
+       CALL SolveLinSys2x2(A,x,b)
+     CASE(3)
+       b = x
+       CALL SolveLinSys3x3(A,x,b)
+     CASE(4:LapackThreshold)
+       CALL CholeskyDecomp(A,n,erroneous)
+       IF (erroneous) CALL Fatal('SymmetricSolveLinSys', 'matrix is not positive definite')
+       CALL CholeskySolve(n,A,x,Factorized=.TRUE.)
+     CASE DEFAULT
+       CALL SolveLapackSym(n,A,x)
+     END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE SymmetricSolveLinSys
+!------------------------------------------------------------------------------
+
+
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3( G,GI,detG )
 !------------------------------------------------------------------------------
@@ -538,11 +833,11 @@ MODULE LinearAlgebra
     REAL(KIND=dp) :: detG, s
 !------------------------------------------------------------------------------
     s = 1.0 / DetG
-    
+
     GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
     GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
     GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
-    
+
     GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
     GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
     GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
@@ -560,16 +855,16 @@ MODULE LinearAlgebra
 !------------------------------------------------------------------------------
   SUBROUTINE InvertMatrix3x3QP( G,GI,detG )
 !------------------------------------------------------------------------------
-    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)     
+    INTEGER, PARAMETER :: qp = SELECTED_REAL_KIND(24)
     REAL(KIND=qp) :: G(3,3),GI(3,3)
     REAL(KIND=qp) :: detG, s
 !------------------------------------------------------------------------------
     s = 1.0 / DetG
-    
+
     GI(1,1) =  s * (G(2,2)*G(3,3) - G(3,2)*G(2,3));
     GI(2,1) = -s * (G(2,1)*G(3,3) - G(3,1)*G(2,3));
     GI(3,1) =  s * (G(2,1)*G(3,2) - G(3,1)*G(2,2));
-    
+
     GI(1,2) = -s * (G(1,2)*G(3,3) - G(3,2)*G(1,3));
     GI(2,2) =  s * (G(1,1)*G(3,3) - G(3,1)*G(1,3));
     GI(3,2) = -s * (G(1,1)*G(3,2) - G(3,1)*G(1,2));
@@ -581,22 +876,60 @@ MODULE LinearAlgebra
   END SUBROUTINE InvertMatrix3x3QP
 !------------------------------------------------------------------------------
 #endif
-  
+
 !------------------------------------------------------------------------------
 !> Compute the value of 3x3 determinant
 !------------------------------------------------------------------------------
-  FUNCTION Det3x3( A ) RESULT ( val ) 
-!------------------------------------------------------------------------------      
+  FUNCTION Det3x3( A ) RESULT ( val )
+!------------------------------------------------------------------------------
     REAL(KIND=dp) :: A(3,3)
     REAL(KIND=dp) :: val
 
     val = A(1,1) * ( A(2,2) * A(3,3) - A(2,3) * A(3,2) ) &
         - A(1,2) * ( A(2,1) * A(3,3) - A(2,3) * A(3,1) ) &
-        + A(1,3) * ( A(2,1) * A(3,2) - A(2,2) * A(3,1) ) 
+        + A(1,3) * ( A(2,1) * A(3,2) - A(2,2) * A(3,1) )
 !------------------------------------------------------------------------------
   END FUNCTION Det3x3
-!------------------------------------------------------------------------------  
-  
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> G(p,j) = sum_i dB(p,i) C(i,j) for p=1..n, i.e. the gradients of n basis
+!> functions contracted with a dim x dim tensor.
+!------------------------------------------------------------------------------
+  SUBROUTINE GradDotTensor( n, dim, dB, C, G )
+!------------------------------------------------------------------------------
+    INTEGER :: n, dim
+    REAL(KIND=dp), CONTIGUOUS :: dB(:,:), C(:,:), G(:,:)
+    INTEGER :: p, i, j
+!------------------------------------------------------------------------------
+    ! Written out for dim 2 and 3 because a run-time trip count keeps the
+    ! compiler from vectorising over p.
+    SELECT CASE( dim )
+    CASE( 3 )
+      DO p=1,n
+        G(p,1) = C(1,1)*dB(p,1) + C(2,1)*dB(p,2) + C(3,1)*dB(p,3)
+        G(p,2) = C(1,2)*dB(p,1) + C(2,2)*dB(p,2) + C(3,2)*dB(p,3)
+        G(p,3) = C(1,3)*dB(p,1) + C(2,3)*dB(p,2) + C(3,3)*dB(p,3)
+      END DO
+    CASE( 2 )
+      DO p=1,n
+        G(p,1) = C(1,1)*dB(p,1) + C(2,1)*dB(p,2)
+        G(p,2) = C(1,2)*dB(p,1) + C(2,2)*dB(p,2)
+      END DO
+    CASE DEFAULT
+      DO j=1,dim
+        DO p=1,n
+          G(p,j) = 0.0_dp
+          DO i=1,dim
+            G(p,j) = G(p,j) + C(i,j)*dB(p,i)
+          END DO
+        END DO
+      END DO
+    END SELECT
+!------------------------------------------------------------------------------
+  END SUBROUTINE GradDotTensor
+!------------------------------------------------------------------------------
+
   ! --------------------------------------------------
   !> Solve eigenvalues of a nonsymmetric matrix A(n,n)
   !> The matrix is modified in the process.
@@ -622,7 +955,7 @@ MODULE LinearAlgebra
         s = AEPS * ( ABS(A(i,i))+ABS(A(i+1,i+1)) )
         IF ( ABS(A(i+1,i)) < s ) A(i+1,i) = 0.0
       END DO
-    
+
       i = 1
       DO WHILE( .TRUE. )
         DO j=i,n-1
@@ -635,14 +968,14 @@ MODULE LinearAlgebra
         i = k;
         IF ( i >= n .OR. k-j+1 >= 3 ) EXIT
       END DO
-    
+
       IF (k-j+1 < 3) EXIT
       CALL Francis(A(j:,j:), k-j+1);
     END DO
 
     j = 0
     i = 1
-    DO WHILE( i<n ) 
+    DO WHILE( i<n )
       IF (A(i+1,i) == 0) THEN
         j = j + 1
         Vals(j) = A(i,i)
@@ -674,7 +1007,7 @@ MODULE LinearAlgebra
       END IF
       i = i + 1
     END DO
-  
+
     IF (A(n, n-1) == 0) THEN
       j = j + 1
       Vals(j) = A(n,n)
@@ -801,7 +1134,7 @@ CONTAINS
         !   s = s + H(i,j) * v(j)
         ! END DO
         s = H(i,1)*v(1) + H(i,2)*v(2) + H(i,3)*v(3)
-   
+
         ! DO j=1,3
         !   H(i,j) = H(i,j) - s * x(j)
         ! END DO

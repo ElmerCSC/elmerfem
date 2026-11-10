@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -30,7 +30,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2002
 ! *
@@ -49,7 +49,7 @@
 !------------------------------------------------------------------------------
 !>  Poisson equation solver using the boundary element method.
 !> This solver can only deal with rather small problems as it does not use any
-!> multilevel strategies. 
+!> multilevel strategies.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
    SUBROUTINE PoissonBEMSolver( Model,Solver,dt,TransientSimulation )
@@ -59,33 +59,33 @@
 
      IMPLICIT NONE
 !------------------------------------------------------------------------------
- 
+
      TYPE(Model_t) :: Model
      TYPE(Solver_t):: Solver
- 
+
      REAL(KIND=dp) :: dt
      LOGICAL :: TransientSimulation
- 
+
 !------------------------------------------------------------------------------
 !    Local variables
 !------------------------------------------------------------------------------
      INTEGER :: i,j,k,n,t,istat,bf_id,BoundaryNodes
- 
+
      TYPE(Matrix_t),POINTER  :: StiffMatrix
      TYPE(Nodes_t)   :: ElementNodes
      TYPE(Element_t),POINTER :: CurrentElement
- 
+
      REAL(KIND=dp) :: Norm,PrevNorm
      INTEGER, POINTER :: NodeIndexes(:)
 
      LOGICAL :: AllocationsDone = .FALSE., GotIt
- 
+
      REAL(KIND=dp), POINTER :: Potential(:),ForceVector(:), &
                 VolumeSource(:), Diagonal(:)
      INTEGER, POINTER :: PotentialPerm(:), BoundaryPerm(:)
 
      LOGICAL, ALLOCATABLE :: PotentialKnown(:)
- 
+
      REAL(KIND=dp), ALLOCATABLE ::  Flx(:), Pot(:), VolumeForce(:), &
        LocalMassMatrix(:,:),LocalStiffMatrix(:,:),Load(:),LocalForce(:)
      REAL(KIND=dp) :: at,st,s
@@ -149,7 +149,7 @@
         END DO
 
         N = Model % MaxElementNodes
- 
+
         ALLOCATE( ElementNodes % x( N ),                  &
                   ElementNodes % y( N ),                  &
                   ElementNodes % z( N ),                  &
@@ -165,7 +165,7 @@
         IF ( istat /= 0 ) THEN
            CALL Fatal( 'PoissonBEMSolver', 'Memory allocation error 2.' )
         END IF
- 
+
         AllocationsDone = .TRUE.
      END IF
 
@@ -215,7 +215,7 @@ at = CPUTime()
           ELSE
              PotentialKnown( PotentialPerm(NodeIndexes) ) = .TRUE.
           END IF
- 
+
           EXIT
         END DO
      END DO
@@ -239,9 +239,9 @@ at = CPUTime()
         IF ( .NOT. GotIt ) EXIT
 
         VolumeSource(1:n) = ListGetReal( Model % BodyForces(k) % Values, &
-                     'Source', n, NodeIndexes, GotIt ) 
+                     'Source', n, NodeIndexes, GotIt )
         IF ( .NOT. GotIt ) EXIT
- 
+
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x( NodeIndexes )
         ElementNodes % y(1:n) = Solver % Mesh % Nodes % y( NodeIndexes )
         ElementNodes % z(1:n) = Solver % Mesh % Nodes % z( NodeIndexes )
@@ -266,7 +266,7 @@ at = CPUTime()
 
         n = CurrentElement % TYPE % NumberOfNodes
         NodeIndexes => CurrentElement % NodeIndexes
- 
+
         ElementNodes % x(1:n) = Solver % Mesh % Nodes % x( NodeIndexes )
         ElementNodes % y(1:n) = Solver % Mesh % Nodes % y( NodeIndexes )
         ElementNodes % z(1:n) = Solver % Mesh % Nodes % z( NodeIndexes )
@@ -355,7 +355,7 @@ at = CPUTime()
      st = CPUTime() - st
      PRINT*,'Solve (s):    ',st
 !------------------------------------------------------------------------------
- 
+
    CONTAINS
 
 !------------------------------------------------------------------------------
@@ -371,7 +371,7 @@ at = CPUTime()
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,LX,LY,LZ,x,y,z,R
 
        INTEGER :: i,j,k,p,q,t,dim
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
@@ -390,7 +390,7 @@ at = CPUTime()
 !------------------------------------------------------------------------------
           stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
                       Basis, dBasisdx )
- 
+
           S = S * SqrtElementMetric
 
           LX = SUM( Nodes % x(1:n) * Basis )
@@ -418,7 +418,7 @@ at = CPUTime()
 !------------------------------------------------------------------------------
      END SUBROUTINE IntegrateSource
 !------------------------------------------------------------------------------
- 
+
 
 !------------------------------------------------------------------------------
      SUBROUTINE IntegrateMatrix( StiffMatrix, Force, Load, &
@@ -436,7 +436,7 @@ at = CPUTime()
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,gradW(3),Normal(3)
 
        INTEGER :: i,j,k,p,q,t,dim
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
@@ -468,7 +468,7 @@ at = CPUTime()
 !------------------------------------------------------------------------------
           stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
                       Basis, dBasisdx )
- 
+
           S = S * SqrtElementMetric
           Normal = NormalVector( Element, Nodes, u,v, CheckNormals )
 
@@ -541,7 +541,7 @@ at = CPUTime()
        REAL(KIND=dp) :: SqrtElementMetric,U,V,W,S,A,L,gradW(3),Normal(3),ss
 
        INTEGER :: i,j,k,p,q,t,dim
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
 !------------------------------------------------------------------------------
        dim = CoordinateSystemDimension()
@@ -573,7 +573,7 @@ at = CPUTime()
 !------------------------------------------------------------------------------
          stat = ElementInfo( Element, Nodes, U, V, W, SqrtElementMetric, &
                      Basis, dBasisdx )
- 
+
          S = S * SqrtElementMetric
          Normal = NormalVector( Element, Nodes, u,v, CheckNormals )
 
@@ -691,8 +691,8 @@ at = CPUTime()
 
        HUTI_MAXTOLERANCE = ListGetConstReal( Solver % Values, &
             'Linear System Divergence Limit', GotIt )
-       IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20       
-       
+       IF(.NOT. GotIt) HUTI_MAXTOLERANCE = 1.0d20
+
        HUTI_MAXIT = ListGetInteger( Solver % Values, &
             'Linear System Max Iterations' )
 
@@ -723,7 +723,7 @@ at = CPUTime()
           END IF
        END IF
 !------------------------------------------------------------------------------
-     END SUBROUTINE FullIterSolver 
+     END SUBROUTINE FullIterSolver
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------

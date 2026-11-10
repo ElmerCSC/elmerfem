@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 13 Sep 2002
 ! *
@@ -39,7 +39,7 @@
 INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !------------------------------------------------------------------------------
 !
-!  TYPE(Model_t) :: Model,  
+!  TYPE(Model_t) :: Model,
 !     INPUT: All model information (mesh,materials,BCs,etc...)
 !
 !  TYPE(Solver_t) :: Solver
@@ -75,7 +75,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
   USE DefUtils
 
   IMPLICIT NONE
-  
+
   TYPE(model_t)  :: Model
   TYPE(solver_t), TARGET :: Solver
   TYPE(matrix_t), POINTER :: A
@@ -179,7 +179,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 
         p = ListGetInteger( Solver % Values, 'Extend Elastic Layers', GotIt )
         IF ( .NOT. GotIt )  p = 1
-        
+
         IF ( Verbose ) THEN
            RigidNodes = 0
            DO t = 1, NbrRigids
@@ -216,7 +216,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
                  Visited( NodeIndexes(1:m) ) = .TRUE.
               END IF
            END DO
-           
+
            RealNodeTypes = MERGE( 0, RealNodeTypes, RealNodeTypes < 0 )
         END DO
 
@@ -248,7 +248,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 
      DO t = Model % NumberOfBulkElements + 1, Model % NumberOfBulkElements &
           + Model % NumberOfBoundaryElements
-        
+
         CurrentElement => Solver % Mesh % Elements(t)
 
         IF ( CurrentElement % BoundaryInfo % Constraint == 0 )  CYCLE
@@ -311,7 +311,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !------------------------------------------------------------------------------
 
      IF ( NbrFixed > 0 ) THEN
-        
+
         IF ( NbrFixed == 1 ) THEN
            WRITE( Message, * ) 'Setting ', NbrFixed, &
                 ' rigid block as fixed (body ', FixedIndex(1), ')'
@@ -320,7 +320,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
                 ' rigid blocks as fixed (bodies ', FixedIndex(1:NbrFixed), ')'
         END IF
         CALL Info( 'RigidBody', Message, Level=8 )
-        
+
         DO t = 1, Solver % NumberOfActiveElements
 
            CurrentElement => &
@@ -331,7 +331,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
               m = CurrentElement % TYPE % NumberOfNodes
               NodeIndexes => CurrentElement % NodeIndexes(1:m)
               val = 0.0_dp
-           
+
               DO j = 1, m
 
                  IF ( RealNodeTypes( NodeIndexes( j ) ) == 0 )  CYCLE
@@ -370,7 +370,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !------------------------------------------------------------------------------
 
      BMatrix => A % EMatrix
-     
+
      Mass = .FALSE.
      IF ( ASSOCIATED( A % MassValues ) ) THEN
         IF ( SIZE( A % MassValues ) == SIZE( A % Values ) ) Mass = .TRUE.
@@ -393,7 +393,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
         l = 0
         DO i=1,A % NumberOFRows
            s = A % Values( A % Diag(i) )
-           A % Values( A % Diag(i) ) = 0.0d0 
+           A % Values( A % Diag(i) ) = 0.0d0
            j = A % Rows(i)
            k = A % Rows(i+1)-1
            IF ( ALL( A % Values(j:k) == 0.0d0 ) ) THEN
@@ -409,16 +409,16 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
            WRITE( Message, * ) 'Will eliminate ', Dirichlet, ' Dirichlet DOFs'
            CALL Info( 'RigidBody', Message, Level=16 )
         END IF
-        
+
         Bmatrix => AllocateMatrix()
-        
+
         Bmatrix % NumberOFRows = A % NumberOFRows - Dirichlet
         ALLOCATE( Bmatrix % Rows( Bmatrix % NumberOfRows + 1 ), &
              Bmatrix % Diag( Bmatrix % NumberOfRows ) )
 
         j = 0
         k = 1
-        DO i=1, A % NumberOFRows 
+        DO i=1, A % NumberOFRows
            IF ( Permutation(i) /= 0 ) THEN
               j = j + 1
               Bmatrix % Rows(j) = k
@@ -435,7 +435,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 
         ALLOCATE( Bmatrix % Values(k-1), Bmatrix % Cols(k-1), &
              BMatrix % RHS( Bmatrix % NumberOfRows ) )
-        
+
         ALLOCATE( Dcount( A % NumberOfRows ) )
         IF ( Permutation(1) == 0 ) THEN
            DCount(1) = 1
@@ -443,7 +443,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
            DCount(1) = 0
         END IF
 
-        DO i=2, A % NumberOFRows 
+        DO i=2, A % NumberOFRows
            IF ( Permutation(i) /= 0 ) THEN
               DCount(i) = DCount(i-1)
            ELSE
@@ -453,7 +453,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 
         j = 0
         k = 1
-        DO i=1, A % NumberOFRows 
+        DO i=1, A % NumberOFRows
            IF ( Permutation(i) /= 0 ) THEN
               j = j + 1
               DO l = A % Rows(i),A % Rows(i+1)-1
@@ -480,7 +480,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
         A % EMatrix => BMatrix
         A % Perm => Permutation
      END IF
-     
+
 !------------------------------------------------------------------------------
 
      WRITE( Message, * ) 'Total nodes:              ', Model % NumberOfNodes
@@ -501,7 +501,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !------------------------------------------------------------------------------
 
   BMatrix => A % EMatrix
-     
+
   Mass = .FALSE.
   IF ( ASSOCIATED( A % MassValues ) ) THEN
      IF ( SIZE( A % MassValues ) == SIZE( A % Values ) ) Mass = .TRUE.
@@ -517,10 +517,10 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 
   j = 0
   k = 1
-  DO i=1, A % NumberOFRows 
+  DO i=1, A % NumberOFRows
      IF ( Permutation(i) /= 0 ) THEN
         j = j + 1
-        FVector(j) = B(i) 
+        FVector(j) = B(i)
         DO l = A % Rows(i), A % Rows(i+1)-1
            t = A % Cols(l)
            IF ( Permutation(t) == 0 ) THEN
@@ -542,10 +542,10 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
 !------------------------------------------------------------------------------
 
   IF ( .NOT. AllocationsDone .OR. Solver % MeshChanged ) THEN
-     
+
      CALL ComputeMassCenter( CenterOfRigidBody, Model, Solver, &
           RigidIndex, NbrRigids )
-     
+
   END IF
 
 !------------------------------------------------------------------------------
@@ -584,7 +584,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
            C % Rows(k + i) = C % Rows(k + i - 1) + &
                 COUNT( RealNodeTypes == j )
         END DO
-        
+
         DO i = 1, 2*DOFs-3
            C % Rows(k + DOFs + i) = C % Rows(k + DOFs + i - 1) + &
                 2 * COUNT( RealNodeTypes == j )
@@ -674,7 +674,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
                    + DOFs + 3 ) + k ) = &
                    Model % Mesh % Nodes % y(t) - CenterOfRigidBody(j,2)
               k = k + 1
-              
+
               C % Cols( C % Rows( RowsInUnityBlock + (j-1)*3*(DOFs-1) &
                    + DOFs + 1 ) + k ) = &
                    Permutation( DOFs * Perm(t) - DOFs + 3 )
@@ -710,7 +710,7 @@ INTEGER FUNCTION RigidBody( Model, Solver, A, b, x, n, DOFs, Norm )
      AllocationsDone = .TRUE.
 
   END IF
-  
+
 !------------------------------------------------------------------------------
 !   Eigen analysis
 !------------------------------------------------------------------------------
@@ -1092,7 +1092,7 @@ CONTAINS
        Density(1:m) = ListGetReal( Model % Materials(k) % Values, &
             'Density', m, NodeIndexes, gotIt )
        IF ( .NOT. GotIt ) Density(1:m) = 1.0d0
-          
+
        ElementNodes % x(1:m) = Solver % Mesh % Nodes % x(NodeIndexes)
        ElementNodes % y(1:m) = Solver % Mesh % Nodes % y(NodeIndexes)
        ElementNodes % z(1:m) = Solver % Mesh % Nodes % z(NodeIndexes)
@@ -1100,12 +1100,12 @@ CONTAINS
 !------------------------------------------------------------------------------
 !      Numerical integration
 !------------------------------------------------------------------------------
-       
+
        ElementMassCenter = 0.0d0
        ElementMass = 0.0d0
 
        IntegStuff = GaussPoints( CurrentElement )
- 
+
        DO p = 1, IntegStuff % n
           uu = IntegStuff % u(p)
           vv = IntegStuff % v(p)
@@ -1140,7 +1140,7 @@ CONTAINS
                ElementMassCenter(3) = ElementMassCenter(3) + s * zpos * Dens
 
           ElementMass = ElementMass + s * Dens
-           
+
        END DO
 
        TotalMass(i) = TotalMass(i) + ElementMass
@@ -1301,7 +1301,7 @@ CONTAINS
     IF ( PRESENT( DVal ) )  Damp = DVal
 
     B => AllocateMatrix()
-    
+
     NVals = SIZE( A % Values )
     B % NumberOfRows = MAXVAL( A % Cols )
 
@@ -1334,7 +1334,7 @@ CONTAINS
        DO i = 1, A % NumberOfRows
           DO j = A % Rows(i), A % Rows(i+1) - 1
              k = A % Cols(j)
-             IF ( Row(k) < B % Rows(k+1) ) THEN 
+             IF ( Row(k) < B % Rows(k+1) ) THEN
                 B % Cols( Row(k) ) = i
                 B % Values( Row(k) ) = A % Values(j)
                 B % MassValues( Row(k) ) = A % MassValues(j)
@@ -1351,7 +1351,7 @@ CONTAINS
        DO i = 1, A % NumberOfRows
           DO j = A % Rows(i), A % Rows(i+1) - 1
              k = A % Cols(j)
-             IF ( Row(k) < B % Rows(k+1) ) THEN 
+             IF ( Row(k) < B % Rows(k+1) ) THEN
                 B % Cols( Row(k) ) = i
                 B % Values( Row(k) ) = A % Values(j)
                 Row(k) = Row(k) + 1
@@ -1386,7 +1386,7 @@ CONTAINS
 !   to calculate product MassValues, otherwise use the Values array.
 !   Also DampValues is possible.
 !
-!   If the result matrix C is not allocated, or C is allocated, but 
+!   If the result matrix C is not allocated, or C is allocated, but
 !   C % Values is not, construct first the CRS structure of C
 !------------------------------------------------------------------------------
     REAL(KIND=dp) , POINTER :: AMassVals(:), BMassVals(:)
@@ -1589,7 +1589,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: A
     LOGICAL, OPTIONAL :: DoneAlready
 
-    REAL(KIND=dp), POINTER CONTIG :: Vals(:) 
+    REAL(KIND=dp), POINTER CONTIG :: Vals(:)
     REAL(KIND=dp), POINTER CONTIG :: MassVals(:), DampVals(:), b(:)
     INTEGER, POINTER CONTIG :: Rows(:), Cols(:), Diag(:), RowEntrys(:)
     INTEGER, POINTER :: NewPerm(:), NbrNeighbors(:,:), TempCol(:)
@@ -1674,7 +1674,7 @@ CONTAINS
              IF ( RowAdded == A % NumberOfRows )  EXIT
           END DO
           RowCompleted = RowCompleted + Lag
-        
+
        END DO
 
        DEALLOCATE( Cols )
@@ -1707,7 +1707,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
        TempCol = NewPerm
-       
+
        DO i = 1, A % NumberOfRows
           NewPerm( TempCol(i) ) = i
        END DO
@@ -1731,7 +1731,7 @@ CONTAINS
               STAT=istat )
     IF ( istat /= 0 )  CALL Fatal( 'MatrixBandWidthOptimize', &
          'Memory allocation error 3' )
-    
+
     Mass = .FALSE.
     IF ( ASSOCIATED( A % MassValues ) ) THEN
        Mass = .TRUE.
@@ -1751,7 +1751,7 @@ CONTAINS
        DampVals = 0.0d0
     END IF
     Vals = 0.0d0
-    
+
 !------------------------------------------------------------------------------
 
     ALLOCATE( RowEntrys( A % NumberOfRows ), STAT=istat )
@@ -1819,7 +1819,7 @@ CONTAINS
        ALLOCATE( b( A % NumberOfRows ), STAT=istat )
        IF ( istat /= 0 )  CALL Fatal( 'MatrixBandWidthOptimize', &
             'Memory allocation error 4' )
-       
+
        DO i = 1, A % NumberOfRows
           b(NewPerm(i)) = A % RHS(i)
        END DO

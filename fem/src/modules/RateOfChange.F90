@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,19 +27,19 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Nov 2002
 ! *
 ! *****************************************************************************/
- 
+
 !------------------------------------------------------------------------------
-!>  This subroutine solves the Galerkin approximation to the rate of change 
-!>  of the field subject to the convection operator. This approximation 
-!>  is used by the wave equation solver for the convective transport 
-!>  equation (TransportEquationSolver). The field subject to the convection 
-!>  operator is declared using sif-file flag Advection Variable and must be 
-!>  available to the solver. 
+!>  This subroutine solves the Galerkin approximation to the rate of change
+!>  of the field subject to the convection operator. This approximation
+!>  is used by the wave equation solver for the convective transport
+!>  equation (TransportEquationSolver). The field subject to the convection
+!>  operator is declared using sif-file flag Advection Variable and must be
+!>  available to the solver.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
    SUBROUTINE RateOfChangeSolver( Model, Solver, dt, TransientSimulation )
@@ -71,7 +71,7 @@
          LocalNodes, AdvectionVariableComponents, VelocityComponents
      INTEGER, SAVE :: ThisSolverCalls=0
      INTEGER, POINTER :: NodeIndexes(:), Udot0Perm(:), VelocityPerm(:)
- 
+
      TYPE(Matrix_t), POINTER :: StiffMatrix
      TYPE(Nodes_t) :: ElementNodes
      TYPE(Element_t), POINTER :: CurrentElement
@@ -91,16 +91,16 @@
          V1(:), V2(:), V3(:)
      REAL(KIND=dp) :: at, st, Norm
 
-     SAVE LocalStiffMatrix, LocalForce, ElementNodes, & 
+     SAVE LocalStiffMatrix, LocalForce, ElementNodes, &
           AllocationsDone, LocalU0, U0Var, V1, V2, V3
 
 !------------------------------------------------------------------------------
      ThisSolverCalls = ThisSolverCalls + 1
-     
+
      IF (MOD(ThisSolverCalls,2)==1) THEN
-       CALL Info('RateOfChangeSolver', '') 
-       CALL Info('RateOfChangeSolver', 'Starting initialization...') 
-       CALL Info('RateOfChangeSolver', '') 
+       CALL Info('RateOfChangeSolver', '')
+       CALL Info('RateOfChangeSolver', 'Starting initialization...')
+       CALL Info('RateOfChangeSolver', '')
 
 !------------------------------------------------------------------------------
 !    Get variables needed for solution
@@ -172,7 +172,7 @@
        END IF
 
 !------------------------------------------------------------------------------
-!    Get the type of Advection Velocity field and read the velocity field if 
+!    Get the type of Advection Velocity field and read the velocity field if
 !    computed by the Navier-Stokes equations solver
 !------------------------------------------------------------------------------
        AdvectionFlag = ListGetString(Solver % Values, 'Advection')
@@ -181,8 +181,8 @@
              'Flow Solution' )
          IF ( ASSOCIATED( FlowSol ) ) THEN
            VelocityPerm => FlowSol % Perm
-           Flow => FlowSol % Values  
-           VelocityComponents = FlowSol % DOFs - 1 
+           Flow => FlowSol % Values
+           VelocityComponents = FlowSol % DOFs - 1
            IF (VelocityComponents /= CoordinateSystemDimension()) &
                CALL Warn('RateOfChangeSolver', &
                'Coordinate system and Advection Velocity dimensions unequal')
@@ -194,7 +194,7 @@
          IF (AdvectionFlag /= 'constant') CALL Fatal(     &
              'RateOfChangeSolver', &
              'Advection flag should be either "computed" or "constant"')
-         VelocityComponents = CoordinateSystemDimension() 
+         VelocityComponents = CoordinateSystemDimension()
        END IF
 
 !------------------------------------------------------------------------------
@@ -221,7 +221,7 @@
 
          DO p=1, AdvectionVariableComponents
            DO i=1,n
-             j = Udot0Perm( NodeIndexes(i) ) 
+             j = Udot0Perm( NodeIndexes(i) )
              k = U0Var(p) % Var % Perm(NodeIndexes(i))
              IF(j>0 .AND. k>0) THEN
                LocalU0( (i-1)*AdvectionVariableComponents + p ) = &
@@ -241,15 +241,15 @@
            SELECT CASE (VelocityComponents)
              CASE(1)
              V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
-                 NodeIndexes) 
+                 NodeIndexes)
              V2 = 0.0d0
-             V3 = 0.0d0            
+             V3 = 0.0d0
              CASE(2)
              V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
                  NodeIndexes)
              V2(1:n) = ListGetReal( Material,'Advection Velocity 2',n, &
                  NodeIndexes)
-             V3 = 0.0d0  
+             V3 = 0.0d0
              CASE(3)
              V1(1:n) = ListGetReal( Material,'Advection Velocity 1',n, &
                  NodeIndexes)
@@ -258,7 +258,7 @@
              V3(1:n) = ListGetReal( Material,'Advection Velocity 3',n, &
                  NodeIndexes)
            END SELECT
-         ELSE ! Use computed velocity field   
+         ELSE ! Use computed velocity field
            DO i=1,n
              j = VelocityPerm( NodeIndexes(i) )
              SELECT CASE (VelocityComponents)
@@ -290,7 +290,7 @@
 !------------------------------------------------------------------------------
          CALL UpdateGlobalEquations( StiffMatrix, LocalStiffMatrix, &
              ForceVector, LocalForce, n, AdvectionVariableComponents, &
-             Udot0Perm(NodeIndexes) ) 
+             Udot0Perm(NodeIndexes) )
 !------------------------------------------------------------------------------
        END DO
 !------------------------------------------------------------------------------
@@ -298,7 +298,7 @@
 !    Dirichlet boundary settings. Actually no need to call it except for
 !    transient simulations.
 !------------------------------------------------------------------------------
-!    
+!
 !       CALL FinishAssembly( Solver,ForceVector )
 !
 !------------------------------------------------------------------------------
@@ -318,7 +318,7 @@
        st = CPUTime()
 
        CALL SolveSystem( StiffMatrix, ParMatrix, ForceVector, &
-           Udot0, Norm, AdvectionVariableComponents, Solver )  
+           Udot0, Norm, AdvectionVariableComponents, Solver )
 
        st = CPUTime() - st
 
@@ -347,9 +347,9 @@
        LOGICAL :: Stat
 
        INTEGER :: i,p,q,t,DIM
- 
+
        TYPE(GaussIntegrationPoints_t) :: IntegStuff
- 
+
 !------------------------------------------------------------------------------
 
        DIM = CoordinateSystemDimension()
@@ -369,7 +369,7 @@
 !------------------------------------------------------------------------------
          stat = ElementInfo( Element,Nodes, U, V, W, SqrtElementMetric, &
                     Basis, dBasisdx )
- 
+
          S = S * SqrtElementMetric
          vel(1) = SUM( V1(1:n) * Basis(1:n) )
          vel(2) = SUM( V2(1:n) * Basis(1:n) )
@@ -387,7 +387,7 @@
                temp = SUM( vel(1:DIM) * dBasisdx(q,1:DIM) )
                Force( (p-1)*VariableComponents + i) = &
                    Force( (p-1)*VariableComponents + i) - &
-                   temp * LocalU0((q-1)*VariableComponents + i) * Basis(p) * s 
+                   temp * LocalU0((q-1)*VariableComponents + i) * Basis(p) * s
              END DO
            END DO
          END DO

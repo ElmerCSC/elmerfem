@@ -1,0 +1,222 @@
+name: create-windows-installer-assets
+# Get the release tarball from a new release,
+# build a Windows installer and zip archive with it, and
+# upload them as release assets to the new release.
+
+on:
+  # Support calling from other workflow (or manually trigger)
+  # A release with the respective tarball must already exist.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Release tag for which the Windows installer is built"
+        required: true
+        default: "devel"
+        type: string
+
+jobs:
+  create-windows-installer:
+    name: MSYS2 (${{ matrix.msystem }} ${{ matrix.mpi }} MPI)
+
+    runs-on: windows-latest
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    strategy:
+      # Allow other runners in the matrix to continue if some fail
+      fail-fast: false
+
+      matrix:
+        msystem: [UCRT64]
+        mpi: [with, without]
+
+    steps:
+      - name: install dependencies
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: ${{ matrix.msystem }}
+          update: true
+          cache: false
+          install: >-
+            base-devel
+            git
+          pacboy: >-
+            cc:p
+            fc:p
+            cmake:p
+            ${{ matrix.mpi == 'with' && 'msmpi:p' || '' }}
+            openblas:p
+            ${{ matrix.mpi == 'with' && 'parmetis:p' || '' }}
+            mumps:p
+            suitesparse:p
+            qt6-declarative:p
+            qwt-qt6:p
+            vtk:p
+            adios2:p
+            anari-sdk:p 
+            boost:p
+            cgns:p
+            cli11:p
+            eigen3:p
+            exprtk:p
+            fast_float:p
+            ffmpeg:p
+            gl2ps:p
+            liblas:p
+            libmariadbclient:p
+            netcdf:p 
+            openslide:p
+            openvdb:p
+            pdal:p
+            scnlib:p
+            seacas:p
+            unixodbc:p
+            utf8cpp:p
+            opencascade:p
+            nlohmann-json:p
+            nsis:p
+            ntldd:p
+
+      - name: download release tarball
+        shell: pwsh -command ". '{0}'"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.event.inputs.ref }}
+        run: |
+          gh release download ${{ github.event.inputs.ref }} `
+            --repo ${{ github.repository }} `
+            --pattern elmerfem-${{ github.event.inputs.ref }}.tar.gz
+
+      - name: extract release tarball
+        env:
+          ref: ${{ github.event.inputs.ref }}
+        run: |
+          MSYS2_GITHUB_WORKSPACE="$(cygpath -u "${GITHUB_WORKSPACE}")"
+          mkdir -p "${MSYS2_GITHUB_WORKSPACE}"/elmerfem-release
+          bsdtar -xf "${MSYS2_GITHUB_WORKSPACE}/elmerfem-${ref}.tar.gz" \
+            -C "${MSYS2_GITHUB_WORKSPACE}"/elmerfem-release \
+            --strip-component=1
+
+      - name: install MSMPI
+        if: matrix.mpi == 'with'
+        uses: mpi4py/setup-mpi@v1
+        with:
+          mpi: msmpi
+
+      - name: configure
+        # Downgrade incompatible-pointer-types to a warning to work around
+        # build error of Zoltan with newer GCC.
+        env:
+          ref: ${{ github.event.inputs.ref }}
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/build
+          declare -a _extra_config
+          if [ "${{ matrix.mpi }}" == "with" ]; then
+            _extra_config+=("-DWITH_MPI=ON"
+                            "-DMPI_TEST_MAXPROC=$(nproc)"
+                            "-DMPIEXEC_EXECUTABLE=$(cygpath -m "${MSMPI_BIN}")/mpiexec.exe"
+                            "-DBUNDLE_MSMPI_REDIST=ON"
+                            "-DWITH_Zoltan=ON"
+                            "-DWITH_ElmerIce=ON"
+                            "-DParMetis_LIBRARIES=$(pkg-config --libs parmetis)"
+                            "-DParMetis_INCLUDE_DIR=$(pkg-config --cflags parmetis)"
+                            "-DWITH_Mumps=ON"
+                            "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dmo mumps-zmo mumps-smo mumps-cmo)"
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dmo)")
+          else
+            _extra_config+=("-DWITH_MPI=OFF"
+                            "-DWITH_Zoltan=OFF"
+                            "-DWITH_ElmerIce=OFF"
+                            "-DWITH_Mumps=ON"
+                            "-DMumps_LIBRARIES=$(pkg-config --libs mumps-dto mumps-zto mumps-sto mumps-cto)"
+                            "-DMumps_INCLUDE_DIR=$(pkg-config --variable=includedir mumps-dto)")
+          fi
+          cmake \
+            -DCMAKE_BUILD_TYPE="Release" \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
+            "${_extra_config[@]}" \
+            -DBLA_VENDOR="OpenBLAS" \
+            -DWITH_OpenMP=ON \
+            -DWITH_LUA=ON \
+            -DCMAKE_C_FLAGS="-Wno-error=incompatible-pointer-types" \
+            -DWITH_ELMERGUI=ON \
+            -DWITH_QT6=ON \
+            -DWITH_VTK=ON \
+            -DWITH_OCC=ON \
+            -DWITH_MATC=ON \
+            -DWITH_PARAVIEW=ON \
+            -DCREATE_PKGCONFIG_FILE=ON \
+            -DCPACK_PACKAGE_FILE_NAME=elmerfem-${ref}-${{ matrix.mpi == 'with' && 'mpi' || 'nompi' }}-Windows-AMD64 \
+            -DCPACK_BUNDLE_EXTRA_WINDOWS_DLLS=ON \
+            -DBUNDLE_MSYS2_PACKAGES=ON \
+            -DBUNDLE_MSYS2_PACKAGES_PREFIX=$(cygpath -m "${GITHUB_WORKSPACE}")/msys2_prefix \
+            -DRELOCATE_PREFIX=ON \
+            -B ${GITHUB_WORKSPACE}/build \
+            -S ${GITHUB_WORKSPACE}/elmerfem-release
+
+      - name: build
+        run: |
+          cd ${GITHUB_WORKSPACE}/build
+          cmake --build .
+
+      - name: create bundles
+        id: create-bundles
+        run: |
+          MSYS2_GITHUB_WORKSPACE="$(cygpath -u "${GITHUB_WORKSPACE}")"
+          echo "::group::Download packages from MSYS2"
+          mkdir -p "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages
+          pactree -u ${MINGW_PACKAGE_PREFIX}-fc | \
+            pacman -Sw --noconfirm \
+            --cachedir "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages -
+          echo "::endgroup::"
+          echo "::group::Extract MSYS2 packages"
+          mkdir -p "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix
+          for pkg in "${MSYS2_GITHUB_WORKSPACE}"/msys2_packages/*.pkg.tar.zst; do
+            echo "extracting $pkg..."
+            bsdtar -xf "$pkg" -C "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix --strip-component=1
+          done
+          # remove files with metadata
+          rm -rf "${MSYS2_GITHUB_WORKSPACE}"/msys2_prefix/.{PKGINFO,BUILDINFO,MTREE}
+          echo "::endgroup::"
+          if [ "${{ matrix.mpi }}" == "with" ]; then
+            echo "::group::Copy MSMPI installer to a location where it can be found"
+            mkdir ${GITHUB_WORKSPACE}/msmpi_redist
+            cp "$(cygpath -m "${MSMPI_BIN}")/../Redist/MSMpiSetup.exe" "${GITHUB_WORKSPACE}/msmpi_redist/"
+            echo "done"
+            echo "::endgroup::"
+          fi
+          echo "::group::Create zip archive"
+          cd ${GITHUB_WORKSPACE}/build
+          if ! cpack -G "ZIP" .; then
+            echo "zip-archive-failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Failed to create zip archive"
+          fi
+          echo "::endgroup::"
+          echo "::group::Create NSIS64 installer"
+          cd ${GITHUB_WORKSPACE}/build
+          if ! cpack -G "NSIS64" .; then
+            echo "nsis64-installer-failed=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::Failed to create NSIS64 installer"
+          fi
+          echo "::endgroup::"
+          # store name of bundle for following steps
+          cmake -LA -N . | awk -F= '$1~/CPACK_PACKAGE_FILE_NAME:STRING/{print "bundle-name="$2}' >> "$GITHUB_OUTPUT"
+
+      # Upload assets to release
+      - name: upload installer as release asset
+        if: steps.create-bundles.outputs.nsis64-installer-failed != 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.inputs.ref }}
+          files: |
+            build/${{ steps.create-bundles.outputs.bundle-name }}.exe
+
+      - name: upload zip archive as release asset
+        if: steps.create-bundles.outputs.zip-archive-failed != 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.inputs.ref }}
+          files: |
+            build/${{ steps.create-bundles.outputs.bundle-name }}.zip

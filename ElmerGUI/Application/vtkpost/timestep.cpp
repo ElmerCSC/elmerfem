@@ -134,11 +134,7 @@ void TimeStep::canProceedWithNextSlot(vtkRenderWindow *renderWindow)
     vtkPNGWriter *writer =  vtkPNGWriter::New();
     writer->SetInputConnection(image->GetOutputPort());
 
-#if WITH_QT5 || WITH_QT6    
-    writer->SetFileName(fileName.toLatin1().data());
-#else
-    writer->SetFileName(fileName.toAscii().data());
-#endif
+    writer->SetFileName(fileName.toLocal8Bit().data());
 
     renderWindow->Render();
     writer->Write();

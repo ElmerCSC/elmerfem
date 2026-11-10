@@ -1,0 +1,98 @@
+! Maxwell (viscoelastic) material in axisymmetric coordinates.
+!
+! The axisymmetric case is the one where the hoop component of the lag stress has
+! to be carried from step to step: it is an independent component there, unlike
+! in a plane case where it never enters. Dropping it leaves the solution drifting
+! slowly after the load is removed instead of holding the residual deformation.
+!
+! The load is a normal force on the outer boundary for the first ten steps and
+! nothing after that. A Maxwell material creeps while loaded and then keeps
+! whatever deformation it has reached, so the norm must stop changing at step 10
+! and stay put through step 20. That plateau is the property under test -- the
+! reference norm below is the value it settles to.
+
+Header
+  Mesh DB "." "square"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = String Axi Symmetric
+  Steady State Min Iterations = 1
+  Steady State Max Iterations = 1
+
+  Simulation Type = Transient
+  Timestep size = 1
+  Timestep Intervals = 20
+  Timestepping Method = BDF
+
+  Serendipity P Elements = False
+End
+
+Body 1
+  Equation  = 1
+  Material = 1
+End
+
+Material 1
+  Density = Real 0
+  Damping = Real 0
+  Viscosity = 1
+  Youngs Modulus = Real 1
+  Poisson Ratio = Real 0.3
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Elasticity Analysis"
+  Procedure = "StressSolve" "StressSolver"
+
+  Displace Mesh = Logical FALSE
+
+  Variable = String "t[d:2]"
+  Element = p:1 b:3
+
+  Maxwell Material = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPACK
+  Linear System Symmetric = Logical True
+
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Relaxation Factor = 1
+
+  Steady State Convergence Tolerance= 1.0e-6
+End
+
+!----------
+! The symmetry axis, r = 0.
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  d 1 = Real 0
+  d 2 = Real 0
+End
+
+! Outer boundary, loaded for the first ten steps only.
+Boundary Condition 2
+  Target Boundaries(1) = 3
+
+  Normal Force = Variable Timestep, Coordinate 1
+     Real MATC "if ( tx < 10 ) { -10*(tx(1)<0.5) } else { 0 }
+End
+
+!------------
+Boundary Condition 3
+  Target Boundaries(2) = 2 4
+  d 1 = Real 0
+  d 2 = Real 0
+End
+
+Solver 1 :: Reference Norm = Real 1.8716979
+RUN

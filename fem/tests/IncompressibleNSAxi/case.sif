@@ -1,0 +1,116 @@
+! Method-of-manufactured-solutions regression test for IncompressibleNS's
+! plain "Axi Symmetric" (no swirl) support in LocalBulkMatrix: the extra
+! r-weighted integration measure and the "hoop stress" terms that come with
+! it (e_theta_theta = u_r/r, present purely from the geometry even without a
+! swirl velocity component -- see the comments in LocalBulkMatrix and in
+! IncompressibleNSSolver's coordinate-system check). This was previously
+! untested: the solver used to Fatal outright on any non-Cartesian
+! coordinate system.
+!
+! Exact Stokes solution on r in [0.5,1.5], z in [0,2], mu=1, p=0:
+!   u_r = r,  u_z = r - 2*z
+! which satisfies the axisymmetric continuity equation
+!   du_r/dr + u_r/r + du_z/dz = 1 + 1 - 2 = 0
+! exactly. The body force required to balance the (non-zero, precisely
+! because of the hoop term) axisymmetric momentum equation for this field,
+! derived symbolically (sympy) from
+!   f = -div(tau) + grad(p),  tau_ij = 2*mu*e_ij(u),
+!   e_theta_theta = u_r/r,  divergence with the r/theta metric terms,
+! comes out to f_r = 0, f_z = -mu/r -- see "Flow Bodyforce 2" below. Dirichlet
+! velocity is imposed on all four sides (this is a pure verification problem,
+! not a physically motivated boundary value problem), plus a Dirichlet
+! pressure pin on one side since an all-Dirichlet-velocity Stokes problem
+! otherwise leaves the pressure level undetermined.
+!
+! Halving the mesh spacing (Element Divisions 10x16 -> 20x32) shrinks the max
+! nodal error in both velocity components by very close to 4x, i.e. clean
+! second-order convergence to the exact solution -- the signature of a
+! correctly assembled operator, not an accidentally-passing one.
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "pipe"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Axi Symmetric
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Body Force 1
+  Flow Bodyforce 1 = Real 0.0
+  Flow Bodyforce 2 = Variable Coordinate 1
+    Real MATC "-1.0/tx"
+End
+
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+  Stokes Flow = Logical True
+  Specific Load = Logical True
+
+  Element = "p:1"
+  Pressure Stabilization = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+Material 1
+  Density = 1.0
+  Viscosity = 1.0
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Velocity 1 = Variable Coordinate 1
+    Real MATC "tx"
+  Velocity 2 = Variable Coordinate 1, Coordinate 2
+    Real MATC "tx(0) - 2*tx(1)"
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Velocity 1 = Variable Coordinate 1
+    Real MATC "tx"
+  Velocity 2 = Variable Coordinate 1, Coordinate 2
+    Real MATC "tx(0) - 2*tx(1)"
+End
+
+Boundary Condition 3
+  Target Boundaries = 3
+  Velocity 1 = Variable Coordinate 1
+    Real MATC "tx"
+  Velocity 2 = Variable Coordinate 1, Coordinate 2
+    Real MATC "tx(0) - 2*tx(1)"
+  Pressure = Real 0.0
+End
+
+Boundary Condition 4
+  Target Boundaries = 4
+  Velocity 1 = Variable Coordinate 1
+    Real MATC "tx"
+  Velocity 2 = Variable Coordinate 1, Coordinate 2
+    Real MATC "tx(0) - 2*tx(1)"
+End
+
+Solver 1 :: Reference Norm = Real 1.3600543
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
+
+!End Of File

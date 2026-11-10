@@ -1,0 +1,143 @@
+! Transient twin of Step_stokes_heat_vec/Step.sif, exercising HeatSolveVec's
+! condensed p-bubble transient history -- the CondensatePTransient mechanism
+! (see HeatSolveVec.F90's LocalMatrix/LocalMatrixVec) that replaces the
+! previous Default1stOrderTime + plain CondensateP combo, which silently
+! treated a condensed bubble's own previous-timestep value as zero.
+!
+! Solver 1 (NS-Vec) stays Stokes Flow, steady in effect: the velocity field it
+! produces does not itself change from one timestep to the next (fixed BCs, no
+! own transient term), so it isolates Solver 2 (Heat)'s own transient bubble
+! history rather than compounding it with a flow-side one -- same reasoning as
+! Step_v2f_transient/Step_v2f_vec_transient keep their own flow solver plain.
+!
+! "Nonlinear System Max Iterations" is deliberately left UNSET on Solver 2, so
+! HeatSolver_Init's own forced default (Min/Max = 2, needed for a
+! newly-started timestep's recovered bubble value to be consistent with that
+! timestep rather than the previous one) is what is under test.
+
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.02
+  Timestep Intervals = 5
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+
+  Post File = "Step_heat_transient.vtu"
+
+  Serendipity P Elements = False
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(2) = 1 2
+  Convection = "computed"
+End
+
+
+Solver 1
+  Equation = "NS-Vec"
+
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+
+  Nonlinear System Max Iterations = 1
+
+  Stokes Flow = Logical True
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+
+Solver 2
+  Equation = "Heat"
+
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "Temperature"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+
+  Element = p:1 b:4
+  Bubbles in Global System = False
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Viscosity = 0.01
+  Heat Conductivity = 1.0
+  Heat Capacity = 1000.0 ! ensure convection dominated
+End
+
+Boundary Condition 1
+  Name = "Inlet"
+
+  Target Boundaries = 1
+
+  Velocity 1 = Variable "Coordinate 2"
+    Real MATC "4*(tx-1)*(2-tx)"
+  Temperature = Variable "Coordinate 2"
+    Real MATC "4*(tx-1)*(2-tx)"
+
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries = 2
+
+  External Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "Sides"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = 3.08821397E-01
+Solver 2 :: Reference Norm = 6.30089719E-02

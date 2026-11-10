@@ -114,7 +114,7 @@ End
 
 Solver 2
   Equation = "1st Order Stokes"
-  Procedure = "HydrostaticNSVec" "HydrostaticNSSolver"
+  Procedure = "HydrostaticNS" "HydrostaticNSSolver"
 
   Variable = -dofs 2 "Horizontal Velocity"
 

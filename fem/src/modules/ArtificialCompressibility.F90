@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,17 +13,17 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !/******************************************************************************
 ! *
 ! *  Module containing a solver that normalized the artificial compressibility for
-! *  optimal fluid-structure coupling and for for computing the artificial 
+! *  optimal fluid-structure coupling and for for computing the artificial
 ! *  compressibility elementwise.
 ! *
 ! ******************************************************************************/
@@ -33,11 +33,11 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 12.02.2002
 ! *  Modified: 26.4.2022 (for Couldron simulations)
-! * 
+! *
 ! ******************************************************************************
 
 !------------------------------------------------------------------------------
@@ -81,7 +81,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
       MinimumSideVolume
 
   CALL Info('CompressibilityScale','Scaling compressibility for optimal FSI convergence',Level=5)
-  
+
   timestep = GetTimestep()
   IF( timestep /= prevTimestep ) THEN
     TimeStepVisited = 0
@@ -89,7 +89,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
   END IF
 
   Params => GetSolverParams()
-  
+
   Mesh => Solver % Mesh
 
   FVar => NULL()
@@ -100,7 +100,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
       EXIT
     END IF
   END DO
-  
+
   IF(.NOT. ASSOCIATED( FVar ) ) THEN
     VarName = ListGetString( Params,'Flow Variable Name',GotIt)
     IF(GotIt) FVar => VariableGet( Mesh % Variables, VarName )
@@ -114,36 +114,36 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
   IF( PressureMode ) THEN
     CALL Info('CompressibilityScale','Using fluid solver for just pressure',Level=10)
   END IF
-  
+
   VarName = ListGetString( Params,'Displacement Variable Name',GotIt)
   IF(.NOT. GotIt) VarName = 'Displacement'
   Dvar => VariableGet( Mesh % Variables, VarName, .TRUE.)
   IF(.NOT. ASSOCIATED(DVar)) THEN
     CALL Fatal('CompressibilityScale','Please give valid "Displacement Variable Name"!')
   END IF
-   
+
   n = Mesh % MaxElementNodes
   ALLOCATE( ElementNodes % x(n), ElementNodes % y(n), ElementNodes % z(n),&
-      Compressibility(n), Pressure(n), Displacement( 3,n),STAT=istat ) 
+      Compressibility(n), Pressure(n), Displacement( 3,n),STAT=istat )
   IF ( istat /= 0 ) CALL Fatal( 'CompressibilityScale', 'Memory allocation error.' )
-  
+
   TotalVolume = 0.0_dp
   TotalVolumeCompress = 0.0_dp
   SidePressure = 0.0_dp
   SideVolume = 0.0_dp
   SideArea = 0.0_dp
-  
+
   dim = CoordinateSystemDimension()
 
   WeightByDisplacement = ListGetLogical( Params,'Weight By Displacement',GotIt)
-  
+
 
   IF(.NOT. PressureMode ) THEN
     DO t=1,Mesh % NumberOfBulkElements
-      
+
       Element => Mesh % Elements(t)
       Model % CurrentElement => Element
-      
+
       n = Element % TYPE % NumberOfNodes
       NodeIndexes => Element % NodeIndexes
 
@@ -161,49 +161,49 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
       Compressibility(1:n) = &
           ListGetReal(Material,'Artificial Compressibility',n,NodeIndexes,gotIt)
       IF(.NOT. GotIt) CYCLE
-      
+
       CALL CompressibilityIntegrate(Element, n, ElementNodes, &
           Compressibility, TotalVolume, TotalVolumeCompress)
     END DO
   END IF
 
-  
+
   ! Compute the force acting on the boundary
   DO t = Mesh % NumberOfBulkElements + 1, &
       Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
-    
+
 !------------------------------------------------------------------------------
     Element => Mesh % Elements(t)
     IF ( Element % TYPE % ElementCode == 101 ) CYCLE
-          
+
 !------------------------------------------------------------------------------
-!    Set the current element pointer in the model structure to 
+!    Set the current element pointer in the model structure to
 !    reflect the element being processed
 !------------------------------------------------------------------------------
     Model % CurrentElement => Element
 !------------------------------------------------------------------------------
     n = Element % TYPE % NumberOfNodes
     NodeIndexes => Element % NodeIndexes
-     
+
     ! Only integrate over BCs shared with both solvers
     IF( ANY ( DVar % Perm( NodeIndexes ) == 0 ) ) CYCLE
     IF( ANY ( FVar % Perm( NodeIndexes ) == 0 ) ) CYCLE
-     
+
     BC => GetBC(Element)
     IF(.NOT. ASSOCIATED(BC)) CYCLE
-    
+
     ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
     ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
     ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
 
     Pressure(1:n) = FVar % Values(FVar % DOFs * FVar % Perm(NodeIndexes))
-      
+
     Displacement = 0.0_dp
     DO j=1,dim
       Displacement(j,1:n) = &
           DVar % Values(DVar % dofs * (DVar % Perm(NodeIndexes(1:n))-1)+j)
     END DO
-    
+
     IF( PressureMode ) THEN
       Material => GetMaterial(Element)
     END IF
@@ -214,7 +214,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
   ! Compute the initial volume from the 1st volume
   IF(ABS(SideVolume) < MinimumSideVolume) THEN
     MinimumSideVolume = ABS(SideVolume)
-    InitVolume = TotalVolume-SideVolume 
+    InitVolume = TotalVolume-SideVolume
   END IF
 
   CompressScaleOld = ListGetConstReal( Model % Simulation, &
@@ -228,7 +228,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
   TransitionVolume = ListGetConstReal( &
       Solver % Values, 'Artificial Compressibility Critical Volume',gotIt )
   IF(.NOT. gotIt) TransitionVolume = 0.01_dp
- 
+
   ScaleCompressibility = ListGetLogical( &
       Solver % Values, 'Artificial Compressibility Scale',gotIt )
   IF(.NOT. gotIt) ScaleCompressibility = .TRUE.
@@ -238,7 +238,7 @@ SUBROUTINE CompressibilityScale( Model,Solver,dt,Transient )
   ELSE
     dVolume = SideVolume
   END IF
-  CompressSuggest = (dVolume/TotalVolume)/(SidePressure * SideArea) 
+  CompressSuggest = (dVolume/TotalVolume)/(SidePressure * SideArea)
   CompressScale = CompressSuggest*TotalVolume/ (TotalVolumeCompress*Relax)
 
 
@@ -292,23 +292,23 @@ CONTAINS
     REAL(KIND=dp) :: SqrtElementMetric, SqrtMetric, Metric(3,3)
     REAL(KIND=dp) :: ElemArtif(n), ElemGap(n), ElemPres0(n), AC, Gap, Pres0
     LOGICAL :: SurfAC
-    
+
     INTEGER :: N_Integ, CoordSys
-    
+
     LOGICAL :: stat
     INTEGER :: i,t
     TYPE(GaussIntegrationPoints_t), TARGET :: IP
-    
+
     Ident = 0.0_dp
     DO i=1,3
       Ident(i,i) = 1.0_dp
     END DO
-    
+
 !------------------------------------------------------------------------------
 !    Integration stuff
 !------------------------------------------------------------------------------
     IP = GaussPoints( Element )
-    
+
     CoordSys = CurrentCoordinateSystem()
 
     SurfAC = .FALSE.
@@ -320,8 +320,8 @@ CONTAINS
         ElemArtif(1:n) = GetReal( Material,'Surface Compressibility',SurfAC)
       END IF
     END IF
-    
-    ElemPres0(1:n) = GetReal( Material,'Equilibrium Pressure',GotIt) 
+
+    ElemPres0(1:n) = GetReal( Material,'Equilibrium Pressure',GotIt)
 
 !------------------------------------------------------------------------------
     DO t=1,IP % n
@@ -334,7 +334,7 @@ CONTAINS
 !------------------------------------------------------------------------------
        stat = ElementInfo( Element, Nodes, u, v, w, &
            SqrtElementMetric, Basis, dBasisdx )
-       
+
        s = SqrtElementMetric * IP % s(t)
 
        IF ( CoordSys /= Cartesian ) THEN
@@ -344,22 +344,22 @@ CONTAINS
          CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,X,Y,Z )
          s = s * SqrtMetric
        END IF
-       
+
        Normal = Normalvector( Element,Nodes, u,v, .TRUE. )
-       
+
        NormalDisplacement = 0.0
        DO i=1,dim
          NormalDisplacement = NormalDisplacement + &
              SUM(Basis(1:n) * Displacement(i,1:n)) * Normal(i)
        END DO
-       
+
        Pres0 = SUM(Basis(1:n) * ElemPres0(1:n) )
        Pres = SUM( Basis(1:n) * Pressure(1:n))
 
        IF( WeightByDisplacement ) THEN
          s = s * ABS( NormalDisplacement )
        END IF
-              
+
        SideVolume = SideVolume + s * ABS(NormalDisplacement)
        SidePressure = SidePressure + s * ABS(Pres-Pres0)
        SideArea = SideArea + s
@@ -369,12 +369,12 @@ CONTAINS
          IF(SurfAC) THEN
            Gap = 1.0_dp
          ELSE
-           Gap = SUM(Basis(1:n) * ElemGap(1:n) ) 
+           Gap = SUM(Basis(1:n) * ElemGap(1:n) )
          END IF
          TotalVolume = TotalVolume + s*Gap
          TotalVolumeCompress = TotalVolumeCompress + s*AC*Gap
        END IF
-       
+
 !------------------------------------------------------------------------------
      END DO
 !------------------------------------------------------------------------------
@@ -434,7 +434,7 @@ CONTAINS
         CALL CoordinateSystemInfo( Metric,SqrtMetric,Symb,dSymb,X,Y,Z )
         s = s * SqrtMetric
       END IF
- 
+
       C = SUM(Basis(1:n) * Compressibility(1:n))
 
       TotalVolume = TotalVolume + s
@@ -455,13 +455,13 @@ SUBROUTINE CompressibilityScale_init( Model,Solver,dt,Transient )
   USE DefUtils
   IMPLICIT NONE
 !------------------------------------------------------------------------------
-  TYPE(Solver_t) :: Solver   
-  TYPE(Model_t) :: Model     
-  REAL(KIND=dp) :: dt        
+  TYPE(Solver_t) :: Solver
+  TYPE(Model_t) :: Model
+  REAL(KIND=dp) :: dt
   LOGICAL :: Transient
 
   CALL ListAddConstReal( Model % Simulation, &
-      'res: Relative Volume Change',0.0_dp) 
+      'res: Relative Volume Change',0.0_dp)
   CALL ListAddConstReal( Model % Simulation, &
       'res: Mean Pressure on Surface',0.0_dp)
   CALL ListAddConstReal( Model % Simulation, &
@@ -474,7 +474,7 @@ END SUBROUTINE CompressibilityScale_Init
 
 
 !------------------------------------------------------------------------------
-!> Subroutine for computing the artificial compressibility from the volume change 
+!> Subroutine for computing the artificial compressibility from the volume change
 !> of elements. The volume change is obtained by extending the displacement field
 !> of a test load to the fluid domain.
 !> \ingroup Solvers
@@ -495,7 +495,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,Transient )
   TYPE(Variable_t), POINTER :: DisplacementSol, PressureSol
   TYPE(Element_t), POINTER :: Element
   TYPE(Mesh_t), POINTER :: Mesh
-  
+
   CHARACTER(LEN=MAX_NAME_LEN) :: VarName
 
   REAL(KIND=dp), POINTER :: CompressibilityFunction(:), DisplacementSolValues(:), &
@@ -508,7 +508,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,Transient )
 
   TYPE(ValueList_t), POINTER :: Params
   TYPE(Nodes_t) :: Nodes0, Nodes1
- 
+
   LOGICAL :: AllocationsDone = .FALSE., Found, DisplacedShape, PressureExists
 
   SAVE STIFF, FORCE, Nodes0, Nodes1, ElemPres, ElemDisp, AllocationsDone
@@ -528,7 +528,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,Transient )
 
   CompressibilityFunction => Solver % Variable % Values
   Perm => Solver % Variable % Perm
-  
+
   IF(Transient) THEN
     CALL Warn('CompressibilitySolver','Implemented only for steady state')
     PRINT *,'AC interval',MINVAL(CompressibilityFunction),MAXVAL(CompressibilityFunction)
@@ -573,7 +573,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
 
   DisplacedShape = ListGetLogical(Solver % Values,'Displaced Shape', Found)
-  
+
 !------------------------------------------------------------------------------
 ! Allocate some permanent storage, this is done first time only
 !------------------------------------------------------------------------------
@@ -582,7 +582,7 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,Transient )
     ALLOCATE( FORCE( n ), STIFF(n,n), ElemDisp(3,n), &
         Nodes0 % X(n), Nodes0 % Y(n), Nodes0 % Z(n), &
         Nodes1 % X(n), Nodes1 % Y(n), Nodes1 % Z(n), ElemPres( n ), &
-        STAT=istat ) 
+        STAT=istat )
     IF ( istat /= 0 ) CALL Fatal( 'CompressibilitySolve', 'Memory allocation error.' )
     AllocationsDone = .TRUE.
   END IF
@@ -594,16 +594,16 @@ SUBROUTINE CompressibilitySolver( Model,Solver,dt,Transient )
 ! Initialize the system and do the assembly
 !------------------------------------------------------------------------------
   CALL DefaultInitialize()
-  
+
   DO t=1,Solver % NumberOfActiveElements
     Element => GetActiveElement(t)
     n = GetElementNOFNodes()
     NodeIndexes => Element % NodeIndexes
 !------------------------------------------------------------------------------
-    
+
     IF(PressureExists) THEN
       ElemPres(1:n) = PressureSolValues( PressureSolPerm(NodeIndexes(1:n)) )
-    ELSE      
+    ELSE
       ElemPres(1:n) = ReferencePressure
     END IF
 
@@ -648,7 +648,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix(  STIFF, FORCE, Element, ElemDisp, ElemPres, n )
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), ElemDisp(:,:), ElemPres(:) 
+    REAL(KIND=dp) :: STIFF(:,:), FORCE(:), ElemDisp(:,:), ElemPres(:)
     INTEGER :: n
     TYPE(Element_t), TARGET :: Element
 !------------------------------------------------------------------------------
@@ -672,7 +672,7 @@ CONTAINS
       Nodes1 % x(1:n) = Model % Nodes % x(Element % NodeIndexes) - ElemDisp(1,1:n)
       Nodes1 % y(1:n) = Model % Nodes % y(Element % NodeIndexes) - ElemDisp(2,1:n)
       IF(dim == 3) Nodes1 % z(1:n) = Model % Nodes % z(Element % NodeIndexes) - ElemDisp(3,1:n)
-    ELSE      
+    ELSE
       Nodes1 % x(1:n) = Model % Nodes % x(Element % NodeIndexes) + ElemDisp(1,1:n)
       Nodes1 % y(1:n) = Model % Nodes % y(Element % NodeIndexes) + ElemDisp(2,1:n)
       IF(dim == 3) Nodes1 % z(1:n) = Model % Nodes % z(Element % NodeIndexes) + ElemDisp(3,1:n)
@@ -687,7 +687,7 @@ CONTAINS
       V = IP % v(t)
       W = IP % w(t)
       S = IP % s(t)
-            
+
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
@@ -707,16 +707,16 @@ CONTAINS
 
         x = SUM( Basis(1:n) * Nodes0 % x(1:n) )
         Volume0 = Volume0 * 2 * PI * x
-       
-        S = S * x       
+
+        S = S * x
       END IF
-            
+
       IF(DisplacedShape) THEN
         dVolume = Volume0 - Volume1
       ELSE
         dVolume = Volume1 - Volume0
       END IF
-     
+
 
 !------------------------------------------------------------------------------
 !      Load at the integration point
@@ -725,14 +725,14 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !      Finally, the elemental matrix & vector
-!------------------------------------------------------------------------------       
+!------------------------------------------------------------------------------
 
       DO p=1,NBasis
-        DO q=1,NBasis             
+        DO q=1,NBasis
           STIFF(p,q) = STIFF(p,q) + s * PresAtIp * Basis(p) * Basis(q)
         END DO
       END DO
-      
+
       DO p = 1, NBasis
         FORCE(p) = FORCE(p) + s * Basis(p) * dVolume / Volume0
       END DO

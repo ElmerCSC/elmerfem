@@ -6,8 +6,8 @@
 --  *
 --  *  This program is free software; you can redistribute it and/or
 --  *  modify it under the terms of the GNU LESSER GENERAL PUBLIC LICENSE version 2.1
---  *  as published by the Free Software Foundation. 
---  * 
+--  *  as published by the Free Software Foundation.
+--  *
 --  *  This program is distributed in the hope that it will be useful,
 --  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 --  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -18,7 +18,7 @@
 --  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
 --  *
 --  *****************************************************************************/
--- 
+--
 -- /******************************************************************************
 --  *
 --  *  Authors: Juhani Kataja
@@ -33,7 +33,7 @@
 --  *****************************************************************************/
 
 
--- Default Lua scripts for Elmer 
+-- Default Lua scripts for Elmer
 
 -- Define some mathematical constants and functions
 
@@ -58,7 +58,7 @@ function readsif(fname)
   local f = assert(io.open(fname), 'r')
 
   local luadata = ""
-  local luablock = false 
+  local luablock = false
   local line = f:read()
   local linenum, beginline
 
@@ -78,7 +78,7 @@ function readsif(fname)
       if i == 1 then
         luablock = true
         beginline = linenum
-      end 
+      end
     else
       local i, j = string.find(line, "!---LUA END")
       if i == 1 then -- found end of block
@@ -92,10 +92,10 @@ function readsif(fname)
   until line == nil
   if luablock then
     error("unmatched '!---LUA BEGIN' at line ".. beginline)
-  end 
+  end
   f:close()
   return luadata
-end 
+end
 
 
 -- This (create_new_fun) will create unique names for functions with given
@@ -103,7 +103,7 @@ end
 -- matching `...`. Uses global variable ELMER_FUNCTION_COUNTER to ensure
 -- uniqueness of the name
 function create_new_fun(prefix,  body)
-  -- Do naive string sanitization 
+  -- Do naive string sanitization
   local sane_prefix = string.gsub(prefix, "{", "_OCB_")
   local sane_prefix = string.gsub(sane_prefix, "}", "_CCB_")
   local sane_prefix = string.gsub(sane_prefix, " ", "_")
@@ -114,7 +114,7 @@ function create_new_fun(prefix,  body)
 
   if ELMER_FUNCTION_SUFFIX_TABLE == nil then
     ELMER_FUNCTION_SUFFIX_TABLE = {}
-  end 
+  end
 
   if ELMER_FUNCTION_SUFFIX_TABLE[sane_prefix] == nil then
     ELMER_FUNCTION_SUFFIX_TABLE[sane_prefix] = 1
@@ -129,6 +129,6 @@ function create_new_fun(prefix,  body)
   local code = loadstring(codestr)
   code()
   return fname
-end  
+end
 
 -- print("pe, thread " .. ELMER_PARALLEL["pe"] .. ", " .. ELMER_PARALLEL["thread"])

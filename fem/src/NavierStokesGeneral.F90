@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 01 Oct 1996
 ! *
@@ -38,7 +38,7 @@
 !> \{
 
 !------------------------------------------------------------------------------
-!>  Module computing Navier-Stokes local matrices in general coordinate system 
+!>  Module computing Navier-Stokes local matrices in general coordinate system
 !> (i.e. not cartesian, axisymmetric or cylindrically symmetric.
 !------------------------------------------------------------------------------
 
@@ -132,9 +132,9 @@ MODULE NavierStokesGeneral
      INTEGER :: i,j,k,l,m,c,p,q,t,dim,N_Integ
 
      REAL(KIND=dp) :: s,u,v,w,x,y,z
-  
+
      REAL(KIND=dp), DIMENSION(:), POINTER :: U_Integ,V_Integ,W_Integ,S_Integ
- 
+
      TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff
 
      LOGICAL :: stat,CylindricSymmetry
@@ -235,7 +235,7 @@ MODULE NavierStokesGeneral
           END IF
         END DO
       END IF
-!  
+!
 !------------------------------------------------------------------------------
 !     Force at the integration point
 !------------------------------------------------------------------------------
@@ -267,7 +267,7 @@ MODULE NavierStokesGeneral
       Viscosity = SUM( NodalViscosity(1:n)*Basis )
       Viscosity = EffectiveViscosity( Viscosity, Density, Ux, Uy, Uz, &
             Element, Nodes, n, n, u, v, w, LocalIP=t )
-!   
+!
 !------------------------------------------------------------------------------
 !      Stabilization parameters Tau & Delta
 !------------------------------------------------------------------------------
@@ -391,7 +391,7 @@ MODULE NavierStokesGeneral
 
                     DO m=1,dim
                       SW(p,i,l) = SW(p,i,l) + Viscosity * Metric(j,k) * Symb(i,k,m) * Symb(m,j,l) * Basis(p)
- 
+
                       SW(p,i,l) = SW(p,i,l) + Viscosity * Metric(j,k) * Symb(j,k,m) * Symb(m,i,l) * Basis(p)
 
                       SW(p,i,l) = SW(p,i,l) + Viscosity * Metric(j,k) * Symb(i,k,m) * Symb(m,j,l) * Basis(p)
@@ -478,7 +478,7 @@ MODULE NavierStokesGeneral
          DO j = 1,dim
            A(i,i) = A(i,i) + Density * dBasisdx(q,j) * Velo(j) * Basis(p)
            IF ( CurrentCoordinateSystem() /= Cartesian ) THEN
-             DO k=1,dim 
+             DO k=1,dim
                 A(i,k) = A(i,k) + Density * Symb(k,j,i) * Basis(q) * Velo(j) * Basis(p)
              END DO
            END IF
@@ -585,7 +585,7 @@ MODULE NavierStokesGeneral
             END DO
          END DO
        END IF
- 
+
      END DO
      END DO
 
@@ -605,7 +605,7 @@ MODULE NavierStokesGeneral
            END IF
          END DO
        END DO
-     END IF 
+     END IF
 
      DO p=1,N
        Load = 0.0D0
@@ -632,7 +632,7 @@ MODULE NavierStokesGeneral
        END IF
      END DO
 
-   END DO 
+   END DO
 !------------------------------------------------------------------------------
  END SUBROUTINE NavierStokesGeneralCompose
 !------------------------------------------------------------------------------

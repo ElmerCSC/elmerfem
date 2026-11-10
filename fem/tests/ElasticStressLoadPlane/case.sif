@@ -1,0 +1,134 @@
+! The offset channel -- "Stress Load" and "Strain Load" -- where the Voigt packing
+! is REDUCED: plane stress, and an anisotropic elasticity matrix. The sibling
+! ElasticStressLoad covers the same capability in three dimensions, where the
+! six-slot packing is unambiguous; this one covers the case where it is not.
+!
+! WHAT IS DIFFERENT HERE, and why the 3D test does not cover it. In the plane the
+! packing is three slots, (11, 22, 12), and SLOT THREE IS THE IN-PLANE SHEAR rather
+! than the out-of-plane normal it is in 3D. Both solvers agree on that, but they
+! reach it differently: StressSolve leaves the load as a 6-vector and relies on its
+! elasticity matrix having been condensed in place, so slots 4 to 6 are multiplied
+! by zero; ElasticSolve converts to a tensor with StressLocal's Vector62Tensor,
+! which maps slot three onto the (1,2) entry and ignores the rest. A mistake in
+! either mapping is silent in 3D and silent for a diagonal load.
+!
+! The anisotropic material is what makes the CONDENSATION part of the test as well.
+! C : eps0 is computed through the constitutive model, which is handed the same
+! plane-condensed matrix the stiffness uses -- CondensePlaneElasticityMatrix, which
+! moves the shear modulus C(4,4) into slot 3 and statically condenses the
+! out-of-plane row under plane stress. Handed the raw 6x6 instead, the model would
+! read the 33 modulus as the shear modulus. That is a 3.5x error on a material like
+! this one and it would land in the eigenstrain as readily as in the stiffness.
+!
+! THE REFERENCE VALUE IS STRESSSOLVE'S. On this problem the two solvers agree on
+! every printed digit of "Stress_xy", "Stress_xx" and "Strain_zz", and to 7e-15 on
+! the displacement control.
+!
+! Measured detectability, by mimicking each mistake in the sif and comparing fields:
+!
+!   error mimicked                                     moves Stress_xy by
+!   ---------------------------------------------------------------------
+!   eigenstrain shear not halved                            97%
+!   "Strain Load" slot 3 dropped (read as out-of-plane)     97%
+!   "Stress Load" slot 3 dropped                           189%
+!
+! "Strain_zz" moves 72% to 140% under the same three, which is worth having: it is
+! the component plane stress leaves to be RECOVERED, so it shows the offset
+! reaching the condensation's recovery coefficients and not only the plane system.
+! "Stress_xx" is unmoved by all three to 1e-13, and correctly so -- the plane
+! condensation clears the normal-to-shear couplings, so the shear channel cannot
+! reach the normal components. It is reported as the witness for that.
+!
+! "max abs" keeps the SIGN of the extremum, so the log reports Stress_xy as
+! -1.5863637 while the reference norm below is its magnitude: the comparison is
+! made on |norm|, and a negative reference norm fails outright rather than being
+! taken at face value.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Material 1
+  Density = 1.0
+  ! An isotropic base (E = 1e3, nu = 0.3) in Elmer's Voigt order, made genuinely
+  ! anisotropic: the three normal moduli are all different, so the condensation
+  ! cannot be blind to which slot is which, and C(3,4) = C(4,3) = 200 couples the
+  ! out-of-plane normal to the shear -- the coupling the plane condensation drops.
+  Youngs Modulus(6,6) = Real \
+    1346.154  576.923  576.923    0.000    0.000    0.000 \
+     576.923 1546.154  576.923    0.000    0.000    0.000 \
+     576.923  576.923 1746.154  200.000    0.000    0.000 \
+       0.000    0.000  200.000  384.615    0.000    0.000 \
+       0.000    0.000    0.000    0.000  484.615    0.000 \
+       0.000    0.000    0.000    0.000    0.000  584.615
+End
+
+Body Force 1
+  ! The reduced plane packing: (11, 22, 12) with engineering shear in slot 3, and
+  ! slots 4 to 6 given as zero deliberately -- a plane problem must ignore them,
+  ! and writing them out says so. Shear dominant and sign mixed for the reasons
+  ! the sibling test's header sets out.
+  Stress Load(6) = Real 1.0 -2.0 3.0 0.0 0.0 0.0
+  Strain Load(6) = Real 1.0e-3 -2.0e-3 4.0e-3 0.0 0.0 0.0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = Logical True
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+
+  Large Deflection = False
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 12
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  Variable 1 = String "Stress_xy"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_xx"
+  Operator 2 = String "max abs"
+  Variable 3 = String "Strain_zz"
+  Operator 3 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+End
+
+Solver 2 :: Reference Norm = Real 1.58636372E+00
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

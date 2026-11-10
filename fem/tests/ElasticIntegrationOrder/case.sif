@@ -1,0 +1,83 @@
+! ElasticSolve honouring "Relative Integration Order".
+!
+! StressSolve has always read this keyword and passed it down to GaussPoints;
+! ElasticSolve called GaussPoints bare, so the keyword was accepted by the sif
+! reader and then ignored. The core does not supply it for free either -- it is
+! read in GaussPointsAdapt, which ElasticSolve does not call.
+!
+! Unlike the system-reuse keywords beside it, this one is not behaviour-neutral,
+! so a reference norm can pin it properly rather than merely check that nothing
+! moved. Three RUNs: absent, explicitly zero, and reduced.
+!
+! It matters most for p-elements, where the default rule is whatever the element
+! declares -- fem/tests/ElastPelem2dPmultg* are StressSolve cases that turn it
+! down to keep a p-refined solve affordable. A plain bilinear mesh is used here
+! because it isolates the keyword: the standard rule already integrates this
+! exactly, so only the reduced rule moves the answer.
+
+Header
+  Mesh DB "." "square"
+End
+
+Simulation
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+  Density = 1.0
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+  Large Deflection = False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 1
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 3
+  Force 1 = Real 5.0
+  Force 2 = Real 3.0
+End
+
+! The keyword absent, which is the rule GaussPoints picks on its own.
+Solver 1 :: Reference Norm = Real 1.70786776E-03
+RUN
+
+! Explicitly zero must be the same rule, not merely a similar one. Worth its own
+! RUN because passing RelOrder at all takes a different branch of GaussPoints
+! than omitting it, and the two agreeing is what makes it safe to pass the value
+! unconditionally the way StressSolve does.
+Solver 1 :: Relative Integration Order = Integer 0
+Solver 1 :: Reference Norm = Real 1.70786776E-03
+RUN
+
+! Reduced integration, and the one value here that moves the answer -- by 0.65%,
+! which is what shows the keyword is actually reaching the quadrature. Were it
+! ignored again this RUN would report the norm above.
+Solver 1 :: Relative Integration Order = Integer -1
+Solver 1 :: Reference Norm = Real 1.71905600E-03
+RUN

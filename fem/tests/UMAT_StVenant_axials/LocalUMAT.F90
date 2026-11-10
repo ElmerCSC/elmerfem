@@ -752,7 +752,7 @@
     DO i=1,ndi
       StrainVec(i) = Strain(i,i)
     END DO
-    StrainVec(ndi+1) = Strain(1,3)+Strain(3,1)
+    StrainVec(ndi+1) = Strain(1,2)+Strain(2,1)
 
     DetDefG = Dfrgrd1(1,1) * ( Dfrgrd1(2,2)*Dfrgrd1(3,3) - Dfrgrd1(2,3)*Dfrgrd1(3,2) ) + &
         Dfrgrd1(1,2) * ( Dfrgrd1(2,3)*Dfrgrd1(3,1) - Dfrgrd1(2,1)*Dfrgrd1(3,3) ) + &
@@ -800,7 +800,7 @@
     DO i=1,ndi
       S = S + Stress2(i)*SymBasis(i,:,:)
     END DO
-    S = S + 2.0d0 * Stress2(ndi+1) * SymBasis(ndi+2,:,:)
+    S = S + 2.0d0 * Stress2(ndi+1) * SymBasis(ndi+1,:,:)
 
     ! The Cauchy stress tensor:
     Sigma = 1.0d0/DetDefG * MATMUL(dfrgrd1, MATMUL(S,TRANSPOSE(dfrgrd1)))
@@ -808,7 +808,7 @@
     DO i=1,ndi
       Stress(i) = Sigma(i,i)
     END DO
-    Stress(ndi+1) = Sigma(1,3)
+    Stress(ndi+1) = Sigma(1,2)
 
     ! The derivative: The part corresponding to lambda * tr(E) I
     ddsdde = 0.0d0
@@ -817,7 +817,7 @@
       DO j=1,ndi
         ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
       END DO
-      ddsdde(ndi+1,i) = ddsdde(ndi+1,i) + WorkMat(1,3)
+      ddsdde(ndi+1,i) = ddsdde(ndi+1,i) + WorkMat(1,2)
     END DO
 
     ! The rest corresponding to  2 * mu * E
@@ -826,14 +826,14 @@
       DO j=1,ndi
         ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
       END DO
-      ddsdde(ndi+1,i) = ddsdde(ndi+1,i) + WorkMat(1,3)
+      ddsdde(ndi+1,i) = ddsdde(ndi+1,i) + WorkMat(1,2)
     END DO
     
-    WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(ndi+2,:,:), TRANSPOSE(dfrgrd1)))
+    WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(ndi+1,:,:), TRANSPOSE(dfrgrd1)))
     DO j=1,ndi
       ddsdde(j,ndi+1) = ddsdde(j,ndi+1) + 1.0d0 * WorkMat(j,j)
     END DO
-    ddsdde(ndi+1,ndi+1) = ddsdde(ndi+1,ndi+1) + 1.0d0 * WorkMat(1,3)
+    ddsdde(ndi+1,ndi+1) = ddsdde(ndi+1,ndi+1) + 1.0d0 * WorkMat(1,2)
 
 !------------------------------------------------------------------------------
   END SUBROUTINE stvenant_kirchhoff_axials

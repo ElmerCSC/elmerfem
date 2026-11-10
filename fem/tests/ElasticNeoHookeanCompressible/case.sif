@@ -1,0 +1,107 @@
+! Compressible neo-Hookean elasticity with the stress postprocessing, which is a
+! combination the suite did not have.
+!
+! Every neo-Hookean test that asks for stresses -- ContactPatch2DIncompressible,
+! CooksMembrane3D, SD_CooksMembrane3D -- also sets "Mixed Formulation = True", so
+! the pressure in the postprocessor always came from the solution as an unknown of
+! the system. The compressible alternative, in which the pressure is the material's
+! own volumetric response to the dilatation
+!
+!   p = lambda/2 (J - 1)(J + 1)
+!
+! was evaluated by nothing in the suite. The two 2-D neo-Hookean tests
+! (NeoHookean2D, CooksMembrane) do exercise the compressible assembly, but neither
+! asks for stresses, so they never reach this branch. Poisson ratio is 0.3 here,
+! well away from the incompressible limit, so the compressible branch is the point
+! of the test rather than an accident of it.
+!
+! WHAT THIS TEST IS AND IS NOT. There is no second solver to check against --
+! StressSolve has no neo-Hookean model -- so unlike ElasticAnisotropic3D the
+! reference value below is this solver's own answer, and the test is a regression
+! lock rather than an oracle. What makes it a genuine one is that the checked norm
+! distinguishes the branch it is meant to cover: with "Neo-Hookean Material"
+! removed and the linear isotropic law used on the identical problem, stress_zz
+! reads 4.324396577452E+001 against the 4.087361900855E+001 below, and stress_xz
+! 1.065528154971E+001 against 9.719752715447E+000. So the value moves by 5.5% if
+! this branch stops being taken -- four orders of magnitude outside the tolerance
+! -- which is what a coverage test has to be able to say. It does not isolate the
+! pressure term from the rest of the neo-Hookean response, and does not claim to.
+!
+! Displacement is prescribed on both ends and is large enough that the
+! geometrically nonlinear terms matter; the linear system is direct so the result
+! is reproducible to the last bit, which was verified across a rebuild.
+
+Header
+  Mesh DB "." "cube"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Density = 1.0
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 3 Displacement
+
+  Neo-Hookean Material = True
+
+  Calculate Stresses = Logical True
+  Calculate Strains = Logical True
+  Displace Mesh = Logical False
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Convergence Tolerance = 1.0e-11
+  Steady State Convergence Tolerance = 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Simulation
+  Show Norm Index = 1
+  Variable 1 = String "Stress_zz"
+  Operator 1 = String "max abs"
+  Variable 2 = String "Stress_xz"
+  Operator 2 = String "max abs"
+End
+
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  Displacement 1 = Real 0.0
+  Displacement 2 = Real 0.0
+  Displacement 3 = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries(1) = 6
+  Displacement 1 = Real 2.0e-2
+  Displacement 2 = Real 1.0e-2
+  Displacement 3 = Real 0.5e-2
+End
+
+Solver 2 :: Reference Norm = Real 4.087361900855E+001
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
+RUN

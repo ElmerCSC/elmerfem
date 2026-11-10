@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -61,6 +61,7 @@ typedef struct {
 } pcg32_rng_t;
 
 static pcg32_rng_t **rbuf = NULL;
+static int rbufn = 0;     /* allocated length of rbuf */
 static int MPIRank = 0;   /* set by viewfactors3d before parallel region */
 
 static inline uint32_t pcg32_random(pcg32_rng_t *rng)
@@ -71,6 +72,43 @@ static inline uint32_t pcg32_random(pcg32_rng_t *rng)
     uint32_t x = ((old >> 18u) ^ old) >> 27u;
     uint32_t r = old >> 59u;
     return (x >> r) | (x << ((-r) & 31));
+}
+
+/* Mix a work-item key into a well-separated RNG seed.  splitmix64 is the
+ * usual companion seeder for pcg/xoshiro: consecutive keys give unrelated
+ * streams, which is what we need since the keys here are consecutive
+ * element indices. */
+static inline uint64_t splitmix64( uint64_t x )
+{
+    x += 0x9e3779b97f4a7c15ULL;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebULL;
+    return x ^ (x >> 31);
+}
+
+/* Reseed the calling thread's stream from a work-item key.  Binding the
+ * stream to the work item instead of to the thread is what makes the result
+ * independent of the thread count and of the dynamic schedule: with a
+ * per-thread stream, which rays a given element pair gets depends on which
+ * thread happened to pick that pair up and how far that thread's stream had
+ * already advanced. */
+void vrand_seed( uint64_t key )
+{
+#ifdef _OPENMP
+    int tid = omp_get_thread_num();
+#else
+    int tid = 0;
+#endif
+    rbuf[tid]->state = splitmix64( key + 0x853c49e6748fea9bULL );
+    rbuf[tid]->inc   = splitmix64( key + 0xda3e39cb94b95bdbULL );
+}
+
+/* Key for the element pair (a,b), symmetric so that the same physical pair
+ * draws the same rays whichever of the two rows drives the integration. */
+uint64_t vrand_pair_key( int a, int b, int n )
+{
+    int lo = (a<b) ? a : b, hi = (a<b) ? b : a;
+    return (uint64_t)lo * (uint64_t)n + (uint64_t)hi;
 }
 
 inline double vrand()
@@ -86,32 +124,45 @@ inline double vrand()
 void vrand_init()
 {
 #ifdef _OPENMP
-   int tid = omp_get_thread_num(), tidn = 1;
+   int tid = omp_get_thread_num(), tidn = omp_get_num_threads();
 #else
    int tid = 0, tidn = 1;
 #endif
 
+/* The whole initialization is serialized: it runs once per thread per parallel
+ * region, so the cost is irrelevant.  The first thread of a team to get here
+ * sizes rbuf for the entire team, so the remaining threads never resize it --
+ * no realloc can then race with a vrand() call from a thread that has already
+ * finished its own init. */
 #pragma omp critical
 {
-   if ( !rbuf ) {
-#ifdef _OPENMP
-     tidn = omp_get_num_threads();
-#endif
-     rbuf = malloc(sizeof(pcg32_rng_t*)*tidn);
-   }
-}
+   int i;
 
-   rbuf[tid] = malloc(sizeof(pcg32_rng_t));
+   /* rbuf used to be sized once, from the team size of whichever parallel
+    * region got here first, and never resized.  vrand_init is also called
+    * from the serial radiator path (team size 1), so a later, wider region
+    * would index past the end of the table.  Grow it instead. */
+   if ( tidn > rbufn || tid >= rbufn ) {
+     int newn = ( tidn > tid+1 ) ? tidn : tid+1;
+     rbuf = realloc( rbuf, sizeof(pcg32_rng_t *) * newn );
+     for( i=rbufn; i<newn; i++ ) rbuf[i] = NULL;
+     rbufn = newn;
+   }
+
+   /* reuse the slot on a repeat call: reseeding is what matters, and
+    * mallocing a fresh one each time just leaked the previous stream */
+   if ( !rbuf[tid] ) rbuf[tid] = malloc(sizeof(pcg32_rng_t));
+
    /* Include MPI rank in seed so different ranks generate independent streams */
    rbuf[tid]->state = 0x853c49e6748fea9bULL + (uint64_t)MPIRank * 128 + tid;
    rbuf[tid]->inc   = 0xda3e39cb94b95bdbULL + (((uint64_t)MPIRank * 128 + tid) << 1);
+}
 }
 /* end copilot code */
 
 extern double ShapeFunctionMatrix2[2][2], ShapeFunctionMatrix3[3][3],ShapeFunctionMatrix4[4][4];
 
 
-static int MaxLev;
 /*******************************************************************************
 
 Compute viewfactor from hierarchy
@@ -136,8 +187,7 @@ static double ComputeViewFactorValue( Geometry_t *Geom,int Level )
      {
         S += ComputeViewFactorValue( Geom->Left,Level+1 );
         S += ComputeViewFactorValue( Geom->Right,Level+1 );
-     } else
-       MaxLev = MAX(MaxLev,Level);
+     }
 
      return S;
 }
@@ -216,7 +266,6 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
         Elements[i].Flags |= GEOMETRY_FLAG_LEAF;
     }
 
-    MaxLev = 0;
     if (NofRadiators==0) {
 #pragma omp parallel
 {
@@ -252,6 +301,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
             lel[j].Flags |= GEOMETRY_FLAG_LEAF;
             lel[i].Flags |= GEOMETRY_FLAG_LEAF;
 
+            vrand_seed( vrand_pair_key(i,j,N) );
             (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
             Fact = ComputeViewFactorValue( &lel[i],0 );
             Factors[li*N+j] = Fact / lel[i].Area;
@@ -274,6 +324,7 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
             lel[j].Flags |= GEOMETRY_FLAG_LEAF;
             lel[i].Flags |= GEOMETRY_FLAG_LEAF;
 
+            vrand_seed( vrand_pair_key(i,j,N) );
             (*ViewFactorCompute[lel[i].GeometryType])( &lel[i],&lel[j],0,0 );
             Fact = ComputeViewFactorValue( &lel[i],0 );
             Factors[li*N+j] = Fact / lel[i].Area;
@@ -307,10 +358,10 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
 	   ny = RadiatorCoords[4*NofRadiators+i] - ry;
 	   nz = RadiatorCoords[5*NofRadiators+i] - rz;
          }
-         	 
+
          for( j=0; j<N; j++ ) Factors[i*N+j] = 0.0;
          for( j=0; j<N; j++ )
-         { 
+         {
             if ( lel[j].Area<1.0e-10 ) continue;
 
             FreeLinks( &lel[j] );
@@ -354,6 +405,54 @@ static void IntegrateFromGeometry(int NofRadiators, double *RadiatorCoords, int 
     }
    fprintf( stdout, "rank %d: surfs: %d/%d, min(%d)=%-4.2f, max(%d)=%-4.2f, avg=%-4.2f, cput=%-4.2f\n",
                        MPIRank, nLocal, N, Imin,Fmin,Imax,Fmax,Favg/Ns, realtime()-ct );
+}
+
+
+/*
+ * Tell the user whether the closed form inner integral actually got used.
+ * A large miss count means patches are warped or carry non geometric normals,
+ * and those pairs silently kept the old quadrature.
+ */
+void ReportClosedForm()
+{
+   long hits,miss,tot;
+
+   if ( !ClosedFormInteg ) return;
+
+   ContourCountSum( &hits,&miss );
+   tot = hits + miss;
+   if ( tot == 0 ) return;
+
+   fprintf( stdout, "rank %d: closed form inner integral: %ld/%ld patch pairs "
+                    "(%.1f%%), %ld fell back to quadrature\n",
+                     MPIRank, hits, tot, 100.0*hits/tot, miss );
+}
+
+
+/*
+ * How much visibility work would the clipping path actually have to do?
+ * Bucket 0 is the prize: pairs with no candidate blocker at all, which need
+ * no shadow handling of any kind and can take the closed form directly.
+ */
+void ReportShaftCull()
+{
+   static const char *Label[SC_NBUCKET] =
+     { "none", "1-2", "3-4", "5-8", "9-16", ">16", "overflow",
+       "MISSED BLOCKER (cull bug)", "no shaft (face away)" };
+   long b[SC_NBUCKET], tot = 0;
+   int i;
+
+   if ( !ShaftStats ) return;
+
+   ShaftCountSum( b );
+   for( i=0; i<SC_NBUCKET; i++ ) if ( i != 7 ) tot += b[i];
+   if ( tot == 0 ) return;
+
+   fprintf( stdout, "rank %d: shaft cull over %ld resolved patch pairs:\n", MPIRank, tot );
+   for( i=0; i<SC_NBUCKET; i++ )
+      if ( b[i] )
+         fprintf( stdout, "rank %d:   candidate blockers %-8s %10ld  (%5.1f%%)\n",
+                    MPIRank, Label[i], b[i], 100.0*b[i]/tot );
 }
 
 
@@ -494,22 +593,22 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
    printf("Combining original boundary elements for shading\n");
 
    maxind=0; maxnodehits=0;
-   for (i=0; i<2*N; i++) 
+   for (i=0; i<2*N; i++)
      if(maxind < Topo[i]) maxind = Topo[i];
 
    nodehits = (int*) malloc((maxind+1)*sizeof(int));
    for(i=0;i<=maxind;i++)
      nodehits[i] = 0;
-   for(i=0; i<2*N; i++)  
+   for(i=0; i<2*N; i++)
      nodehits[Topo[i]]++;
 
    maxnodehits = 0;
-   for(i=0; i<=maxind; i++) 
+   for(i=0; i<=maxind; i++)
      if(nodehits[i] > maxnodehits) maxnodehits = nodehits[i];
-    
+
    tablesize = (maxind+1)*maxnodehits;
    nodetable = (int*) malloc(tablesize*sizeof(int));
-   for(i=0; i< tablesize; i++) 
+   for(i=0; i< tablesize; i++)
      nodetable[i] = 0;
 
    for(i=0;i<=maxind;i++)
@@ -523,32 +622,32 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
      nodehits[ind1] += 1;
      nodehits[ind2] += 1;
    }
- 
+
    for(i=0;i<2*N;i++)
      RT_Topo[i] = Topo[i];
- 
+
    for (i=0; i<=maxind; i++) {
      int elem1,elem2;
      ind0 = i;
-    
+
      if( nodehits[ind0] != 2) continue;
 
      elem1 = nodetable[maxnodehits*ind0+0];
-     if( RT_Topo[2*elem1+1] == ind0 ) 
+     if( RT_Topo[2*elem1+1] == ind0 )
        ind1 = RT_Topo[2*elem1];
-     else 
+     else
        ind1 = RT_Topo[2*elem1+1];
 
      elem2 = nodetable[maxnodehits*ind0+1];
-     if( RT_Topo[2*elem2+1] == ind0 ) 
+     if( RT_Topo[2*elem2+1] == ind0 )
        ind2 = RT_Topo[2*elem2];
-     else 
+     else
        ind2 = RT_Topo[2*elem2+1];
 
      x0 = Coord[3*ind0];
      x1 = Coord[3*ind1];
      x2 = Coord[3*ind2];
-      
+
      y0 = Coord[3*ind0+1];
      y1 = Coord[3*ind1+1];
      y2 = Coord[3*ind2+1];
@@ -557,31 +656,31 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
      dx2 = x2-x0;
      dy1 = y1-y0;
      dy2 = y2-y0;
-      
+
      dp1 = dx1*dx2+dy1*dy2;
      ds1 = sqrt(dx1*dx1+dy1*dy1);
      ds2 = sqrt(dx2*dx2+dy2*dy2);
-      
+
      dp1 /= (ds1*ds2);
 
      /* Boundary elements must be aligned */
      if( dp1 > eps - 1. ) continue;
 
      /* Make the 1st element bigger  */
-     if( RT_Topo[2*elem1] == ind0 ) 
+     if( RT_Topo[2*elem1] == ind0 )
        RT_Topo[2*elem1] = ind2;
-     else 
+     else
        RT_Topo[2*elem1+1] = ind2;
-      
+
      /* Destroy the 2nd element */
      RT_Topo[2*elem2] = 0;
      RT_Topo[2*elem2+1] = 0;
 
      /* Update the node information */
      nodehits[ind0] = 0;
-     if( nodetable[maxnodehits*ind2] == elem2) 
+     if( nodetable[maxnodehits*ind2] == elem2)
        nodetable[maxnodehits*ind2] = elem1;
-     else 
+     else
        nodetable[maxnodehits*ind2+1] = elem1;
    }
 
@@ -603,15 +702,26 @@ void Combine2DRaytraceElements( int N, int *Topo, int *RT_N, int *RT_Topo, doubl
 
 void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int RT_N0,
     int *RT_Topo0, double *RT_Data, int *RT_Perm, int *RT_Type, double *RT_Coord,
-      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine )
+      double Feps, double Aeps, double Reps, int Nr, int NInteg2, int NInteg3, int NInteg4, int Combine,
+        int ClosedForm, int ShaftStat, int Clip, int RayCull )
 {
    int i,j,k,l,n,NOFRayElements;
    int RT_N=0, *RT_Topo=NULL;
 
-   AreaEPS   = Aeps; 
-   RayEPS    = Reps; 
-   FactorEPS = Feps; 
+   AreaEPS   = Aeps;
+   RayEPS    = Reps;
+   FactorEPS = Feps;
    Nrays     = Nr;
+
+   ClosedFormInteg = ClosedForm;
+   ContourCountInit();
+
+   ShaftStats = ShaftStat;
+   ShaftCountInit();
+
+   ClipShadows   = Clip;
+   ShaftRayCull  = RayCull;      /* -1: decide below, once the shadow mesh
+                                    size is known */
 
    InitShapeFunctions();
 
@@ -644,6 +754,37 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
    FillIPointArrays(NInteg2,NInteg3,NInteg4);
    InitGeometryTypes();
    InitVolumeBounds(2,NOFRayElements,RTElements);
+   ShaftInitBoxes(NOFRayElements,RTElements);
+
+   /*
+    * Should the rays of a pair be culled to that pair's shaft candidates?
+    *
+    * The cull replaces Nrays tree traversals by one shaft build per pair, so
+    * it pays when the traversals it saves cost more than the shaft does.  A
+    * traversal is not O(1): the tree is built over a surface, so a ray meets
+    * on the order of sqrt(NOFRayElements) cells on its way through, while
+    * the shaft costs the same whatever the mesh.  Hence the product below
+    * rather than a ray count alone -- a ray count alone gets it backwards on
+    * a small shadow mesh, where the traversal is nearly free.
+    *
+    * Calibrated on the two ends of that range at one thread, timing the view
+    * factor stage with the cull forced on and off:
+    *
+    *   shadow mesh   rays   Nrays*sqrt(N)   cull on / cull off
+    *     6 (box_in_box)   8       20            0.62x   (a real loss)
+    *     6               40       98            1.07x
+    *   536 (radiation3d)  1       23            0.78x   (a real loss)
+    *   536               4        93            1.16x
+    *   536               8       185            1.98x
+    *   536             100      2315            7.77x
+    *
+    * Both meshes break even near 70 despite being 89x apart in size, which
+    * is what the sqrt scaling buys.  Near the threshold it is a wash either
+    * way; well past it the win grows without bound, so a late switch costs
+    * little and an early one costs 40%.
+    */
+   if ( ShaftRayCull < 0 )
+      ShaftRayCull = ( Nrays*sqrt((double)NOFRayElements) >= 70.0 );
 }
 
 /* Fortran callable interface routines */
@@ -651,13 +792,19 @@ void InitStuff( int N, int *Topo, int *Type, double *Coord, double *Normals, int
 void radiatorfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0, double *RT_Data,
       int *RT_Perm, int *RT_Type, double *RT_Coord, int *NofRadiators, double *RadiatorCoords, int *LineFlag,
-        double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine )
+        double *Factors, double *Feps, double *Aeps, double *Reps, int *Nr, int *NInteg2, int *NInteg3,int *NInteg4, int  *Combine,
+          int *ClosedForm, int *ShaftStat, int *Clip, int *RayCull )
 {
    /* Radiator factors: no MPI row decomposition (radiators typically few) */
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
-       *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
+       *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine, *ClosedForm, *ShaftStat, *Clip, *RayCull );
+
+   *RayCull = ShaftRayCull;     /* tell the caller how an automatic (-1) went */
 
    IntegrateFromGeometry(*NofRadiators,RadiatorCoords,*LineFlag,*N,Factors,0,*NofRadiators);
+
+   ReportClosedForm();
+   ReportShaftCull();
 }
 
 /*
@@ -671,12 +818,17 @@ void viewfactors3d
   ( int *N,  int *Topo, int *Type, double *Coord, double *Normals, int *RT_N0, int *RT_Topo0,
        double *RT_Data, int *RT_Perm, int *RT_Type, double *RT_Coord, double *Factors, double *Feps, double *Aeps,
           double *Reps, int *Nr, int *NInteg2,int *NInteg3, int *NInteg4, int *Combine,
-          int *iStart, int *nLocal, int *mpiRank )
+          int *iStart, int *nLocal, int *mpiRank, int *ClosedForm, int *ShaftStat, int *Clip, int *RayCull )
 {
    MPIRank = *mpiRank;
 
    InitStuff( *N, Topo, Type, Coord, Normals, *RT_N0, RT_Topo0, RT_Data, RT_Perm, RT_Type, RT_Coord,
-            *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine );
+            *Feps, *Aeps, *Reps, *Nr, *NInteg2, *NInteg3, *NInteg4, *Combine, *ClosedForm, *ShaftStat, *Clip, *RayCull );
+
+   *RayCull = ShaftRayCull;     /* tell the caller how an automatic (-1) went */
 
    IntegrateFromGeometry(0,NULL,0,*N,Factors,*iStart,*nLocal);
+
+   ReportClosedForm();
+   ReportShaftCull();
 }

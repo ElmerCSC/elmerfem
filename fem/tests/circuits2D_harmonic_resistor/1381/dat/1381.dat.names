@@ -1,0 +1,13 @@
+File started at: 2015/08/21 09:05:25
+ 
+Variables in columns of matrix: ./1381/dat/1381.dat
+   1: res: joule heating
+   2: res: time
+   3: res: i_testsource re
+   4: res: i_testsource im
+   5: res: v_testsource re
+   6: res: v_testsource im
+   7: res: i_component(1) re
+   8: res: i_component(1) im
+   9: res: v_component(1) re
+  10: res: v_component(1) im

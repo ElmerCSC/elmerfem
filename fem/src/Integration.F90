@@ -365,9 +365,9 @@ MODULE Integration
 !------------------------------------------------------------------------------
 ! Tetrahedron - 24 point rule; exact integration of x^py^qz^r, p+q+r<=6
 ! The 24-point rule is reproduced from datasets available at
-!   
+!
 ! https://people.sc.fsu.edu/~jburkardt/datasets/quadrature_rules_tet/quadrature_rules_tet.html
-!   
+!
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(24), PRIVATE :: UTetra24P =  &
     (/ 0.3561913862225449d0, 0.2146028712591517d0, 0.2146028712591517d0, &
@@ -408,8 +408,8 @@ MODULE Integration
        0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
        0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1, &
        0.482142857142857d-1, 0.482142857142857d-1, 0.482142857142857d-1 /)
-   
-   
+
+
 !------------------------------------------------------------------------------
 ! A SELECTION OF QUADRATURE RULES UP TO A HIGH ORDER DESIGNED FOR ECONOMIC
 ! INTEGRATION OF COMPLETE POLYNOMIALS
@@ -440,7 +440,7 @@ MODULE Integration
 ! Quadrilateral - 12-point rule for complete polynomials of order p<=7
 ! NOTE: It seems that this rule may give somehow faulty results at least
 !       for some serendipity polynomials of degree 3. Therefore
-!       we never use it. 
+!       we never use it.
 !------------------------------------------------------------------------------
    REAL(KIND=dp), DIMENSION(12), PRIVATE :: UPQuad12 = &
        (/ 0.925820099772551d0, -0.925820099772551d0,  0.000000000000000d0, &
@@ -1636,6 +1636,56 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED simplex rule that can serve a
+!> triangular p-element sized by getNumberOfGaussPoints, or 0 if none can.
+!> The tetrahedral counterpart is TetraSimplexRulePoints; see its comment for
+!> why the count can be inverted exactly. Degrees are as documented at each
+!> table above: 1 point for degree 1, 3 for 2, 4 for 3, 6 for 4, 7 for 5,
+!> 11 for 6, 12 for 7, 17 for 8, 20 for 9.
+!>
+!> Worth more here than a cheaper count alone: GaussPointsPTriangle serves the
+!> p-reference triangle by collapsing a quadrilateral rule onto it, which is
+!> not exact at the nominal degree, whereas these tables are genuine triangle
+!> rules. So the tabulated route is the more accurate one as well as the
+!> smaller, and answers may move where it replaces the collapsed rule.
+!------------------------------------------------------------------------------
+   FUNCTION TriangleSimplexRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg
+
+     maxp = NINT( SQRT( REAL(np,dp) ) )
+     ! One degree of headroom; see TetraSimplexRulePoints for why it is not spare.
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       m = 1
+     CASE( 2 )
+       m = 3
+     CASE( 3 )
+       m = 4
+     CASE( 4 )
+       m = 6
+     CASE( 5 )
+       m = 7
+     CASE( 6 )
+       m = 11
+     CASE( 7 )
+       m = 12
+     CASE( 8 )
+       m = 17
+     CASE( 9 )
+       m = 20
+     CASE DEFAULT
+       m = 0
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION TriangleSimplexRulePoints
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsPTriangle(n) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: i,n
@@ -1673,6 +1723,22 @@ CONTAINS
 !>    equilateral triangle used in the description of p-elements. In that case,
 !>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Whether GaussPointsTriangle holds a tabulated rule of exactly this many
+!> points, so a caller can ask before committing.
+!>
+!> A query is needed rather than a trial: an untabulated count does not fail
+!> softly in GaussPointsTriangle, it falls through to GaussPointsQuad, which
+!> Fatals on a count that is not a square. THE LIST MUST TRACK THE CASE LABELS
+!> BELOW; there is no way to derive one from the other.
+!------------------------------------------------------------------------------
+   FUNCTION TriangleRuleTabulated( n ) RESULT( yes )
+     INTEGER, INTENT(IN) :: n
+     LOGICAL :: yes
+     yes = ANY( n == [ 1, 3, 4, 6, 7, 11, 12, 17, 20 ] )
+   END FUNCTION TriangleRuleTabulated
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsTriangle( n, PReferenceElement ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n    !< number of points in the requested rule
@@ -1756,9 +1822,9 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the equilateral triangle used in the description of p-elements.
-	 ! We map the original integration points into their counterparts on the
-	 ! p-reference element and scale the weights by the determinant of the
-	 ! deformation gradient associated with the change of reference element.
+         ! We map the original integration points into their counterparts on the
+         ! p-reference element and scale the weights by the determinant of the
+         ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
         DO i=1,P % n
@@ -1874,6 +1940,59 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED simplex rule that can serve a
+!> tetrahedral p-element sized by getNumberOfGaussPoints, or 0 if none can.
+!>
+!> getNumberOfGaussPoints forms a tensor-product count maxp**dim, where maxp is
+!> points per direction and maxp-1 the largest basis degree it was sized for.
+!> That count is what GaussPointsPTetra then collapses to a brick rule mapped
+!> onto the tetrahedron -- 150 points for maxp=5. But a simplex has its own,
+!> far cheaper rules, and GaussPointsTetra already maps them onto the
+!> p-reference tetrahedron when asked. So recover maxp (exactly, since the
+!> count was formed as its cube), hence the total degree 2*(maxp-1) reached by
+!> a product of two such basis functions, and pick the smallest table exact to
+!> at least that. Degrees are as documented at each table above: 1 point for
+!> degree 1, 4 for 2, 5 for 3, 11 for 4, 24 for 6.
+!>
+!> The tables stop at degree 6, so an element carrying explicit bubbles on a
+!> tetrahedron ("p:1 b:1" needs degree 8, "p:1 b:3" degree 10) returns 0 and
+!> keeps the mapped brick rule. Adding higher-degree simplex data is what would
+!> reach those.
+!------------------------------------------------------------------------------
+   FUNCTION TetraSimplexRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg
+
+     maxp = NINT( REAL(np,dp)**(1.0_dp/3.0_dp) )
+     ! One degree of headroom, matching what the tensor count it replaces already
+     ! carried: maxp points per direction are exact to 2*maxp-1, i.e. one degree
+     ! beyond the 2*(maxp-1) a product of two basis functions needs. That margin
+     ! is not spare -- the degree argument assumes an affine element and constant
+     ! material, and a curved element or a nonlinear law pushes the integrand
+     ! past it. Dropping it measurably lost accuracy (CooksMembrane, neo-Hookean).
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       m = 1
+     CASE( 2 )
+       m = 4
+     CASE( 3 )
+       m = 5
+     CASE( 4 )
+       m = 11
+     CASE( 5, 6 )
+       m = 24
+     CASE DEFAULT
+       m = 0
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION TetraSimplexRulePoints
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsPTetra(np) RESULT(IP)
 !------------------------------------------------------------------------------
    INTEGER :: i,np,n
@@ -1917,6 +2036,20 @@ CONTAINS
 !>    regular tetrahedron used in the description of p-elements. In that case,
 !>    this routine may return a more economical set of integration points.
 !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> Whether GaussPointsTetra holds a tabulated rule of exactly this many points.
+!>
+!> As for the triangle, a query rather than a trial: an untabulated count falls
+!> through to GaussPointsBrick, which Fatals unless the count is a cube. THE LIST
+!> MUST TRACK THE CASE LABELS BELOW.
+!------------------------------------------------------------------------------
+   FUNCTION TetraRuleTabulated( n ) RESULT( yes )
+     INTEGER, INTENT(IN) :: n
+     LOGICAL :: yes
+     yes = ANY( n == [ 1, 4, 5, 11, 24 ] )
+   END FUNCTION TetraRuleTabulated
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPointsTetra( n, PReferenceElement ) RESULT(IP)
 !------------------------------------------------------------------------------
       INTEGER :: n      !< number of points in the requested rule
@@ -1967,7 +2100,7 @@ CONTAINS
          p % v(1:n) = VTetra24P
          p % w(1:n) = WTetra24P
          p % s(1:n) = STetra24P / 6.0D0
-         p % n = 24        
+         p % n = 24
       CASE DEFAULT
 !        CALL Error( 'GaussPointsTetra', 'Invalid number of points requested.' )
 !        p % n = 0
@@ -1997,9 +2130,9 @@ CONTAINS
          !-------------------------------------------------------------------
          ! Apply an additional transformation if the actual reference element
          ! is the regular tetrahedron used in the description of p-elements
-	 ! We map the original integration points into their counterparts on the
-	 ! p-reference element and scale the weights by the determinant of the
-	 ! deformation gradient associated with the change of reference element.
+         ! We map the original integration points into their counterparts on the
+         ! p-reference element and scale the weights by the determinant of the
+         ! deformation gradient associated with the change of reference element.
          !-------------------------------------------------------------------
 !DIR$ IVDEP
         DO i=1,P % n
@@ -2140,7 +2273,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-   
+
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D wedge element
 !------------------------------------------------------------------------------
@@ -2187,6 +2320,82 @@ CONTAINS
       IP = p
 !------------------------------------------------------------------------------
    END FUNCTION GaussPointsWedge
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Number of points of the smallest TABULATED wedge rule -- segment x triangle
+!> tensor (GaussPointsWedge2), or the safe subset of the economical family
+!> (GaussPointsWedgeEconomic) -- that can serve a prism p-element sized by
+!> getNumberOfGaussPoints, or 0 if none can. Companion to
+!> TetraSimplexRulePoints/TriangleSimplexRulePoints: same purpose and the same
+!> headroom convention, so that the implicit path below (no explicit "np")
+!> resolves to a count the CASE(7) dispatch then routes through the identical
+!> rule an explicit count of that size would reach -- there is deliberately
+!> only the one dispatch, not two tables kept in step by hand.
+!>
+!> The triangle table is the one shared with CASE(3)/TriangleSimplexRulePoints
+!> restated by degree directly, since the degree is already in hand here. The
+!> segment count is the smallest 1D Gauss rule of at least that degree, exact
+!> since the headroom formula always produces an odd degree. The economical
+!> entries are offered only where they are smaller than the tensor product AND
+!> not one of 10, 14, 24 -- see the CASE(7) comment on why those are withheld.
+!------------------------------------------------------------------------------
+   FUNCTION WedgeRulePoints( np ) RESULT(m)
+!------------------------------------------------------------------------------
+     INTEGER, INTENT(IN) :: np
+     INTEGER :: m
+     INTEGER :: maxp, deg, mtri, nseg, mecon
+
+     maxp = NINT( REAL(np,dp)**(1.0_dp/3.0_dp) )
+     deg = 2 * MAX(0, maxp-1) + 1
+
+     SELECT CASE( deg )
+     CASE( :1 )
+       mtri = 1
+     CASE( 2 )
+       mtri = 3
+     CASE( 3 )
+       mtri = 4
+     CASE( 4 )
+       mtri = 6
+     CASE( 5 )
+       mtri = 7
+     CASE( 6 )
+       mtri = 11
+     CASE( 7 )
+       mtri = 12
+     CASE( 8 )
+       mtri = 17
+     CASE( 9 )
+       mtri = 20
+     CASE DEFAULT
+       mtri = 0
+     END SELECT
+
+     IF( mtri == 0 ) THEN
+       m = 0
+       RETURN
+     END IF
+
+     nseg = (deg+1)/2
+     m = mtri * nseg
+
+     SELECT CASE( deg )
+     CASE( :2 )
+       mecon = 4
+     CASE( 3 )
+       mecon = 7
+     CASE( 4 )
+       mecon = 11
+     CASE( 5 )
+       mecon = 15
+     CASE DEFAULT
+       mecon = 0
+     END SELECT
+
+     IF( mecon > 0 ) m = MIN( m, mecon )
+!------------------------------------------------------------------------------
+   END FUNCTION WedgeRulePoints
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
@@ -2428,12 +2637,12 @@ CONTAINS
          p % u(1:n) = UWedge5P
          p % v(1:n) = VWedge5P
          p % w(1:n) = WWedge5P
-         p % s(1:n) = SWedge5P 
+         p % s(1:n) = SWedge5P
       CASE (6)
          p % u(1:n) = UWedge6P
          p % v(1:n) = VWedge6P
          p % w(1:n) = WWedge6P
-         p % s(1:n) = SWedge6P 
+         p % s(1:n) = SWedge6P
       CASE (7)
          p % u(1:n) = UWedge7P
          p % v(1:n) = VWedge7P
@@ -2443,22 +2652,22 @@ CONTAINS
          p % u(1:n) = UWedge10P
          p % v(1:n) = VWedge10P
          p % w(1:n) = WWedge10P
-         p % s(1:n) = SWedge10P 
+         p % s(1:n) = SWedge10P
       CASE (11)
          p % u(1:n) = UWedge11P
          p % v(1:n) = VWedge11P
          p % w(1:n) = WWedge11P
-         p % s(1:n) = SWedge11P 
+         p % s(1:n) = SWedge11P
       CASE (14)
          p % u(1:n) = UWedge14P
          p % v(1:n) = VWedge14P
          p % w(1:n) = WWedge14P
-         p % s(1:n) = SWedge14P 
+         p % s(1:n) = SWedge14P
       CASE (15)
          p % u(1:n) = UWedge15P
          p % v(1:n) = VWedge15P
          p % w(1:n) = WWedge15P
-         p % s(1:n) = SWedge15P 
+         p % s(1:n) = SWedge15P
       CASE (16)
          p % u(1:n) = UWedge16P
          p % v(1:n) = VWedge16P
@@ -2469,7 +2678,7 @@ CONTAINS
          p % v(1:n) = VWedge24P
          p % w(1:n) = WWedge24P
          p % s(1:n) = SWedge24P
-         
+
       CASE DEFAULT
         CALL Fatal( 'GaussPointsWedgeEconomic',&
             'Invalid number of points requested')
@@ -2478,8 +2687,8 @@ CONTAINS
       p % n = n
 
       IF (ConvertToPWedge ) THEN
-        DO i=1,P % n  
-          uq = P % u(i) 
+        DO i=1,P % n
+          uq = P % u(i)
           vq = P % v(i)
           sq = P % s(i)
 
@@ -2489,13 +2698,13 @@ CONTAINS
 
           ! then to p-convention
           P % u(i) = -1.0d0 + 2.0d0*uq + vq
-          P % v(i) = SQRT(3.0d0) * vq            
+          P % v(i) = SQRT(3.0d0) * vq
           P % s(i) = SQRT(3.0d0) * sq / 2.0d0
         END DO
       ELSE
         ! Map to classical Elmer local coordinates in [0,1]
         p % u(1:n) = ( p % u(1:n)+1.0d0 ) / 2.0d0
-        p % v(1:n) = ( p % v(1:n)+1.0d0 ) / 2.0d0 
+        p % v(1:n) = ( p % v(1:n)+1.0d0 ) / 2.0d0
         p % s(1:n) = p % s(1:n) / 4.0d0
       END IF
       IP = p
@@ -2503,7 +2712,7 @@ CONTAINS
     END FUNCTION GaussPointsWedgeEconomic
 !------------------------------------------------------------------------------
 
-    
+
 
 !------------------------------------------------------------------------------
 !>    Return Gaussian integration points for 3D brick element for
@@ -2575,14 +2784,14 @@ CONTAINS
         n = 4
       CASE DEFAULT
         n = REAL(np)**(1.0D0/3.0D0) + 0.5D0
-        
+
         IF ( n < 1 .OR. n > MAXN ) THEN
           p % n = 0
           WRITE( Message, * ) 'Invalid number of points: ', n
           CALL Fatal( 'GaussPointsBrick', Message )
         END IF
       END SELECT
-        
+
       t = 0
       DO i=1,n
         DO j=1,n
@@ -2606,6 +2815,70 @@ CONTAINS
 !------------------------------------------------------------------------------
 !>    Given element structure return Gauss integration points for the element.
 !----------------------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
+!> The most negative "RelOrder" GaussPoints will accept for this element.
+!>
+!> Stated here because GaussPoints ENFORCES the bound by calling Fatal, so a
+!> caller that walks the ladder downwards cannot discover the limit by trying:
+!> the first invalid step ends the run. A p-element's offset is arithmetic on the
+!> per-direction count, so it bottoms out when that count would reach zero; a
+!> non-p element has exactly three tabulated rules and so cannot go below -1.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsMinRelOrder( Element ) RESULT( rmin )
+!------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE(Element_t), TARGET :: Element
+     INTEGER :: rmin
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: elm
+     INTEGER :: n, eldim
+
+     elm => Element
+     IF( .NOT. isActivePElement(elm) ) THEN
+       rmin = -1
+       RETURN
+     END IF
+
+     n = 0
+     IF( ASSOCIATED( elm % PDefs ) ) n = elm % PDefs % GaussPoints
+     IF( n == 0 ) n = Element % TYPE % GaussPoints
+     eldim = MAX( Element % TYPE % DIMENSION, 1 )
+
+     ! p1d = NINT( n**(1/eldim) ) + RelOrder must stay >= 1
+     rmin = 1 - NINT( REAL(n,dp)**(1.0_dp/eldim) )
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsMinRelOrder
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The largest "RelOrder" GaussPoints will accept for this element.
+!>
+!> The companion of GaussPointsMinRelOrder, and needed for the same reason: the
+!> bound is enforced with Fatal, so a caller walking the ladder upwards cannot
+!> find the limit by trying. A NON-p element has exactly three tabulated rules --
+!> GaussPoints0 / GaussPoints / GaussPoints2 in elements.def -- so {-1,0,1} is
+!> all there is. A p-element's offset is arithmetic on the per-direction count
+!> and has no upper limit, so a ceiling is returned only to keep callers finite.
+!------------------------------------------------------------------------------
+   FUNCTION GaussPointsMaxRelOrder( Element ) RESULT( rmax )
+!------------------------------------------------------------------------------
+     USE PElementMaps, ONLY : isActivePElement
+     TYPE(Element_t), TARGET :: Element
+     INTEGER :: rmax
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER :: elm
+
+     elm => Element
+     IF( isActivePElement(elm) ) THEN
+       rmax = 8
+     ELSE
+       rmax = 1
+     END IF
+!------------------------------------------------------------------------------
+   END FUNCTION GaussPointsMaxRelOrder
+!------------------------------------------------------------------------------
+
    FUNCTION GaussPoints( elm, np, RelOrder, EdgeBasis, PReferenceElement, &
         EdgeBasisDegree) RESULT(IntegStuff)
 !---------------------------------------------------------------------------------------------
@@ -2618,8 +2891,8 @@ CONTAINS
      INTEGER, OPTIONAL :: EdgeBasisDegree ! The degree of edge elements
      TYPE( GaussIntegrationPoints_t ) :: IntegStuff   !< Structure holding the integration points
 !------------------------------------------------------------------------------
-     LOGICAL :: pElement, UsePRefElement, Economic, Hcurl
-     INTEGER :: n, eldim, p1d, ntri, nseg, necon
+     LOGICAL :: pElement, UsePRefElement, Economic, Hcurl, UseTabulated
+     INTEGER :: n, eldim, p1d, ntri, nseg, necon, nsimplex
      TYPE(ElementType_t), POINTER :: elmt
 !------------------------------------------------------------------------------
      elmt => elm % TYPE
@@ -2629,7 +2902,7 @@ CONTAINS
      ELSE
        Hcurl = PRESENT(EdgeBasisDegree)
      END IF
-     
+
      IF (Hcurl) THEN
        UsePRefElement = .TRUE.
        IF (PRESENT(PReferenceElement)) UsePRefElement = PReferenceElement
@@ -2646,12 +2919,23 @@ CONTAINS
      ELSE
        pElement = isActivePElement(elm)
      END IF
-     
+
      IF ( PRESENT(np) ) THEN
        n = np
      ELSE IF( PRESENT( RelOrder ) ) THEN
        IF (pElement) THEN
          n = elm % PDefs % GaussPoints
+         ! The count the element declares is set for bulk elements in
+         ! SetMeshMaxDOFs and copied to boundary elements in AssignLocalNumber.
+         ! That copy comes from the mesh Edge/Face, so it never happens when no
+         ! Edges/Faces were generated -- an explicit bubble augmentation such as
+         ! "Element = p:1 b:1" needs neither. The boundary element is then still
+         ! an active p-element with a declared count of zero. Fall back to the
+         ! rule of the element type, exactly as the branch below does when
+         ! RelOrder is absent; for p:1 the bubbles vanish on the boundary, so the
+         ! trace is of the element's own degree and that rule is the right one.
+         ! Without this, GaussPoints* is handed n=0 and calls Fatal.
+         IF( n == 0 ) n = elmt % GaussPoints
          IF( RelOrder == 0 ) THEN
            CONTINUE
          ELSE
@@ -2693,7 +2977,18 @@ CONTAINS
          ELSE IF( RelOrder == -1 ) THEN
            n = elmt % GaussPoints0
          ELSE
-           PRINT *,'RelOrder can only be {-1, 0, 1} !'
+           ! A non-p element has exactly three tabulated rules to choose from --
+           ! GaussPoints0 / GaussPoints / GaussPoints2 in elements.def -- so
+           ! there is nothing to return outside {-1,0,1}. This used to PRINT a
+           ! complaint and fall through with n never assigned, handing an
+           ! uninitialised count to the quadrature below. Say so and stop
+           ! instead: "Relative Integration Order" is a documented sif keyword,
+           ! so this is reachable from an ordinary input file. Note that a
+           ! p-element takes any integer -- that branch is arithmetic, not a
+           ! table lookup -- which is why the limit is stated for this case only.
+           WRITE( Message,'(A,I0,A)') 'Relative Integration Order = ',RelOrder, &
+               ' but a non-p element only has rules for {-1,0,1}'
+           CALL Fatal( 'GaussPoints', Message )
          END IF
        END IF
      ELSE
@@ -2718,7 +3013,26 @@ CONTAINS
 
      CASE (3)
         IF (pElement) THEN
-          IntegStuff = GaussPointsPTriangle(n)
+          ! As for the tetrahedron in CASE(5): prefer a genuine triangle rule
+          ! over collapsing a quadrilateral one, when a tabulated rule is exact
+          ! to the degree this count was sized for. Skipped when the caller
+          ! named a count explicitly (np), which is honoured literally.
+          ! An explicit count NAMES a rule, so look for one of that name before
+          ! anything else. Without this, naming a count was the one sure way not
+          ! to get the tabulated rule of that size: the lookup was skipped
+          ! whenever np was present and GaussPointsPTriangle read the count as a
+          ! sizing target for a collapsed quadrilateral instead.
+          nsimplex = 0
+          IF( PRESENT( np ) ) THEN
+            IF( TriangleRuleTabulated( n ) ) nsimplex = n
+          ELSE
+            nsimplex = TriangleSimplexRulePoints( n )
+          END IF
+          IF( nsimplex > 0 ) THEN
+            IntegStuff = GaussPointsTriangle( nsimplex, PReferenceElement = .TRUE. )
+          ELSE
+            IntegStuff = GaussPointsPTriangle(n)
+          END IF
         ELSE
           IntegStuff = GaussPointsTriangle(n)
         END IF
@@ -2732,7 +3046,7 @@ CONTAINS
            ! An explicit bubble augmentation with lower-order methods switches to
            ! the standard rule:
            IF (elm % BDOFs > 0 .AND. elm % PDefs % P < 4) Economic = .FALSE.
-           ! The economic 12-point rule appears to be somehow faulty, so we 
+           ! The economic 12-point rule appears to be somehow faulty, so we
            ! shall never call it
          END IF
 
@@ -2747,7 +3061,27 @@ CONTAINS
 
      CASE (5)
         IF (pElement) THEN
-           IntegStuff = GaussPointsPTetra(n)
+           ! Prefer a tabulated simplex rule when one is exact to the degree
+           ! this count was sized for; GaussPointsPTetra otherwise maps a brick
+           ! rule and costs several times as many points for the same
+           ! exactness. Skipped when the caller named a count explicitly (np),
+           ! which is then honoured literally rather than reinterpreted.
+           ! As for the triangle: an explicit count names a rule, so try the
+           ! table for exactly that count first. "-tetra 24" used to yield 36
+           ! points, GaussPointsPTetra computing NINT(24**(1/3)) = 3 and
+           ! returning the collapsed GaussPointsPBrick(3,3,4) -- and 36 is the
+           ! rule measured as NOT exact where the tabulated 24 is.
+           nsimplex = 0
+           IF( PRESENT( np ) ) THEN
+             IF( TetraRuleTabulated( n ) ) nsimplex = n
+           ELSE
+             nsimplex = TetraSimplexRulePoints( n )
+           END IF
+           IF( nsimplex > 0 ) THEN
+              IntegStuff = GaussPointsTetra( nsimplex, PReferenceElement = .TRUE. )
+           ELSE
+              IntegStuff = GaussPointsPTetra(n)
+           END IF
         ELSE
            IntegStuff = GaussPointsTetra(n)
         END IF
@@ -2760,12 +3094,30 @@ CONTAINS
         END IF
 
       CASE (7)
-        IF( PRESENT( np ) ) THEN
+        ntri = 0; nseg = 0; necon = 0
+        UseTabulated = PRESENT( np )
+
+        ! No explicit count was named: this is the implicit path (Relative
+        ! Integration Order, or the element's own declared rule). Prefer a
+        ! tabulated wedge rule of the same degree, through the SAME dispatch
+        ! an explicit count reaches below, instead of going straight to the
+        ! collapsed GaussPointsPWedge ladder -- the CASE(3)/(5) pattern.
+        ! Restricted to p-elements, again as CASE(3)/(5) are: a non-p
+        ! element's "n" here is one of its three tabulated elements.def
+        ! rules, not a degree target, and reinterpreting it would silently
+        ! change what a plain wedge element integrates at.
+        IF( .NOT. UseTabulated .AND. pElement ) THEN
+          nsimplex = WedgeRulePoints( n )
+          IF( nsimplex > 0 ) THEN
+            n = nsimplex
+            UseTabulated = .TRUE.
+          END IF
+        END IF
+
+        IF( UseTabulated ) THEN
           ! possible values:
           ! triangle = 1, 3, 4, 6, 7, 11, 12, 17, 20
           ! segment  = 1, 2, 3, 4, 5, 6,  7,  8,  9,
-
-          ntri = 0; nseg = 0; necon = 0
 
           SELECT CASE( n )
 
@@ -2781,10 +3133,25 @@ CONTAINS
           CASE( 85, 100 )
             nseg = 5
 
-            ! The economical rules
-          CASE( 4, 5, 7, 10, 11, 14, 15, 16, 24 )
+            ! The economical rules. 10, 14 and 24 verify by moment test as
+            ! correctly transcribed and exact to their stated degree, but
+            ! they place quadrature points outside the reference wedge
+            ! (n=24 badly -- outside even the enclosing box), which silently
+            ! mismeasures anything non-polynomial sampled there (a curved
+            ! element, a spatially varying material law) -- harmless for the
+            ! affine, constant-coefficient elasticity this dispatch is
+            ! mostly used for, which is exactly why ElasticStabilized's own
+            ! Taylor-Hood leg names "-prism 10" deliberately and is pinned
+            ! against it. So an EXPLICIT count still reaches them here, same
+            ! as any other named rule -- getting it right for the problem at
+            ! hand is on the sif, per the ElementalGaussNp warning. Only
+            ! WedgeRulePoints' own choice for the IMPLICIT path withholds
+            ! them (see its comment), since that path is reached by every
+            ! p-element sharing this family whether or not its problem is
+            ! affine and polynomial.
             ! Note: we would have 6 and 8 point rules from the economic family as well
-            necon = n 
+          CASE( 4, 5, 7, 10, 11, 14, 15, 16, 24 )
+            necon = n
           END SELECT
 
           IF( nseg > 0 ) THEN
@@ -2796,18 +3163,18 @@ CONTAINS
             RETURN
           END IF
         END IF
-        
+
         IF (pElement) THEN
            IntegStuff = GaussPointsPWedge(n)
         ELSE
            IntegStuff = GaussPointsWedge(n)
         END IF
 
-     CASE (8)       
+     CASE (8)
        IntegStuff = GaussPointsBrick(n)
-       
+
      END SELECT
-       
+
    END FUNCTION GaussPoints
 
 
@@ -2820,8 +3187,8 @@ CONTAINS
      USE PElementMaps, ONLY : isActivePElement
      TYPE( Element_t ) :: elm
      LOGICAL, OPTIONAL :: EdgeBasis
-     LOGICAL, OPTIONAL :: PReferenceElement 
-     TYPE( GaussIntegrationPoints_t ) :: CornerStuff   
+     LOGICAL, OPTIONAL :: PReferenceElement
+     TYPE( GaussIntegrationPoints_t ) :: CornerStuff
 !------------------------------------------------------------------------------
      LOGICAL :: pElement
      INTEGER :: n, i, j, k, t, ecode
@@ -2844,14 +3211,14 @@ CONTAINS
      IF( n >= 5 .AND. n <= 7 ) n = n-1
      ip % n = n
      ip % s(1:n) = 1.0_dp / n
-     
+
      SELECT CASE( ecode  / 100 )
 
      CASE( 3 )
        ip % u(1) = 0.0_dp; ip % v(1) = 0.0_dp
        ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp
        ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp
-       
+
      CASE( 4 )
        t = 0
        DO i=1,2
@@ -2867,7 +3234,7 @@ CONTAINS
        ip % u(2) = 1.0_dp; ip % v(2) = 0.0_dp; ip % w(2) = 0.0_dp
        ip % u(3) = 0.0_dp; ip % v(3) = 1.0_dp; ip % w(3) = 0.0_dp
        ip % u(4) = 0.0_dp; ip % v(4) = 0.0_dp; ip % w(4) = 1.0_dp
-       
+
      CASE( 8 )
        t = 0
        DO i=1,2
@@ -2888,19 +3255,19 @@ CONTAINS
 
      IF( pElement ) THEN
        DO i=1,n
-         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))            
+         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))
        END DO
      END IF
-     
+
 #if 0
      PRINT *,'Corner Gauss Points:',n
      PRINT *,'u:',IP % u(1:n)
      PRINT *,'v:',IP % v(1:n)
      IF(ecode > 500) PRINT *,'w:',IP % w(1:n)
 #endif
-     
+
      CornerStuff = ip
-     
+
    END FUNCTION CornerGaussPoints
 
 
@@ -2912,8 +3279,8 @@ CONTAINS
      USE PElementMaps, ONLY : isActivePElement
      TYPE( Element_t ) :: elm
      LOGICAL, OPTIONAL :: EdgeBasis
-     LOGICAL, OPTIONAL :: PReferenceElement 
-     TYPE( GaussIntegrationPoints_t ) :: CornerStuff   
+     LOGICAL, OPTIONAL :: PReferenceElement
+     TYPE( GaussIntegrationPoints_t ) :: CornerStuff
 !------------------------------------------------------------------------------
      LOGICAL :: pElement
      INTEGER :: n, i, j, k, t, ecode
@@ -2936,19 +3303,19 @@ CONTAINS
      IF( n >= 5 .AND. n <= 7 ) n = n-1
      ip % n = 1
      ip % s(1:n) = 1.0_dp
-     
+
      SELECT CASE( ecode  / 100 )
 
      CASE( 3 )
        ip % u(1) = 1.0_dp/3.0_dp; ip % v(1) = 1.0_dp/3.0_dp
-       
+
      CASE( 4 )
        ip % u(1) = 0.0_dp
        ip % v(1) = 0.0_dp
 
      CASE( 5 )
        ip % u(1) = 1.0_dp/4.0_dp; ip % v(1) = 1.0_dp/4.0_dp; ip % w(1) = 1.0_dp/4.0_dp
-       
+
      CASE( 8 )
        ip % u(1) = 0.0_dp
        ip % v(1) = 0.0_dp
@@ -2961,23 +3328,23 @@ CONTAINS
 
      IF( pElement ) THEN
        DO i=1,n
-         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))            
+         CALL ConvertToPReference(ecode,ip % u(i),ip % v(i),ip % w(i))
        END DO
      END IF
-     
+
 #if 0
      PRINT *,'Corner Gauss Points:',n
      PRINT *,'u:',IP % u(1:n)
      PRINT *,'v:',IP % v(1:n)
      IF(ecode > 500) PRINT *,'w:',IP % w(1:n)
 #endif
-     
+
      CornerStuff = ip
-     
+
    END FUNCTION CenterGaussPoints
 
-   
-   
+
+
 !----------------------------------------------------------------------------------
 !>  Return a suitable version of the Gaussian numerical integration method for
 !>  H(curl)-conforming finite elements. The default here is that the edge basis
@@ -3078,44 +3445,44 @@ CONTAINS
      INTEGER :: ElementCode
      REAL(KIND=dp) :: u,v,w
      REAL(KIND=dp), OPTIONAL :: s
-          
-     
+
+
      SELECT CASE( ElementCode / 100 )
 
      CASE(1,2,4,8)
        ! Nothing to do, reference element is the same
-       
+
      CASE(3)
        ! triangle
        u = 2*u + v - 1
        v = SQRT(3.0_dp)*v
        IF( PRESENT(s) ) s = SQRT(3.0_dp)*2*s
-        
+
      CASE(5)
        ! tetrahedron
        u = 2*u + v + w - 1
        v = SQRT(3._dp)*v + 1/SQRT(3._dp)*w
        w = 2*SQRT(2/3._dp)*w
-       IF(PRESENT(s)) s = 4*SQRT(2.0d0)*s       
+       IF(PRESENT(s)) s = 4*SQRT(2.0d0)*s
 
-     CASE(6) 
+     CASE(6)
        ! pyramid
        w = SQRT(2._dp)*w
        ! scaling of s??
-       
+
      CASE(7)
        ! wedge / prism
        u = 2*u + v - 1
        v = SQRT(3._dp)*v
-       IF(PRESENT(s)) s = 2*SQRT(3.0d0) * s       
+       IF(PRESENT(s)) s = 2*SQRT(3.0d0) * s
 
      CASE DEFAULT
        CALL Fatal('Integration::ConvertToPReference','Unsupported element type')
      END SELECT
-            
-     
+
+
    END SUBROUTINE ConvertToPReference
-   
+
 
 !---------------------------------------------------------------------------
 END MODULE Integration

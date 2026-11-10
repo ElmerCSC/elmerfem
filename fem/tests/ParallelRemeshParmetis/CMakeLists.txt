@@ -1,6 +1,4 @@
-IF(HAVE_PARMMG)
-IF(HAVE_ZOLTAN)
-IF(ParMetis_FOUND)
+IF(HAVE_PARMMG AND HAVE_ZOLTAN AND ParMetis_FOUND)
   INCLUDE(test_macros)
   INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
@@ -12,7 +10,5 @@ IF(ParMetis_FOUND)
 
   FILE(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/Results/cube")
 
-  ADD_ELMER_TEST(ParallelRemeshParmetis NPROCS 4 LABELS mmg slow)
-ENDIF()
-ENDIF()
+  ADD_ELMER_TEST(ParallelRemeshParmetis NPROCS 4 LABELS mmg slow zoltan)
 ENDIF()

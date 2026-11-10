@@ -113,11 +113,11 @@ INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
         IF (((MINVAL(xbed)>x0) .OR. (MAXVAL(xbed)<x1)) ) THEN
            WRITE(*,*)'MUST BE : x0> MIN(xbed) AND x1 < MAX(xbed)',& 
                   &x0,MINVAL(xbed),x1,MAXVAL(xbed)
-           STOP
+           ERROR STOP
         END IF
         IF (((MINVAL(xsurf)>x0) .OR. (MAXVAL(xsurf)<x1)) ) THEN
            WRITE(*,*)'MUST BE : x0 > MIN(xsurf) AND x1 < MAX(xsurf)'
-           STOP
+           ERROR STOP
         END IF
       END IF
     
@@ -138,7 +138,7 @@ INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
           IF (NptS/=NptB) THEN
                   WRITE(*,*)'Surface and Bed data must have the same number of &
                   &points'
-                  STOP
+                  ERROR STOP
           END IF
           NtNx = 0
           DO n=1,NtN
@@ -146,7 +146,7 @@ INTEGER :: NtN, i, j, NptS, NptB, n, NtNx, xi
           END DO
           IF (NptS/=NtNx) THEN
                   WRITE(*,*)'Mesh must have',NptS,' nodes in x direction' 
-                  STOP
+                  ERROR STOP
           END IF
           x0 = MINVAL(xbed)
           x1 = MAXVAL(xbed)

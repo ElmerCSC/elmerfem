@@ -1,0 +1,72 @@
+! Axisymmetric/cylindric-symmetric regression test for StatElecSolve's
+! vectorized bulk assembly (LocalMatrixVec): the integration weight there
+! must be scaled by the interpolated radius, same as the scalar path's own
+! "Weight = Weight * r", or the vectorized and scalar solutions disagree
+! whenever "Coordinate System" is not Cartesian. This is otherwise untested:
+! no other StatElecSolve test exercises a non-Cartesian coordinate system.
+!
+! Same mesh as bodydir's test.grd (two bodies split at x=0.5), single solver
+! instance, plain Dirichlet BCs on the two straight edges (x=0 -- the
+! symmetry axis -- and x=1).
+
+Check Keywords Warn
+
+Header
+  Mesh DB "." "test"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Axi Symmetric
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Constants
+  Permittivity Of Vacuum = 8.8542e-12
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = Stat Elec Solver
+  Variable = Potential
+  Variable DOFs = 1
+  Procedure = "StatElecSolve" "StatElecSolver"
+
+  Vector Assembly = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = umfpack
+  Nonlinear System Max Iterations = 1
+End
+
+Material 1
+  Relative Permittivity = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Potential = Real 0.0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Potential = Real 1.0
+End
+
+Solver 1 :: Reference Norm = Real 0.81826646
+
+!End Of File

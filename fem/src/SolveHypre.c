@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! ******************************************************************************
@@ -33,7 +33,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2000
 ! *
@@ -44,10 +44,16 @@
 
 #ifdef HAVE_HYPRE
 #include <math.h>
+#include <stdlib.h>
+#include <string.h>
 #include "_hypre_utilities.h"
 #include "HYPRE_krylov.h"
 #include "HYPRE.h"
 #include "HYPRE_parcsr_ls.h"
+
+#if defined(HAVE_HYPRE_CUDA)
+#include "cuda_runtime.h"
+#endif
 
 #define realtime_ FC_FUNC_(realtime,REALTIME)
 typedef struct {
@@ -58,7 +64,7 @@ typedef struct {
   HYPRE_IJMatrix Atilde;
 
   HYPRE_IJVector x,b;
-  
+
   int hypre_method;
   HYPRE_Solver solver, precond;
 
@@ -67,16 +73,51 @@ typedef struct {
 
 } ElmerHypreContainer;
 
+static void CheckHypreError(const char *Caller, int myid)
+{
+  int ierr = HYPRE_GetError();
+  if (ierr) {
+    if (myid == 0) {
+      char msg[512];
+      HYPRE_DescribeError(ierr, msg);
+      fprintf(stderr,
+              "SolveHypre: %s: Hypre library returned error code %d: %s \n",
+              Caller, ierr, msg);
+    }
+    HYPRE_ClearAllErrors();
+  }
+}
 
-/* The interface calls Hypre step-wise separating phases for 
+#if defined(HAVE_HYPRE_CUDA)
+/* Without this, every MPI rank that touches Hypre defaults to CUDA device 0,
+   so a multi-GPU node is not fully utilized.
+   Must run before the first CUDA-touching Hypre call (HYPRE_Init included),
+   since that is when Hypre attaches to "the current device". */
+static void ElmerHypreBindDevice(MPI_Comm comm)
+{
+  static int done = 0;
+  int rank, gpu_count;
+
+  if (done) return;
+  done = 1;
+
+  MPI_Comm_rank(comm, &rank);
+  if (cudaGetDeviceCount(&gpu_count) != cudaSuccess || gpu_count < 1) return;
+
+  cudaSetDevice(rank % gpu_count);
+}
+#endif
+
+
+/* The interface calls Hypre step-wise separating phases for
    procedure of setup, solve and cleanup.
-   The original monolithic one that was not used for years has been removed. 
+   The original monolithic one that was not used for years has been removed.
 
    TO DO: we should add the possibility to keep the precon-
    ditioner the same but update the system matrix (SolveHYPRE3), right now
    calling SolveHYPRE2 solves with the matrix passed into
    SolveHYPRE1. */
-   
+
 /* initialization for a new matrix.
    - convert matrix
    - setup solver and preconditioner
@@ -86,28 +127,28 @@ typedef struct {
 
  This function has an additional feature compared to the SolveHYPRE call above,
  namely to use a block diagonal approximation of A for the preconditioner setup.
- This mimics the behavior of the BILUn preconditioners in Elmer, although any   
- preconditioner (like ParaSails or BoomerAMG) can still be used in combination  
- with block diagonal approximation. 
- BILU=0 or 1 - use A. 
+ This mimics the behavior of the BILUn preconditioners in Elmer, although any
+ preconditioner (like ParaSails or BoomerAMG) can still be used in combination
+ with block diagonal approximation.
+ BILU=0 or 1 - use A.
  BILU=k - assume k equations and use block diagonal A with k blocks.
 */
 void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
  (
-  int *nrows,int *rows, int *cols, double *vals, int *precflag, double *precvals, 
+  int *nrows,int *rows, int *cols, double *vals, int *precflag, double *precvals,
   int *globaldofs, int *owner, int *ILUn, int *BILU, int *hypre_method,
   int *hypre_intpara, double *hypre_dppara,
   int *Rounds, double *TOL, int *verbosityPtr, int** ContainerPtr,
   int *fcomm
  )
 {
-   int i, j, k, *rcols;
+   int i, j, k;
    int myid, num_procs;
-   int N, n, csize=128;
+   int N, n;
 
    int ilower, iupper;
    int local_size, extra;
-   int hypre_sol, hypre_pre;
+   int hypre_sol, hypre_pre, AssembleRowByRow;
    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
    ElmerHypreContainer* Container;
 
@@ -122,39 +163,45 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
    int num_iterations;
    double final_res_norm;
-  
+
    double  *txvec, st, realtime_();
-   
+
    int verbosity = *verbosityPtr, myverb;
+
+#if defined(HAVE_HYPRE_CUDA)
+   ElmerHypreBindDevice(comm);
+#endif
+   HYPRE_Init();
 
    /* which process number am I? */
    MPI_Comm_rank(comm, &myid);
 
-   if( myid == 0 ) 
+   if( myid == 0 )
      myverb = verbosity;
    else
      myverb = 0;
-   
+
    if (myverb > 8) fprintf(stdout,"SolveHypre: Performing HYPRE Setup\n");
-   
+
    st  = realtime_();
-   
+
    /* How many rows do I have? */
    local_size = *nrows;
    hypre_sol = *hypre_method / 100;
    hypre_pre = *hypre_method % 100;
+   AssembleRowByRow = hypre_intpara[19];
 
    if(hypre_sol == 2 || hypre_pre == 2)  {
      if (*ContainerPtr == NULL) {
        fprintf( stdout, "Hypre pointer should not be zero at start for AMS\n");
-     }   
+     }
      Container = (ElmerHypreContainer*)(*ContainerPtr);
    }
-   else {   
-     Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));   
+   else {
+     Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));
      *ContainerPtr=(int*)(Container);
    }
-   
+
    ilower =  1000000000;
    iupper = -1;
    for( i=0; i<local_size; i++ ) {
@@ -178,46 +225,77 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
    /* Initialize before setting coefficients */
    HYPRE_IJMatrixInitialize(A);
+   CheckHypreError("SolveHypre1 (A Initialize, before fill)", myid);
 
-   /* Now go through my local rows and set the matrix entries.
-      Note that here we are setting one row at a time, though
-      one could set all the rows together (see the User's Manual).
-   */
-   {
-      int nnz,irow,i,j,k,*rcols;
+   /* Build the local block of matrix entries for Hypre */
+   if (AssembleRowByRow) {
+      /* Row by row assembly, one HYPRE_IJMatrixAddToValues call per row,
+         use if the bulk would be too large */
+      int i,j,nnz,irow,*rcols,csize=128;
 
       rcols = (int *)malloc( csize*sizeof(int) );
       for (i = 0; i < local_size; i++) {
-	nnz = rows[i+1]-rows[i];
-	if ( nnz>csize ) {
-	  csize = nnz+csize;
-	  rcols = (int *)realloc( rcols, csize*sizeof(int) );
-	}
-	irow=globaldofs[i];
-	for( k=0,j=rows[i]; j<rows[i+1]; j++,k++) {
-	  rcols[k] = globaldofs[cols[j-1]-1];
-	}
-	HYPRE_IJMatrixAddToValues(A, 1, &nnz, &irow, rcols, &vals[rows[i]-1]);
+        nnz = rows[i+1]-rows[i];
+        if ( nnz>csize ) {
+          csize = nnz+csize;
+          rcols = (int *)realloc( rcols, csize*sizeof(int) );
+        }
+        irow=globaldofs[i];
+        for( k=0,j=rows[i]; j<rows[i+1]; j++,k++) {
+          rcols[k] = globaldofs[cols[j-1]-1];
+        }
+        HYPRE_IJMatrixAddToValues(A, 1, &nnz, &irow, rcols, &vals[rows[i]-1]);
       }
+      CheckHypreError("SolveHypre1 (A AddToValues, before Assemble)", myid);
       free( rcols );
+   } else {
+      int i,j;
+      /* rcols     - global column index of each nonzero entry in the local block (length total_nnz)
+         irows     - global row index of each row in the local block (length local_size)
+         ncols     - number of nonzero entries in each row (length local_size)
+         total_nnz - total number of nonzero entries in the local block
+      */
+      int *rcols, *irows, *ncols;
+      int total_nnz;
+
+      // -1 because Fortran is 1-based (last entry in CRS rows is total_nnz+1)
+      total_nnz = rows[local_size]-1;
+
+      irows = (int *)malloc( local_size*sizeof(int) );
+      ncols = (int *)malloc( local_size*sizeof(int) );
+      rcols = (int *)malloc( total_nnz*sizeof(int) );
+
+      for (i = 0; i < local_size; i++) {
+        irows[i] = globaldofs[i];
+        ncols[i] = rows[i+1]-rows[i];
+        for (j = rows[i]; j < rows[i+1]; j++) {
+          rcols[j-1] = globaldofs[cols[j-1]-1];
+        }
+      }
+
+      if ( local_size > 0 )
+        HYPRE_IJMatrixAddToValues(A, local_size, ncols, irows, rcols, vals);
+
+      CheckHypreError("SolveHypre1 (A AddToValues, before Assemble)", myid);
+
+      free( rcols ); free( irows ); free( ncols );
    }
 
    /* Assemble after setting the coefficients */
    HYPRE_IJMatrixAssemble(A);
+   CheckHypreError("SolveHypre1 (A assembly)", myid);
 
    if (!*precflag && *BILU <= 1) {
      /* Standard version - use A as preconditioner */
      Atilde = A;
    } else if ( *precflag ) {
      /* We have another matrix that is used as preconditioning matrix! */
-     int nnz,irow,jcol,i,j,k,*rcols;
-     double *dbuf;
-
      HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &Atilde);
      HYPRE_IJMatrixSetObjectType(Atilde, HYPRE_PARCSR);
      HYPRE_IJMatrixInitialize(Atilde);
-     {
-        int nnz,irow,i,j,k,*rcols;
+     if (AssembleRowByRow) {
+        /* Row by row assembly */
+        int nnz,irow,i,j,csize=128,*rcols;
 
         rcols = (int *)malloc( csize*sizeof(int) );
         for (i = 0; i < local_size; i++) {
@@ -233,49 +311,126 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
           HYPRE_IJMatrixAddToValues(Atilde, 1, &nnz, &irow, rcols, &precvals[rows[i]-1]);
         }
         free( rcols );
+     } else {
+        int i,j;
+        /* rcols     - global column index of each nonzero entry in the local block (length total_nnz)
+           irows     - global row index of each row in the local block (length local_size)
+           ncols     - number of nonzero entries in each row (length local_size)
+           total_nnz - total number of nonzero entries in the local block
+        */
+        int *rcols, *irows, *ncols;
+        int total_nnz;
+
+        total_nnz = rows[local_size]-1;
+
+        irows = (int *)malloc( local_size*sizeof(int) );
+        ncols = (int *)malloc( local_size*sizeof(int) );
+        rcols = (int *)malloc( total_nnz*sizeof(int) );
+
+        for (i = 0; i < local_size; i++) {
+          irows[i] = globaldofs[i];
+          ncols[i] = rows[i+1]-rows[i];
+          for (j = rows[i]; j < rows[i+1]; j++) {
+            rcols[j-1] = globaldofs[cols[j-1]-1];
+          }
+        }
+
+        if ( local_size > 0 )
+          HYPRE_IJMatrixAddToValues(Atilde, local_size, ncols, irows, rcols, precvals);
+
+        free( rcols ); free( irows ); free( ncols );
      }
      /* Assemble after setting the coefficients */
-     HYPRE_IJMatrixAssemble(Atilde);     
+     HYPRE_IJMatrixAssemble(Atilde);
    } else {
      /* We only take the block diagonal values of the original matrix for our preconditioner */
-     int nnz,irow,jcol,i,j,k,*rcols;
-     double *dbuf;
      if (myverb > 6) fprintf(stdout,"HYPRE: using BILU(%d) approximation for preconditioner\n",*BILU);
-     
+
      HYPRE_IJMatrixCreate(comm, ilower, iupper, ilower, iupper, &Atilde);
      HYPRE_IJMatrixSetObjectType(Atilde, HYPRE_PARCSR);
      HYPRE_IJMatrixInitialize(Atilde);
-     
-     rcols = (int *)malloc( csize*sizeof(int) );
-     dbuf = (double *)malloc( csize*sizeof(double) );
-     for (i = 0; i < local_size; i++) {
-       irow=globaldofs[i];
-       nnz = 0;
-       for (j=rows[i];j<rows[i+1];j++) {
-         jcol = globaldofs[cols[j-1]-1];
-         /*TODO - is the block ordering preserved in the linear numbering?
-	   Here we assume it is.
-	 */
-         if ((irow%*BILU)==(jcol%*BILU)) {
-	   rcols[nnz] = jcol;
-           dbuf[nnz] = vals[j-1];
-           nnz++;
-	 }
+
+     if (AssembleRowByRow) {
+       int nnz,irow,jcol,i,j,csize=128,*rcols;
+       double *dbuf;
+
+       rcols = (int *)malloc( csize*sizeof(int) );
+       dbuf = (double *)malloc( csize*sizeof(double) );
+       for (i = 0; i < local_size; i++) {
+         irow=globaldofs[i];
+         nnz = 0;
+         for (j=rows[i];j<rows[i+1];j++) {
+           jcol = globaldofs[cols[j-1]-1];
+           /*TODO - is the block ordering preserved in the linear numbering?
+               Here we assume it is.
+           */
+           if ((irow%*BILU)==(jcol%*BILU)) {
+             rcols[nnz] = jcol;
+             dbuf[nnz] = vals[j-1];
+             nnz++;
+           }
+         }
+         HYPRE_IJMatrixAddToValues(Atilde, 1, &nnz, &irow, rcols, dbuf);
        }
-       HYPRE_IJMatrixAddToValues(Atilde, 1, &nnz, &irow, rcols, dbuf);
+       free( rcols );
+       free( dbuf );
+     } else {
+       /* rcols     - global column index of each retained nonzero entry, allocated to
+                      total_nnz but only the first pos entries end up populated
+          irows     - global row index of each row in the local block (length local_size)
+          ncols     - number of entries kept for each row after BILU filtering (length local_size)
+          dbuf      - values of the retained entries, in the same order as rcols
+          total_nnz - upper bound on the retained count, before filtering
+          pos       - running write index into rcols/dbuf as entries are kept
+       */
+       int nnz,irow,jcol,i,j;
+       int *rcols, *irows, *ncols;
+       double *dbuf;
+       int total_nnz, pos;
+
+       total_nnz = rows[local_size]-1;
+
+       irows = (int *)malloc( local_size*sizeof(int) );
+       ncols = (int *)malloc( local_size*sizeof(int) );
+       rcols = (int *)malloc( total_nnz*sizeof(int) );
+       dbuf  = (double *)malloc( total_nnz*sizeof(double) );
+
+       pos = 0;
+       for (i = 0; i < local_size; i++) {
+         irow = globaldofs[i];
+         nnz = 0;
+         for (j=rows[i];j<rows[i+1];j++) {
+           jcol = globaldofs[cols[j-1]-1];
+           /*TODO - is the block ordering preserved in the linear numbering?
+               Here we assume it is.
+           */
+           if ((irow%*BILU)==(jcol%*BILU)) {
+             rcols[pos] = jcol;
+             dbuf[pos] = vals[j-1];
+             pos++;
+             nnz++;
+           }
+         }
+         irows[i] = irow;
+         ncols[i] = nnz;
+       }
+
+       if ( local_size > 0 )
+         HYPRE_IJMatrixAddToValues(Atilde, local_size, ncols, irows, rcols, dbuf);
+
+       free( rcols ); free( dbuf ); free( irows ); free( ncols );
      }
-     free( rcols );
-     free( dbuf );
      /* Assemble after setting the coefficients */
-     HYPRE_IJMatrixAssemble(Atilde);     
+     HYPRE_IJMatrixAssemble(Atilde);
    }
+   CheckHypreError("SolveHypre1 (Atilde assembly)", myid);
 
    /* Get the parcsr matrix object to use */
    /* note: this is only used for setup,  */
    /* so we put in the possibly approxima-*/
    /* ted matrix Atilde                   */
    HYPRE_IJMatrixGetObject(Atilde, (void**) &parcsr_A);
-   
+
    HYPRE_IJVectorCreate(comm, ilower, iupper,&b);
    HYPRE_IJVectorSetObjectType(b, HYPRE_PARCSR);
    HYPRE_IJVectorInitialize(b);
@@ -288,7 +443,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    HYPRE_IJVectorAssemble(x);
    HYPRE_IJVectorGetObject(x, (void **) &par_x);
 
-   if(myverb > 12) {     
+   if(myverb > 12) {
      fprintf(stdout,"SolveHypre: NonZero Hypre parameters\n");
      for(i=0;i<=12;i++) {
        if(hypre_intpara[i]) fprintf(stdout,"  intpara %d: %d\n",i+1,hypre_intpara[i]);
@@ -297,12 +452,12 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
        if(fabs(hypre_dppara[i]) > 1.0e-20) fprintf(stdout,"   dppara %d: %lg\n",i+1,hypre_dppara[i]);
      }
    }
-   
+
     /* This is copy-pasted from SParIterSolver for convenience.
     !---------------------------------------
     !              No  Prec
     ! none         0    x   -
-    ! BoomerAMG    1    x   x 
+    ! BoomerAMG    1    x   x
     ! AMS          2    x   x
     ! ILU          3    x   x
     ! Parasails    4    x   -
@@ -313,22 +468,22 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
     ! FlexGMRes    9    -   x
     ! LGMRes       10   -   x
     ! COGMRes      11   -   x
-    !---------------------------------------  */  
+    !---------------------------------------  */
 
-   
+
    /* Create preconditioner for Krylov methods. */
    /* Some methods may act as preconditioners and solvers and are also initialized here
       and later changes the pointer to solvers. */
 
    if ( hypre_pre == 1 || hypre_sol == 1 )  {
-     if( myverb > 8 ) 
+     if( myverb > 8 )
        fprintf( stdout,"SolveHypre: Creating Hypre BoomerAMG\n");
      if( myverb > 10 ) {
-       fprintf( stdout,"RelaxType = %d\n",hypre_intpara[0]); 
-       fprintf( stdout,"CoarsenType = %d\n",hypre_intpara[1]); 
-       fprintf( stdout,"NumSweeps = %d\n",hypre_intpara[2]); 
-       fprintf( stdout,"MaxLevels = %d\n",hypre_intpara[3]); 
-       fprintf( stdout,"Interpolation Type = %d\n",hypre_intpara[4]); 
+       fprintf( stdout,"RelaxType = %d\n",hypre_intpara[0]);
+       fprintf( stdout,"CoarsenType = %d\n",hypre_intpara[1]);
+       fprintf( stdout,"NumSweeps = %d\n",hypre_intpara[2]);
+       fprintf( stdout,"MaxLevels = %d\n",hypre_intpara[3]);
+       fprintf( stdout,"Interpolation Type = %d\n",hypre_intpara[4]);
        fprintf( stdout,"Smooth Type = %d\n",hypre_intpara[5]);
        fprintf( stdout,"Cycle Type = %d\n",hypre_intpara[6]);
        fprintf( stdout,"DOFs = %d\n",hypre_intpara[7]);
@@ -347,15 +502,15 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_BoomerAMGSetMaxIter(precond, 1); /* do only one iteration! */
      HYPRE_BoomerAMGSetRelaxType(precond, hypre_intpara[0]);   /* G-S/Jacobi hybrid relaxation */
      HYPRE_BoomerAMGSetCoarsenType(precond, hypre_intpara[1]);  /* coarsening type */
-     
+
      HYPRE_BoomerAMGSetMaxLevels(precond, hypre_intpara[3]); /* levels of coarsening */
      HYPRE_BoomerAMGSetInterpType(precond, hypre_intpara[4]);  /* interpolation type */
      HYPRE_BoomerAMGSetSmoothType(precond, hypre_intpara[5]);  /* smoother type */
      HYPRE_BoomerAMGSetCycleType(precond, hypre_intpara[6]);  /* coarsening type */
-     /* threshold for strong coupling (default 0.25 recommended for 2D Laplace, 0.5-0.6 
-	for 3D Laplace, 0.9 for elasticity) */
-     HYPRE_BoomerAMGSetStrongThreshold(precond, hypre_dppara[0]);  	 
-     
+     /* threshold for strong coupling (default 0.25 recommended for 2D Laplace, 0.5-0.6
+        for 3D Laplace, 0.9 for elasticity) */
+     HYPRE_BoomerAMGSetStrongThreshold(precond, hypre_dppara[0]);
+
      if( myverb > 10) fprintf(stdout,"SolveHypre: Created BoomerAMG preconditioner!\n");
 
    } else if ( hypre_pre == 2 || hypre_sol == 2 ) {
@@ -363,24 +518,24 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      if(precond) {
        if(myverb > 10) fprintf( stdout,"SolveHypre: Using previously defined AMS!\n");
      } else {
-       fprintf( stdout,"SolveHypre: Pointer to AMS preconditioner is NULL!\n");       
+       fprintf( stdout,"SolveHypre: Pointer to AMS preconditioner is NULL!\n");
        exit(EXIT_FAILURE);
      }
-   
+
    } else if ( hypre_pre == 3 || hypre_sol == 3 ) {
      int ilu_type, max_iter, reordering, print_level;
-     int max_nnz_row, schur_max_iter,tri_solve, ljac_iters,ujac_iters; 
+     int max_nnz_row, schur_max_iter,tri_solve, ljac_iters,ujac_iters;
      double tol, threshold;
-       
-     if (myverb > 8) fprintf( stdout,"SolveHypre: using ILU%d as preconditioner\n",*ILUn); 
-          
+
+     if (myverb > 8) fprintf( stdout,"SolveHypre: using ILU%d as preconditioner\n",*ILUn);
+
      /* (Required) Create ILU solver */
      HYPRE_ILUCreate(&precond);
 
      /* (Recommended) General solver options */
      HYPRE_ILUSetType(precond, ilu_type=*ILUn); /* 0, 1, 10, 11, 20, 21, 30, 31, 40, 41, 50 */
      HYPRE_ILUSetMaxIter(precond, max_iter=1);
-#if 0 
+#if 0
      HYPRE_ILUSetTol(precond, tol);
      HYPRE_ILUSetLocalReordering(precond, reordering); /* 0: none, 1: RCM */
      HYPRE_ILUSetPrintLevel(precond, print_level);
@@ -400,7 +555,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_ILUSetTriSolve(precond, tri_solve);
      HYPRE_ILUSetLowerJacobiIters(precond, ljac_iters);
      HYPRE_ILUSetUpperJacobiIters(precond, ujac_iters);
-     
+
      /* (Exclusively required) Function calls for using ILU as standalone solver */
      HYPRE_ILUSetup(precond, parcsr_M, b, x);
      HYPRE_ILUSolve(precond, parcsr_A, b, x);
@@ -411,7 +566,7 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    }
 
    else if ( hypre_pre == 4 ) {
-     if (myverb > 8) fprintf( stdout,"SolveHypre: using ParaSails as preconditioner\n"); 
+     if (myverb > 8) fprintf( stdout,"SolveHypre: using ParaSails as preconditioner\n");
 
      /* Now set up the ParaSails preconditioner and specify any parameters */
      HYPRE_ParaSailsCreate(comm, &precond);
@@ -431,17 +586,17 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      int max_steps=5,max_step_size=3;
      double kap_tolerance=1.0e-3;
 #if 0
-     if (myverb > 8) fprintf( stdout,"SolveHypre: using SPAI as preconditioner\n"); 
+     if (myverb > 8) fprintf( stdout,"SolveHypre: using SPAI as preconditioner\n");
      HYPRE_FSAICreate(&precond);
      HYPRE_FSAISetMaxSteps(precond, max_steps);
      HYPRE_FSAISetMaxStepSize(precond, max_step_size);
-     HYPRE_FSAISetKapTolerance(precond, kap_tolerance);     
+     HYPRE_FSAISetKapTolerance(precond, kap_tolerance);
      i = 3*(verbosity >= 6 );
      HYPRE_SPAISetLogging(precond, i);
 #else
      fprintf( stdout,"Hypre preconditioning method FSAI not compiled with!\n");
      exit(EXIT_FAILURE);
-#endif  
+#endif
    } else if( hypre_pre != 0) {
      fprintf( stdout,"Hypre preconditioning method %d not implemented\n",hypre_pre);
      exit(EXIT_FAILURE);
@@ -449,23 +604,23 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
    /* Create Hypre solver */
 
-   if ( hypre_sol == 1 ) { /* boomer AMG */     
+   if ( hypre_sol == 1 ) { /* boomer AMG */
      solver = precond;
      precond = NULL;
      /* Now setup - note that the input vectors are ignored so we can pass in NULLs */
      if (myverb > 10 ) fprintf(stdout,"SolveHypre: construct BoomerAMG solver");
 
      /* When BoomerAMG is used as a solver these override the definitions related to AMS as a preconditioner. */
-     HYPRE_BoomerAMGSetTol(solver, *TOL);      
-     HYPRE_BoomerAMGSetMaxIter(solver, *Rounds); 
+     HYPRE_BoomerAMGSetTol(solver, *TOL);
+     HYPRE_BoomerAMGSetMaxIter(solver, *Rounds);
 
      HYPRE_BoomerAMGSetup(solver, parcsr_A, par_b, par_x);
-     
+
 
    } else if ( hypre_sol == 2 ) { /* AMS */
      solver = precond;
      precond = NULL;
-     
+
      /* Now setup - note that the input vectors are ignored so we can pass in NULLs */
      if (myverb > 10 ) fprintf(stdout,"SolveHypre: construct AMS solver");
 
@@ -479,38 +634,38 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    } else if ( hypre_sol == 6) { /* PCG */
      /* Create solver */
      HYPRE_ParCSRPCGCreate(comm, &solver);
-     
+
      HYPRE_PCGSetMaxIter(solver, *Rounds); /* max iterations */
      HYPRE_PCGSetTol(solver, *TOL);        /* conv. tolerance */
 
      /* Set some parameters (See Reference Manual for more parameters) */
-     HYPRE_PCGSetAbsoluteTol(solver, hypre_dppara[5]);       
+     HYPRE_PCGSetAbsoluteTol(solver, hypre_dppara[5]);
 
      HYPRE_PCGSetTwoNorm(solver,hypre_intpara[10]);  /* use the two norm as the stopping criteria */
      //HYPRE_PCGSetFlex(solver,hypre_intpara[11]);     /* use flexible method for robustness */
-     
+
      i = (verbosity >= 6);
      if(verbosity >= 10) i=3;
      HYPRE_PCGSetPrintLevel(solver, i);   /* print solve info */
 
      i = (verbosity >= 6);
      HYPRE_PCGSetLogging(solver, i);      /* needed to get run info later */
-     
+
      /* Set the PCG preconditioner */
      if( hypre_pre == 1){
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
-     } else if ( hypre_pre == 4) { 
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+     } else if ( hypre_pre == 4) {
        HYPRE_PCGSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
-       
+
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up PCG linear system");
      HYPRE_ParCSRPCGSetup(solver, parcsr_A, par_b, par_x);
 
@@ -523,32 +678,32 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_BiCGSTABSetTol(solver, *TOL);       /* conv. tolerance */
 
      /* Set some parameters (See Reference Manual for more parameters) */
-     HYPRE_BiCGSTABSetAbsoluteTol(solver, hypre_dppara[5]);       
-     
+     HYPRE_BiCGSTABSetAbsoluteTol(solver, hypre_dppara[5]);
+
      i = (verbosity >= 6);
      if(verbosity >= 10) i=3;
      HYPRE_BiCGSTABSetPrintLevel(solver, i);   /* print solve info */
      i = (verbosity >= 6);
      HYPRE_BiCGSTABSetLogging(solver, i);      /* needed to get run info later */
- 
+
      /* Set the BiCGStabl preconditioner */
      if(hypre_pre == 1) {
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                   (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
-     } else if (hypre_pre == 4) { 
+                   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+     } else if (hypre_pre == 4) {
        HYPRE_BiCGSTABSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up BiCGStab linear system");
-     HYPRE_ParCSRBiCGSTABSetup(solver, parcsr_A, par_b, par_x);     
+     HYPRE_ParCSRBiCGSTABSetup(solver, parcsr_A, par_b, par_x);
 
-     
+
    } else if ( hypre_sol == 8) { /* GMRES */
      /* Create solver */
      HYPRE_ParCSRGMRESCreate(comm, &solver);
@@ -557,9 +712,9 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_GMRESSetTol(solver, *TOL);        /* GMRES conv. tolerance */
 
      HYPRE_GMRESSetKDim(solver, hypre_intpara[9]);
-     HYPRE_GMRESSetAbsoluteTol(solver, hypre_dppara[5]);       
-     
-     
+     HYPRE_GMRESSetAbsoluteTol(solver, hypre_dppara[5]);
+
+
      /* Set some parameters (See Reference Manual for more parameters) */
      i = (verbosity >= 6);
      if(verbosity >= 10) i=3;
@@ -569,22 +724,22 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
 
      if( hypre_pre == 1){
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre  == 3) {
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
-     } else if (hypre_pre == 4) { 
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+     } else if (hypre_pre == 4) {
        HYPRE_GMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			     (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
-       
-     if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up GMRes linear system");
-     HYPRE_ParCSRGMRESSetup(solver, parcsr_A, par_b, par_x);   
 
-     
+     if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up GMRes linear system");
+     HYPRE_ParCSRGMRESSetup(solver, parcsr_A, par_b, par_x);
+
+
    } else if ( hypre_sol == 9) { /* FlexGMRes */
      /* Create solver */
      HYPRE_ParCSRFlexGMRESCreate(comm, &solver);
@@ -593,8 +748,8 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_FlexGMRESSetTol(solver, *TOL);       /* conv. tolerance */
 
      HYPRE_FlexGMRESSetKDim(solver,hypre_intpara[9]);
-     HYPRE_FlexGMRESSetAbsoluteTol(solver, hypre_dppara[5]);       
-     
+     HYPRE_FlexGMRESSetAbsoluteTol(solver, hypre_dppara[5]);
+
      /* Set some parameters (See Reference Manual for more parameters) */
      i = (verbosity >= 6);
      if(verbosity >= 10) i=3;
@@ -605,21 +760,21 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the FlexGMRES preconditioner */
      if( hypre_pre == 1) {
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				 (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
-     } else if ( hypre_pre == 4) { 
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+     } else if ( hypre_pre == 4) {
        HYPRE_FlexGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up FlexGMRes linear system");
      HYPRE_ParCSRFlexGMRESSetup(solver, parcsr_A, par_b, par_x);
 
-     
+
    } else if ( hypre_sol == 10) { /* LGMRes */
      /* Create solver */
      HYPRE_ParCSRLGMRESCreate(comm, &solver);
@@ -627,11 +782,11 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_LGMRESSetMaxIter(solver, *Rounds); /* max iterations */
      HYPRE_LGMRESSetTol(solver, *TOL);       /* conv. tolerance */
 
-     HYPRE_LGMRESSetKDim(solver,hypre_intpara[9]);     
+     HYPRE_LGMRESSetKDim(solver,hypre_intpara[9]);
      HYPRE_LGMRESSetAbsoluteTol(solver, hypre_dppara[5]);
-     
-     HYPRE_LGMRESSetAugDim(solver, hypre_intpara[10]);       
-     
+
+     HYPRE_LGMRESSetAugDim(solver, hypre_intpara[10]);
+
      /* Set some parameters (See Reference Manual for more parameters) */
      i = (verbosity >= 6);
      if(verbosity >= 10) i=3;
@@ -642,23 +797,23 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the LGMRES preconditioner */
      if( hypre_pre == 1){
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				 (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      }
      else if ( hypre_pre  == 3) {
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
-     } else if ( hypre_pre == 4) { 
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+     } else if ( hypre_pre == 4) {
        HYPRE_LGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-			   (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
-       
+
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up LGMRes linear system");
      HYPRE_ParCSRLGMRESSetup(solver, parcsr_A, par_b, par_x);
 
-     
+
    } else if ( hypre_sol == 11) { /* COGMRES */
      /* Create solver */
      HYPRE_ParCSRCOGMRESCreate(comm, &solver);
@@ -669,13 +824,13 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      HYPRE_COGMRESSetTol(solver, *TOL);       /* conv. tolerance */
 
      HYPRE_COGMRESSetKDim(solver,hypre_intpara[9]);
-     HYPRE_COGMRESSetAbsoluteTol(solver, hypre_dppara[5]);       
+     HYPRE_COGMRESSetAbsoluteTol(solver, hypre_dppara[5]);
 
-     HYPRE_COGMRESSetUnroll(solver, hypre_intpara[10]);       
-     HYPRE_COGMRESSetCGS(solver, hypre_intpara[11]);       
+     HYPRE_COGMRESSetUnroll(solver, hypre_intpara[10]);
+     HYPRE_COGMRESSetCGS(solver, hypre_intpara[11]);
 
 
-     
+
      i = (verbosity >= 6);
      if(verbosity >= 10) i=3;
      HYPRE_COGMRESSetPrintLevel(solver, i);   /* print solve info */
@@ -684,29 +839,31 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
      /* Set the COGMRES preconditioner */
      if(hypre_pre == 1) {
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
+                 (HYPRE_PtrToSolverFcn) HYPRE_BoomerAMGSetup, precond);
      } else if(hypre_pre == 2 ) {
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_AMSSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_AMSSetup, precond);
      } else if ( hypre_pre == 3) {
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ILUSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
-     } else if (hypre_pre == 4) { 
+                (HYPRE_PtrToSolverFcn) HYPRE_ILUSetup, precond);
+     } else if (hypre_pre == 4) {
        HYPRE_COGMRESSetPrecond(solver, (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSolve,
-				(HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
+                (HYPRE_PtrToSolverFcn) HYPRE_ParaSailsSetup, precond);
      }
-       
+
      if (myverb > 12 ) fprintf(stdout,"SolveHypre: Setting up COGMRes linear system");
      HYPRE_ParCSRCOGMRESSetup(solver, parcsr_A, par_b, par_x);
 
-     
+
    } else {
      fprintf( stdout,"SolveHypre: Hypre solver method %d not implemented!\n",hypre_sol);
      exit(EXIT_FAILURE);
    }
 
+   CheckHypreError("SolveHypre1 (solver/preconditioner setup)", myid);
+
    Container->ilower = ilower;
-   Container->iupper = iupper;     
+   Container->iupper = iupper;
    Container->hypre_method = *hypre_method;
    Container->A = A;
    Container->b = b;
@@ -714,10 +871,10 @@ void STDCALLBULL FC_FUNC(solvehypre1,SOLVEHYPRE1)
    Container->Atilde = Atilde;
    Container->solver = solver;
    Container->precond = precond;
-   
-   if (myverb > 5) fprintf( stdout, "SolveHypre: setup time (method %d): %g\n", 
-			    Container->hypre_method, realtime_()-st );
-   
+
+   if (myverb > 5) fprintf( stdout, "SolveHypre: setup time (method %d): %g\n",
+           Container->hypre_method, realtime_()-st );
+
 } /* SolveHypre1 - matrix conversion and solver setup */
 
 
@@ -728,7 +885,7 @@ void STDCALLBULL FC_FUNC(updatehypre,UPDATEHYPRE)
   HYPRE_Solver solver;
   ElmerHypreContainer *Container;
   int hypre_sol;
-  
+
   Container = (ElmerHypreContainer*)(*ContainerPtr);
   solver = Container->solver;
 
@@ -786,7 +943,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
    int print_solution, print_system;
 
    double  *txvec, st, realtime_();
-   
+
    HYPRE_Solver solver, precond;
 
    HYPRE_ParCSRMatrix parcsr_A;
@@ -796,7 +953,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
    HYPRE_ParVector par_x;
 
    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
-   
+
    ElmerHypreContainer *Container;
 
    int verbosity = *verbosityPtr, myverb;
@@ -804,15 +961,15 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
 
    int num_iterations;
    double final_res_norm;
-   
+
    Container = (ElmerHypreContainer*)(*ContainerPtr);
 
    /* which process number am I? */
-   MPI_Comm_rank(comm, &myid); 
+   MPI_Comm_rank(comm, &myid);
 
    if(0) myid = 0;
-   
-   if( myid == 0 ) 
+
+   if( myid == 0 )
      myverb = verbosity;
    else
      myverb = 0;
@@ -822,7 +979,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
      if(myverb) fprintf( stdout, "ID no. %i: pointer passed into SolveHypre2 is NULL, not solving",myid);
      return;
    }
-  
+
    st = realtime_();
 
    HYPRE_IJMatrixGetObject(Container->A, (void**) &parcsr_A);
@@ -844,7 +1001,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
    for( k=0,i=0; i<local_size; i++ ) rcols[k++] = globaldofs[i];
 
    for( i=0; i<local_size; i++ ) txvec[i] = rhsvec[i];
-   
+
    HYPRE_IJVectorCreate(comm, ilower, iupper,&b);
    HYPRE_IJVectorSetObjectType(b, HYPRE_PARCSR);
    HYPRE_IJVectorInitialize(b);
@@ -858,25 +1015,25 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
 
    for( i=0; i<local_size; i++ ) txvec[i] = xvec[i];
    HYPRE_IJVectorSetValues(x, local_size, rcols, txvec );
-   
+
    HYPRE_IJVectorAssemble(b);
    HYPRE_IJVectorGetObject(b, (void **) &par_b);
 
    HYPRE_IJVectorGetObject(b, (void **) &par_b);
-   
+
    HYPRE_IJVectorAssemble(x);
    HYPRE_IJVectorGetObject(x, (void **) &par_x);
-   
+
    /* Now setup and solve! */
    if( hypre_sol == 1) {
      if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with BoomerAMG (method %d)\n",Container->hypre_method);
-     HYPRE_BoomerAMGSolve(Container->solver, parcsr_A, par_b, par_x);     
+     HYPRE_BoomerAMGSolve(Container->solver, parcsr_A, par_b, par_x);
      if (myverb > 5 ) {
        HYPRE_BoomerAMGGetNumIterations(Container->solver, &num_iterations);
        HYPRE_BoomerAMGGetFinalRelativeResidualNorm(solver, &final_res_norm);
      }
    }
-   
+
    else if( hypre_sol == 2 ) {
      if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with AMS (method %d)\n",Container->hypre_method);
      HYPRE_AMSSolve(Container->solver, parcsr_A, par_b, par_x);
@@ -885,7 +1042,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
        HYPRE_AMSGetFinalRelativeResidualNorm(solver, &final_res_norm);
      }
    }
-   
+
    else if ( hypre_sol == 6) {
      if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with PCG (method %d)\n",Container->hypre_method);
 //     HYPRE_ParCSRPCGSetMaxIter(solver, *Rounds); /* max iterations */
@@ -923,7 +1080,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
      if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with FlexGMRes (method %d)\n",Container->hypre_method);
 //     HYPRE_ParCSRFlexGMRESSetMaxIter(solver, *Rounds); /* max iterations */
      HYPRE_ParCSRFlexGMRESSolve(Container->solver, parcsr_A, par_b, par_x);
-     
+
      if (myverb > 5 ) {
        HYPRE_FlexGMRESGetNumIterations(Container->solver, &num_iterations);
        HYPRE_FlexGMRESGetFinalRelativeResidualNorm(solver, &final_res_norm);
@@ -931,7 +1088,7 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
    }
 
    else if ( hypre_sol == 10) {
-     if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with LGMRes (method %d)\n",Container->hypre_method);     
+     if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with LGMRes (method %d)\n",Container->hypre_method);
 //     HYPRE_ParCSRLGMRESSetMaxIter(solver, *Rounds); /* max iterations */
      HYPRE_ParCSRLGMRESSolve(Container->solver, parcsr_A, par_b, par_x);
 
@@ -941,45 +1098,47 @@ void STDCALLBULL FC_FUNC(solvehypre2,SOLVEHYPRE2)
      }
    }
    else if ( hypre_sol == 11) {
-     if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with COGMRes (method %d)\n",Container->hypre_method);     
+     if(myverb > 6) fprintf(stdout,"SolveHypre: Solving linear system with COGMRes (method %d)\n",Container->hypre_method);
 //     HYPRE_ParCSRLGMRESSetMaxIter(solver, *Rounds); /* max iterations */
      HYPRE_ParCSRCOGMRESSolve(Container->solver, parcsr_A, par_b, par_x);
-          
+
      if (myverb > 5 ) {
        HYPRE_COGMRESGetNumIterations(Container->solver, &num_iterations);
        HYPRE_COGMRESGetFinalRelativeResidualNorm(solver, &final_res_norm);
      }
    }
-   
+
+   CheckHypreError("SolveHypre2 (solve)", myid);
+
    for( k=0,i=0; i<local_size; i++ )
      if ( owner[i] ) rcols[k++] = globaldofs[i];
-   
+
    HYPRE_IJVectorGetValues(x, k, rcols, txvec );
-   
+
    for( i=0,k=0; i<local_size; i++ )
      if ( owner[i] ) xvec[i] = txvec[k++];
 
    if(myverb > 5) fprintf(stdout,"SolveHypre: Required iterations %d (method %d) to norm %lg\n",
-			  num_iterations,Container->hypre_method, final_res_norm);   
-   if (myverb > 4) fprintf( stdout, "SolveHypre: Solution time (method %d): %g\n", 
-			    Container->hypre_method, realtime_()-st );
+                  num_iterations,Container->hypre_method, final_res_norm);
+   if (myverb > 4) fprintf( stdout, "SolveHypre: Solution time (method %d): %g\n",
+                  Container->hypre_method, realtime_()-st );
    free( txvec );
    free( rcols );
-   
+
    HYPRE_IJVectorDestroy(x);
    HYPRE_IJVectorDestroy(b);
 }
 
 
 /*TODO - add function solvehypre3 that e..g updates the matrix in the
-       Container and Krylov solver but leaves the preconditioner   
+       Container and Krylov solver but leaves the preconditioner
        unchanged.
 */
 
 /* destroy HYPRE data structure stored in a fortran environment */
 void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)
   ( int** ContainerPtr, int *verbosityPtr ) {
-  
+
    ElmerHypreContainer* Container = (ElmerHypreContainer*)(*ContainerPtr);
    int verbosity = *verbosityPtr, myverb;
 
@@ -988,18 +1147,18 @@ void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)
    if (Container==0) return;
 
    myverb = verbosity;
-   
+
    hypre_sol = Container->hypre_method / 100;
    hypre_pre = Container->hypre_method % 100;
 
-   
+
    if(myverb > 10 ) fprintf(stdout,"SolveHypre: Destroying Hypre solver structures!\n");
 
    /* Destroy Hypre preconditioner */
    if ( hypre_pre == 1 ) {
      if(myverb > 10) fprintf(stdout,"SolveHypre: Destroying BoomerAMG preconditioner\n");
      HYPRE_BoomerAMGDestroy(Container->precond);
-   } 
+   }
    else if ( hypre_pre == 2 ) {
      if(myverb > 10) fprintf(stdout,"SolveHypre: Destroying AMS preconditioner\n");
      HYPRE_AMSDestroy(Container->precond);
@@ -1014,7 +1173,7 @@ void STDCALLBULL FC_FUNC(solvehypre4,SOLVEHYPRE4)
      HYPRE_ParaSailsDestroy(Container->precond);
    }
 
-   
+
    /* Destroy Hypre solver */
    if ( hypre_sol == 1) { /* boomer AMG */
      if(myverb > 10) fprintf(stdout,"SolveHypre: Destroying BoomerAMG solver\n");
@@ -1067,11 +1226,11 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
  (
   int *nrows,int *rows, int *cols, double *vals, int *nnodes,
   int *grows, int *gcols, double *gvals,
-  int *pirows, int *picols, double *pivals, 
-  int *perm, int *invperm, int *globaldofs, int *owner,  int *globalnodes, 
+  int *pirows, int *picols, double *pivals,
+  int *perm, int *invperm, int *globaldofs, int *owner,  int *globalnodes,
   int *nodeowner, double *xvec,
   double *rhsvec, int *pe, int *ILUn, int *Rounds, double *TOL,
-  double *xx_d, double *yy_d, double *zz_d, 
+  double *xx_d, double *yy_d, double *zz_d,
   int *hypre_method, int *hypre_intpara, double *hypre_dppara,
   int *verbosityPtr, int** ContainerPtr, int *fcomm
  )
@@ -1083,7 +1242,7 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    int ilower, iupper, nlower, nupper;
    int local_size, local_nodes, extra;
 
-   int solver_id;
+   int solver_id, AssembleRowByRow;
    int print_solution, print_system;
 
    double  *txvec, st, realtime_();
@@ -1101,10 +1260,16 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    int verbosity = *verbosityPtr, myverb;
    MPI_Comm comm=MPI_Comm_f2c(*fcomm);
 
-   
-   Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));   
+   AssembleRowByRow = hypre_intpara[19];
+
+#if defined(HAVE_HYPRE_CUDA)
+   ElmerHypreBindDevice(comm);
+#endif
+   HYPRE_Init();
+
+   Container = (ElmerHypreContainer*)malloc(sizeof(ElmerHypreContainer));
    *ContainerPtr=(int*)(Container);
-   
+
    st  = realtime_();
    MPI_Comm_rank(comm, &myid);
 
@@ -1112,9 +1277,9 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
      myverb = verbosity;
    else
      myverb = 0;
-   
+
    if(myverb>6) fprintf(stdout,"SolveHypre: Setting up AMS preconditioner / solver\n");
-   
+
    /* How many rows do I have? */
    local_size = *nrows;
    local_nodes = *nnodes;
@@ -1124,8 +1289,8 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    for( i=0; i<local_size; i++ )
      {
        if ( owner[i] ) {
-	 if ( iupper < globaldofs[i] ) iupper=globaldofs[i];
-	 if ( ilower > globaldofs[i] ) ilower=globaldofs[i];
+         if ( iupper < globaldofs[i] ) iupper=globaldofs[i];
+         if ( ilower > globaldofs[i] ) ilower=globaldofs[i];
        }
      }
 
@@ -1135,8 +1300,8 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    for( i=0; i<local_nodes; i++ )
      {
        if ( nodeowner[i] ) {
-	 if ( nupper < globalnodes[i] ) nupper=globalnodes[i];
-	 if ( nlower > globalnodes[i] ) nlower=globalnodes[i];
+         if ( nupper < globalnodes[i] ) nupper=globalnodes[i];
+         if ( nlower > globalnodes[i] ) nlower=globalnodes[i];
        }
      }
 #else
@@ -1150,13 +1315,13 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
          if ( nlower > k ) nlower = k;
        }
 #endif
-//   fprintf( stderr, "%d %d %d %d\n", ilower, iupper, nlower, nupper );
+  // fprintf( stderr, "%d %d %d %d\n", ilower, iupper, nlower, nupper );
 
    HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &G);
    HYPRE_IJMatrixSetObjectType(G, HYPRE_PARCSR);
    HYPRE_IJMatrixInitialize(G);
-   
-   {
+
+   if (AssembleRowByRow) {
       int nnz,irow,i,j,k,l,p,q,*rcols,csize=32;
 
       rcols = (int *)malloc( csize*sizeof(int) );
@@ -1179,9 +1344,52 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
          HYPRE_IJMatrixAddToValues(G, 1, &nnz, &irow, rcols, &gvals[grows[i]-1]);
       }
       free( rcols );
+   } else {
+      /* Bulk assembly: one HYPRE_IJMatrixAddToValues call for all owned rows. Owned rows
+         are not contiguous in grows/gvals, so (unlike the A matrix, which includes every
+         local row) we still have to compact them into local buffers first. */
+      int nnz,irow,i,j,k,l,p,q,pos,nowned,total_nnz;
+      int *rcols, *irows, *ncols;
+      double *dbuf;
+
+      nowned = 0;
+      total_nnz = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nowned++;
+        total_nnz += grows[i+1] - grows[i];
+      }
+
+      irows = (int *)malloc( nowned*sizeof(int) );
+      ncols = (int *)malloc( nowned*sizeof(int) );
+      rcols = (int *)malloc( total_nnz*sizeof(int) );
+      dbuf  = (double *)malloc( total_nnz*sizeof(double) );
+
+      pos = 0; k = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nnz = grows[i+1] - grows[i];
+        irows[k] = globaldofs[i];
+        ncols[k] = nnz;
+        k++;
+        for (j = grows[i]; j < grows[i+1]; j++) {
+          l = gcols[j-1]-1;
+          p = l % 3;
+          q = l / 3;
+          rcols[pos] = 3*globalnodes[q]+p;
+          dbuf[pos]  = gvals[j-1];
+          pos++;
+        }
+      }
+
+      if ( nowned > 0 )
+        HYPRE_IJMatrixAddToValues(G, nowned, ncols, irows, rcols, dbuf);
+
+      free( rcols ); free( irows ); free( ncols ); free( dbuf );
    }
-   
+
    HYPRE_IJMatrixAssemble(G);
+   CheckHypreError("CreateHypreAMS (G assembly)", myid);
    HYPRE_IJMatrixGetObject(G, (void**) &parcsr_G);
 
 
@@ -1200,8 +1408,8 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
    HYPRE_IJMatrixCreate(comm, ilower, iupper, nlower, nupper, &Pi);
    HYPRE_IJMatrixSetObjectType(Pi, HYPRE_PARCSR);
    HYPRE_IJMatrixInitialize(Pi);
-   
-   {
+
+   if (AssembleRowByRow) {
       int nnz,irow,i,j,k,l,p,q,*rcols,csize=32;
 
       rcols = (int *)malloc( csize*sizeof(int) );
@@ -1224,85 +1432,141 @@ void STDCALLBULL FC_FUNC(createhypreams,CREATEHYPREAMS)
          HYPRE_IJMatrixAddToValues(Pi, 1, &nnz, &irow, rcols, &pivals[pirows[i]-1]);
       }
       free( rcols );
+   } else {
+      /* Bulk assembly: one HYPRE_IJMatrixAddToValues call for all owned rows (see G above). */
+      int nnz,irow,i,j,k,l,p,q,pos,nowned,total_nnz;
+      int *rcols, *irows, *ncols;
+      double *dbuf;
+
+      nowned = 0;
+      total_nnz = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nowned++;
+        total_nnz += pirows[i+1] - pirows[i];
+      }
+
+      irows = (int *)malloc( nowned*sizeof(int) );
+      ncols = (int *)malloc( nowned*sizeof(int) );
+      rcols = (int *)malloc( total_nnz*sizeof(int) );
+      dbuf  = (double *)malloc( total_nnz*sizeof(double) );
+
+      pos = 0; k = 0;
+      for (i = 0; i < local_size; i++) {
+        if ( !owner[i] ) continue;
+        nnz = pirows[i+1] - pirows[i];
+        irows[k] = globaldofs[i];
+        ncols[k] = nnz;
+        k++;
+        for (j = pirows[i]; j < pirows[i+1]; j++) {
+          l = picols[j-1]-1;
+          p = l % 3;
+          q = l / 3;
+          rcols[pos] = 3*globalnodes[q]+p;
+          dbuf[pos]  = pivals[j-1];
+          pos++;
+        }
+      }
+
+      if ( nowned > 0 )
+        HYPRE_IJMatrixAddToValues(Pi, nowned, ncols, irows, rcols, dbuf);
+
+      free( rcols ); free( irows ); free( ncols ); free( dbuf );
    }
-   
+
    HYPRE_IJMatrixAssemble(Pi);
+   CheckHypreError("CreateHypreAMS (Pi assembly)", myid);
    HYPRE_IJMatrixGetObject(Pi, (void**) &parcsr_Pi);
+   CheckHypreError("CreateHypreAMS (Pi GetObject)", myid);
 
-   
-#if 0
-   for( k=0,i=0; i<local_nodes; i++ ) rcols[k++] = globalnodes[i];
+  /* This is commented out, probably was used to set the coordinate vectors for AMS, but it is not used
+     because we are using the gradient instead of the
+     coordinate vectors. xx/yy/zz IJVectors and xx_d/yy_d/zz_d from Fortran were never allocated
+     and this code would trigger "Error in argument 4" (HYPRE_IJVectorSetValues' NULL values check),
+     so for now this is commented out.
+  */
+// #if 0
+//    for( k=0,i=0; i<local_nodes; i++ ) rcols[k++] = globalnodes[i];
 
-   HYPRE_IJVectorCreate(comm, nlower, nupper,&xx);
-   HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(xx);
-   HYPRE_IJVectorSetValues(xx, local_nodes, rcols,xx_d);
-   HYPRE_IJVectorAssemble(xx);
-   HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
+//    HYPRE_IJVectorCreate(comm, nlower, nupper,&xx);
+//    HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(xx);
+//    HYPRE_IJVectorSetValues(xx, local_nodes, rcols,xx_d);
+//    HYPRE_IJVectorAssemble(xx);
+//    HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
 
-   HYPRE_IJVectorCreate(comm, nlower, nupper,&yy);
-   HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(yy);
-   HYPRE_IJVectorSetValues(yy, local_nodes, rcols, yy_d);
-   HYPRE_IJVectorAssemble(yy);
-   HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
+//    HYPRE_IJVectorCreate(comm, nlower, nupper,&yy);
+//    HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(yy);
+//    HYPRE_IJVectorSetValues(yy, local_nodes, rcols, yy_d);
+//    HYPRE_IJVectorAssemble(yy);
+//    HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
 
-   HYPRE_IJVectorCreate(comm, nlower, nupper,&zz);
-   HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(zz);
-   HYPRE_IJVectorSetValues(zz, local_nodes, rcols, zz_d);
-   HYPRE_IJVectorAssemble(zz);
-   HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
-#else
-   HYPRE_IJVectorCreate(comm, ilower, iupper,&xx);
-   HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(xx);
-   HYPRE_IJVectorSetValues(xx, local_size, rcols, xx_d);
-   HYPRE_IJVectorAssemble(xx);
-   HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
+//    HYPRE_IJVectorCreate(comm, nlower, nupper,&zz);
+//    HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(zz);
+//    HYPRE_IJVectorSetValues(zz, local_nodes, rcols, zz_d);
+//    HYPRE_IJVectorAssemble(zz);
+//    HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
+// #else
+//    HYPRE_IJVectorCreate(comm, ilower, iupper,&xx);
+//    HYPRE_IJVectorSetObjectType(xx, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(xx);
+//    HYPRE_IJVectorSetValues(xx, local_size, rcols, xx_d);
+//    HYPRE_IJVectorAssemble(xx);
+//    HYPRE_IJVectorGetObject(xx, (void **) &par_xx);
 
-   HYPRE_IJVectorCreate(comm, ilower, iupper,&yy);
-   HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(yy);
-   HYPRE_IJVectorSetValues(yy, local_size, rcols, yy_d);
-   HYPRE_IJVectorAssemble(yy);
-   HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
+//    HYPRE_IJVectorCreate(comm, ilower, iupper,&yy);
+//    HYPRE_IJVectorSetObjectType(yy, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(yy);
+//    HYPRE_IJVectorSetValues(yy, local_size, rcols, yy_d);
+//    HYPRE_IJVectorAssemble(yy);
+//    HYPRE_IJVectorGetObject(yy, (void **) &par_yy);
 
-   HYPRE_IJVectorCreate(comm, ilower, iupper,&zz);
-   HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
-   HYPRE_IJVectorInitialize(zz);
-   HYPRE_IJVectorSetValues(zz, local_size, rcols, zz_d);
-   HYPRE_IJVectorAssemble(zz);
-   HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
-#endif
+//    HYPRE_IJVectorCreate(comm, ilower, iupper,&zz);
+//    HYPRE_IJVectorSetObjectType(zz, HYPRE_PARCSR);
+//    HYPRE_IJVectorInitialize(zz);
+//    HYPRE_IJVectorSetValues(zz, local_size, rcols, zz_d);
+//    HYPRE_IJVectorAssemble(zz);
+//    HYPRE_IJVectorGetObject(zz, (void **) &par_zz);
+// #endif
 
-   HYPRE_AMSCreate(&precond); 
+   HYPRE_AMSCreate(&precond);
+   CheckHypreError("CreateHypreAMS (AMSCreate, before SetDiscreteGradient)", myid);
    HYPRE_AMSSetDiscreteGradient(precond,parcsr_G);
+   CheckHypreError("CreateHypreAMS (SetDiscreteGradient)", myid);
    HYPRE_AMSSetInterpolations(precond, parcsr_Pi, NULL, NULL, NULL);
-//   HYPRE_AMSSetEdgeConstantVectors(precond,par_xx,par_yy,par_zz);
-//   HYPRE_AMSSetCoordinateVectors(precond,par_xx,par_yy,par_zz);
+   CheckHypreError("CreateHypreAMS (SetInterpolations)", myid);
 
    // AMS Parameters
    HYPRE_AMSSetMaxIter(precond,hypre_intpara[0]);
    HYPRE_AMSSetTol(precond,hypre_dppara[0]);
-   
+
    HYPRE_AMSSetCycleType(precond, hypre_intpara[1]); // 1-14
    HYPRE_AMSSetSmoothingOptions(precond, hypre_intpara[2], hypre_intpara[3],
-				hypre_dppara[1], hypre_dppara[2]);
+           hypre_dppara[1], hypre_dppara[2]);
+#if defined(HAVE_HYPRE_CUDA)
+  // Interpolation type 0 is not supported on GPU, use 6 instead.
+  // see Hypre BoomerAMG docs for more info
+   HYPRE_AMSSetAlphaAMGOptions(precond, 10, 1, 3, hypre_dppara[3], 6, 0);
+   HYPRE_AMSSetBetaAMGOptions(precond, 10, 1, 3, hypre_dppara[4], 6, 0);
+#else
    HYPRE_AMSSetAlphaAMGOptions(precond, 10, 1, 3, hypre_dppara[3], 0, 0);
    HYPRE_AMSSetBetaAMGOptions(precond, 10, 1, 3, hypre_dppara[4], 0, 0);
+#endif
 
-   if(hypre_intpara[4]) 
+   if(hypre_intpara[4])
      HYPRE_AMSSetBetaPoissonMatrix(precond,NULL);
-   
+
    i = (verbosity >= 6);
    if(verbosity >= 10) i=3;
-   HYPRE_AMSSetPrintLevel(precond, i); 
-   
+   HYPRE_AMSSetPrintLevel(precond, i);
+   CheckHypreError("CreateHypreAMS (AMS parameters)", myid);
+
    Container->precond = precond;
-   Container->G = G; 
-   Container->Pi = Pi; 
-   
+   Container->G = G;
+   Container->Pi = Pi;
+
    if(myverb>5) fprintf( stdout, "SolveHypre: AMS preconditioner setup time: %g\n", realtime_()-st );
 }
 

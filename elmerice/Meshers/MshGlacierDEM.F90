@@ -104,7 +104,7 @@ IF (.NOT.Serial) THEN
       WRITE(iNp,'(i4.4)')Np
    ELSE
       WRITE(*,*)'Work for a number of partitions < 1000'
-      STOP
+      ERROR STOP
    END IF
    iNp = ADJUSTL(iNp)
 END IF
@@ -132,7 +132,7 @@ DO j = 1, Nsy
       IF ((ABS(x-xs(k))>1.0e-6*dsx).OR.(ABS(y-ys(k))>1.0e-6*dsy)) THEN
          WRITE(*,*)'Structure of the DEM is not conforming to what is in mesh_input.dat for Surface DEM' 
          WRITE(*,*)'Found that point ',k,' coordinate is ',xs(k),ys(k),' whereas it should be ',x,y 
-         STOP
+         ERROR STOP
       END IF
    END DO
 END DO
@@ -145,7 +145,7 @@ DO j = 1, Nby
       IF ((ABS(x-xb(k))>1.0e-6*dbx).OR.(ABS(y-yb(k))>1.0e-6*dby)) THEN
          WRITE(*,*)'Structure of the DEM is not conforming to what is in mesh_input.dat for Surface DEM' 
          WRITE(*,*)'Found that point ',k,' coordinate is ',xb(k),yb(k),' whereas it should be ',x,y 
-         STOP
+         ERROR STOP
       END IF
    END DO
 END DO
@@ -194,7 +194,7 @@ DO k = 1, Np
                        MINVAL(xs),MINVAL(ys),MAXVAL(xs),MAXVAL(ys)
       WRITE(*,*)'Mesh xmin, ymin, xmax, ymax: ', &
                        MINVAL(xnode),MINVAL(ynode),MAXVAL(xnode),MAXVAL(ynode)
-      STOP
+      ERROR STOP
    END IF
 
    IF (((MINVAL(xnode)<MINVAL(xb)).OR.(MAXVAL(xnode)>MAXVAL(xb))).OR. &
@@ -204,7 +204,7 @@ DO k = 1, Np
                        MINVAL(xb),MINVAL(yb),MAXVAL(xb),MAXVAL(yb)
       WRITE(*,*)'Mesh xmin, ymin, xmax, ymax: ', &
                        MINVAL(xnode),MINVAL(ynode),MAXVAL(xnode),MAXVAL(ynode)
-      STOP
+      ERROR STOP
    END IF
 
    DO n=1, NtN

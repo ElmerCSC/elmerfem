@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO box_in_box.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(radiation_box_in_box LABELS radiation radiosity)
+ADD_ELMER_TEST(radiation_box_in_box NPROCS 1 2 4 8 LABELS radiation radiosity)

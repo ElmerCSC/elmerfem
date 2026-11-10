@@ -48,7 +48,10 @@ End
 Solver 1
   Equation = "NS-Vec"
 
-  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+  Solver Timing = Logical True
+  Bulk Assembly Timing = Logical True
+  Linear System Timing = Logical True
 
   Linear System Solver = Iterative
   Linear System Iterative Method = BiCGStabL
@@ -69,7 +72,7 @@ End
 Solver 2
   Equation = "Heat"
 
-  Procedure = "HeatSolveVec" "HeatSolver"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
 
   Linear System Solver = Iterative

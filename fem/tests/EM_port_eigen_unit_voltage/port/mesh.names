@@ -1,0 +1,6 @@
+! ----- names for bodies -----
+$ substrate = 1
+$ air = 2
+! ----- names for boundaries -----
+$ outersurf = 1
+$ signal = 2

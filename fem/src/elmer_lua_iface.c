@@ -3,7 +3,7 @@
  *  Elmer, A Finite Element Software for Multiphysical Problems
  *
  *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
- * 
+ *
  *  This library is free software; you can redistribute it and/or
  *  modify it under the terms of the GNU Lesser General Public
  *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  Lesser General Public License for more details.
- * 
+ *
  *  You should have received a copy of the GNU Lesser General Public
- *  License along with this library (in file ../LGPL-2.1); if not, write 
- *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+ *  License along with this library (in file ../LGPL-2.1); if not, write
+ *  to the Free Software Foundation, Inc., 51 Franklin Street,
  *  Fifth Floor, Boston, MA  02110-1301  USA
  *
  *****************************************************************************/
@@ -45,9 +45,6 @@
 
 #include "lauxlib.h"
 #include "lualib.h"
-#include "lapi.h"
-#include "lstate.h"
-
 
 static void stackDump(lua_State *L) {
   int i;
@@ -59,21 +56,21 @@ static void stackDump(lua_State *L) {
         printf("`%s'", lua_tostring(L, i));
         break;
 
-      case LUA_TBOOLEAN:  
+      case LUA_TBOOLEAN:
         printf(lua_toboolean(L, i) ? "true" : "false");
         break;
 
-      case LUA_TNUMBER:  
+      case LUA_TNUMBER:
         printf("%g", lua_tonumber(L, i));
         break;
 
-      default: 
+      default:
         printf("%s", lua_typename(L, t));
         break;
     }
-    printf("  ");  
+    printf("  ");
   }
-  printf("\n"); 
+  printf("\n");
 }
 
 lua_State* lua_init() {
@@ -91,14 +88,6 @@ void lua_runfile(lua_State* L, const char* filename) {
 
 void lua_pop_c(lua_State* L, int n) {
   lua_pop(L, n);
-}
-
-void lua_set_type_c(lua_State *L, int nargs)
-{
-  StkId func;
-
-  func = L->top - (nargs+1);
-  ttype(func) = LUA_TFUNCTION;
 }
 
 /* static methods and structs for handling the tx array */
@@ -120,7 +109,7 @@ static NumArray *checkarray(lua_State *L) {
   return (NumArray *) ud;
 }
 
-/* Get element pointer */ 
+/* Get element pointer */
 static double *getelem(lua_State *L) {
   NumArray *a = checkarray(L);
   /* int index = luaL_checkint(L, 2); */
@@ -161,7 +150,6 @@ static const struct luaL_reg arraylib [] = {
     {NULL, NULL}
 };
 
-#pragma omp threadprivate(arraylib)
 /* end of tx array associated static methods */
 
 /* turn arraylib instances into metatables with set and get methods
@@ -177,6 +165,7 @@ int luaopen_array(lua_State *L) {
   lua_pushstring(L, "set");
   lua_gettable(L, 2);
   lua_settable(L, 1);
+  lua_pop(L, 2);
   return 0;
 }
 

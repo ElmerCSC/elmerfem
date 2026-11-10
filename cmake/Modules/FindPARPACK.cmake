@@ -23,7 +23,7 @@ IF(NOT PARPACK_FOUND)
   MESSAGE(STATUS "Finding parpack libraries")
   # Try to find with CMake config file of upstream parpack.
   FIND_PACKAGE(PARPACK CONFIG NAMES arpack arpackng arpack-ng parpack parpackng parpack-ng)
-  IF(PARPACK_FOUND)
+  IF(PARPACK_FOUND AND TARGET parpack)
     GET_TARGET_PROPERTY(PARPACK_INCLUDE_DIR parpack INTERFACE_INCLUDE_DIRECTORIES)
     # Most likely arpack and parpack are packed togeher (like in Arch linux)
     # or they share the same include directory even in splitted packages (parpack-dev depends on arpack-dev)

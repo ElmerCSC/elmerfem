@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -29,7 +29,7 @@
 ! *
 ! ****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 
@@ -37,10 +37,10 @@ MODULE ListMatrixArray
   USE Messages
   USE Types
   USE GeneralUtils, ONLY : I2S
-  
+
   IMPLICIT NONE
 CONTAINS
-  
+
   !-------------------------------------------------------------------------------
   !> Allocates an empty array list matrix.
   !-------------------------------------------------------------------------------
@@ -50,16 +50,16 @@ CONTAINS
     INTEGER,INTENT(IN) :: N
     INTEGER, OPTIONAL :: PoolSize
     LOGICAL, OPTIONAL :: Atomic
-    
+
     INTEGER :: i,istat, nthr, TID, psize
     LOGICAL :: InitLocks
-    
+
     psize = 1024
     IF (PRESENT(PoolSize)) psize = PoolSize
 
     InitLocks = .FALSE.
     IF (PRESENT(Atomic)) InitLocks = Atomic
-    
+
     ! Allocate ListMatrix and associated pools
     nthr = 1
     !$ nthr = omp_get_max_threads()
@@ -70,16 +70,16 @@ CONTAINS
                  'Allocation error for ListMatrix of size: '//I2S(n))
     END IF
     IF (InitLocks) CALL ListMatrixArray_InitializeAtomic(ListMatrixArray)
-    
+
     !$OMP PARALLEL &
     !$OMP SHARED(ListMatrixArray, N, psize) &
     !$OMP PRIVATE(i, TID) DEFAULT(NONE)
-    
+
     TID = 1
     !$ TID = omp_get_thread_num()+1
 
     CALL ListMatrixPool_Initialize(ListMatrixArray % Pool(TID), psize)
-    
+
     !$OMP DO
     DO i=1,N
       ListMatrixArray % Rows(i) % Head => NULL()
@@ -89,7 +89,7 @@ CONTAINS
     !$OMP END DO NOWAIT
     !$OMP END PARALLEL
   END SUBROUTINE ListMatrixArray_Allocate
- 
+
   !-------------------------------------------------------------------------------
   !> Free an array list matrix.
   !-------------------------------------------------------------------------------
@@ -99,7 +99,7 @@ CONTAINS
 
     TYPE(ListMatrixEntryPool_t), POINTER :: p, p1
     INTEGER :: N,TID
-    
+
     N = SIZE(ListMatrixArray % Pool)
     !$OMP PARALLEL &
     !$OMP SHARED(ListMatrixArray, N) &
@@ -113,7 +113,7 @@ CONTAINS
     !$OMP END PARALLEL
 
     CALL ListMatrixArray_FreeAtomic(ListMatrixArray)
-    
+
     DEALLOCATE(ListMatrixArray % Rows, ListMatrixArray % Pool)
   END SUBROUTINE ListMatrixArray_Free
 
@@ -122,16 +122,16 @@ CONTAINS
     TYPE(ListMatrixArray_t) :: ListMatrixArray
 
     INTEGER :: i, N, istat
-    
+
 #ifdef _OPENMP
     N = SIZE(ListMatrixArray % Rows)
-    
+
     ALLOCATE( ListMatrixArray % RowLocks(n), STAT=istat )
     IF( istat /= 0 ) THEN
       CALL Fatal('ListMatrixArray_InitializeAtomic',&
             'Allocation error for ListMatrix row locks of size: '//I2S(n))
     END IF
-      
+
     !$OMP PARALLEL DO &
     !$OMP SHARED(ListMatrixArray,N) &
     !$OMP PRIVATE(i) DEFAULT(NONE)
@@ -151,7 +151,7 @@ CONTAINS
 #ifdef _OPENMP
     IF (ALLOCATED(ListMatrixArray % RowLocks)) THEN
       N = SIZE(ListMatrixArray % RowLocks)
-      
+
       !$OMP PARALLEL DO &
       !$OMP SHARED(ListMatrixArray,N) &
       !$OMP PRIVATE(i) DEFAULT(NONE)
@@ -190,29 +190,29 @@ CONTAINS
     END IF
 #endif
   END SUBROUTINE ListMatrixArray_UnlockRow
-  
+
   !-------------------------------------------------------------------------------
   !> Transfer sparsity pattern of the array list matrix format to a graph format,
-  !> used in most places of the code. 
+  !> used in most places of the code.
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_ToGraph( ListMatrixArray, Graph)
     IMPLICIT NONE
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     TYPE(Graph_t) :: Graph
-    
+
     ! TODO
     CALL Fatal('ListMatrixArray_ToGraph','Not implemented yet!')
   END SUBROUTINE ListMatrixArray_ToGraph
 
   !-------------------------------------------------------------------------------
-  !> Transfer the flexible list matrix to the more efficient CRS matrix that is 
+  !> Transfer the flexible list matrix to the more efficient CRS matrix that is
   !> used in most places of the code. The matrix structure can accommodate both forms.
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_ToCRSMatrix( ListMatrixArray, CRSMatrix )
     IMPLICIT NONE
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     TYPE(Matrix_t) :: CRSMatrix
-    
+
     ! TODO
     CALL Fatal('ListMatrixArray_ToCRSMatrix','Not implemented yet!')
   END SUBROUTINE ListMatrixArray_ToCRSMatrix
@@ -221,13 +221,13 @@ CONTAINS
     IMPLICIT NONE
     TYPE(ListMatrixArray_t) :: ListMatrixArray
     TYPE(Matrix_t) :: CRSMatrix
-    
+
     ! TODO
     CALL Fatal('ListMatrixArray_FromCRSMatrix','Not implemented yet!')
   END SUBROUTINE ListMatrixArray_FromCRSMatrix
 
   !-------------------------------------------------------------------------------
-  !> Add index (row,col) to the matrix sparsity structure 
+  !> Add index (row,col) to the matrix sparsity structure
   !-------------------------------------------------------------------------------
   SUBROUTINE ListMatrixArray_AddEntry(ListMatrixArray, row, col, val, Atomic)
     IMPLICIT NONE
@@ -243,7 +243,7 @@ CONTAINS
     !$ TID = omp_get_thread_num() + 1
 
     CALL ListMatrixArray_LockRow(ListMatrixArray, row, Atomic)
-    
+
     CEntryPtr => ListMatrixArray % Rows(row) % Head
     IF (.NOT. ASSOCIATED(CEntryPtr)) THEN
        ! Empty matrix row, add entry and return
@@ -260,16 +260,16 @@ CONTAINS
        ! Add a new entry to the Head of list
        ListMatrixArray % Rows(row) % Head => &
             ListMatrixPool_GetListEntry(ListMatrixArray % Pool(TID), col, CEntryPtr)
-       ListMatrixArray % Rows(row) % Degree = & 
+       ListMatrixArray % Rows(row) % Degree = &
             ListMatrixArray % Rows(row) % Degree + 1
        CALL ListMatrixArray_UnlockRow(ListMatrixArray, row, Atomic)
        RETURN
     END IF
-    
+
     ! Search a correct place for the element
     PEntryPtr => CEntryPtr
     CEntryPtr => CEntryPtr % Next
-    
+
     DO WHILE( ASSOCIATED(CEntryPtr) )
        ! Do not add duplicates
        IF (CEntryPtr % Index == col) THEN
@@ -278,14 +278,14 @@ CONTAINS
        END IF
        ! Place found, exit search loop
        IF (CEntryPtr % Index > col) EXIT
-       
+
        PEntryPtr => CEntryPtr
        CEntryPtr => CEntryPtr % Next
     END DO
 
     ! Add entry to the correct place in the list
     PEntryPtr % Next => ListMatrixPool_GetListEntry(ListMatrixArray % Pool(TID), col, CEntryPtr)
-    ListMatrixArray % Rows(row) % Degree = & 
+    ListMatrixArray % Rows(row) % Degree = &
           ListMatrixArray % Rows(row) % Degree + 1
     CALL ListMatrixArray_UnlockRow(ListMatrixArray, row, Atomic)
   END SUBROUTINE ListMatrixArray_AddEntry
@@ -299,15 +299,15 @@ CONTAINS
     INTEGER, INTENT(IN) :: row, nentry
     INTEGER, INTENT(IN) :: Indexes(nentry), Perm(nentry)
     LOGICAL, OPTIONAL :: Atomic
-    
+
     TYPE(ListMatrixEntry_t), POINTER :: CEntryPtr, PEntryPtr, NEntryPtr
     INTEGER :: TID, centry, sentry, rentry, col, prevcol
-        
+
     TID = 1
     !$ TID = omp_get_thread_num() + 1
 
     CALL ListMatrixArray_LockRow(ListMatrixArray, row, Atomic)
-    
+
     CEntryPtr => ListMatrixArray % Rows(row) % Head
     sentry = 1
     col = Indexes(Perm(1))
@@ -325,11 +325,11 @@ CONTAINS
        NEntryPtr => ListMatrixPool_GetListEntry(ListMatrixArray % Pool(TID), col, CEntryPtr)
        CEntryPtr => NEntryPtr
        ListMatrixArray % Rows(row) % Head => CEntryPtr
-       ListMatrixArray % Rows(row) % Degree = & 
+       ListMatrixArray % Rows(row) % Degree = &
             ListMatrixArray % Rows(row) % Degree + 1
        sentry = 2
     END IF
-    
+
     prevcol = -1
     IF (sentry > 1) prevcol = Indexes(Perm(1))
 
@@ -347,14 +347,14 @@ CONTAINS
          PEntryPtr => CEntryPtr
          CEntryPtr => PEntryPtr % Next
        END DO
-       
+
        IF (ASSOCIATED(CEntryPtr)) THEN
          ! Do not add duplicates
          IF (CEntryPtr % Index /= col) THEN
            ! Create new element between PEntryPtr and CEntryPtr
            NEntryPtr => ListMatrixPool_GetListEntry(ListMatrixArray % Pool(TID), col, CEntryPtr)
            PEntryPtr % Next => NEntryPtr
-           ListMatrixArray % Rows(row) % Degree = & 
+           ListMatrixArray % Rows(row) % Degree = &
                 ListMatrixArray % Rows(row) % Degree + 1
 
            ! Advance to next element in list
@@ -380,7 +380,7 @@ CONTAINS
        NEntryPtr => ListMatrixPool_GetListEntry(ListMatrixArray % Pool(TID), col, NULL())
        PEntryPtr % Next => NEntryPtr
        PEntryPtr => NEntryPtr
-       ListMatrixArray % Rows(row) % Degree = & 
+       ListMatrixArray % Rows(row) % Degree = &
             ListMatrixArray % Rows(row) % Degree + 1
      END DO
 
@@ -388,28 +388,28 @@ CONTAINS
    END SUBROUTINE ListMatrixArray_AddEntries
 
    !-------------------------------------------------------------------------------
-   !> Delete entry (row,col) from the matrix sparsity structure 
+   !> Delete entry (row,col) from the matrix sparsity structure
    !-------------------------------------------------------------------------------
    SUBROUTINE ListMatrixArray_DeleteEntry(ListMatrixArray, row, col, Atomic)
      IMPLICIT NONE
      TYPE(ListMatrixArray_t) :: ListMatrixArray
      INTEGER, INTENT(IN) :: row, col
      LOGICAL, OPTIONAL :: Atomic
-     
+
      TYPE(ListMatrixEntry_t), POINTER :: CEntryPtr, PEntryPtr
      INTEGER :: TID
-     
+
      TID = 1
      !$ TID = omp_get_thread_num() + 1
 
      CALL ListMatrixArray_LockRow(ListMatrixArray, row, Atomic)
-     
+
      ! Search for element from the list
      PEntryPtr => NULL()
-     CEntryPtr => ListMatrixArray % Rows(row) % Head     
+     CEntryPtr => ListMatrixArray % Rows(row) % Head
      DO WHILE( ASSOCIATED(CEntryPtr) )
        IF (CEntryPtr % Index >= col) EXIT
-       
+
        PEntryPtr => CEntryPtr
        CEntryPtr => CEntryPtr % Next
      END DO
@@ -424,24 +424,24 @@ CONTAINS
            ListMatrixArray % Rows(row) % Head => CEntryPtr % Next
          END IF
          CALL ListMatrixPool_AddDeletedEntry(ListMatrixArray % Pool(TID), CEntryPtr)
-         
+
          ListMatrixArray % Rows(row) % Degree = &
            MAX(ListMatrixArray % Rows(row) % Degree - 1, 0)
        END IF
      END IF
-     
+
      CALL ListMatrixArray_UnlockRow(ListMatrixArray, row, Atomic)
    END SUBROUTINE ListMatrixArray_DeleteEntry
-   
+
    !-------------------------------------------------------------------------------
    !> ListMatrixPool support routines
    !-------------------------------------------------------------------------------
    SUBROUTINE ListMatrixPool_Initialize(Pool, PoolSize)
      IMPLICIT NONE
-     
+
      TYPE(ListMatrixPool_t) :: Pool
      INTEGER, INTENT(IN) :: PoolSize
-     
+
      Pool % EntryPool => NULL()
      Pool % Deleted => NULL()
      Pool % PoolSize = PoolSize
@@ -456,7 +456,7 @@ CONTAINS
      TYPE(ListMatrixEntryPool_t), POINTER :: EntryPool
 
      INTEGER :: astat
-     
+
      ALLOCATE(EntryPool, STAT=astat)
      IF (astat == 0) ALLOCATE(EntryPool % Entries(Pool % PoolSize), STAT=astat)
      IF (astat /= 0) THEN
@@ -502,12 +502,12 @@ CONTAINS
         IF (Pool % PoolSize < Pool % EntryPool % NextIndex) THEN
            CALL ListMatrixPool_Enlarge(Pool)
         END IF
-        
+
         ! Get next element from pool
         ListEntry => Pool % EntryPool % Entries(Pool % EntryPool % NextIndex)
         Pool % EntryPool % NextIndex = Pool % EntryPool % NextIndex + 1
      END IF
-     
+
      ListEntry % Index = ind
      ListEntry % Next => Next
    END FUNCTION ListMatrixPool_GetListEntry

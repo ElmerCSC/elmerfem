@@ -66,7 +66,11 @@ Solver 2
   Output Format = vtu
   Discontinuous Galerkin = True
 
-  Reference Values(6) = Real 44 8 89100 1388 43973415 512.62222222229627
+! The exported "ve_stress" lag stress is stored by its independent components
+! now, so in this plane case it is written with three of them instead of the
+! four of the earlier full 2x2 layout. That shrinks the file and shifts the
+! first four counts below; the data checksum and the pseudonorm are unchanged.
+  Reference Values(6) = Real 35 8 81000 1050 43973415 512.62222222229627
   Reference Norm = 1.0
 End
 

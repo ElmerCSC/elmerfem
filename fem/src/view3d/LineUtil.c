@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -240,7 +240,7 @@ double LinearIntegrateDiffToArea( Geometry_t *GB, Cylinder_t *Cyl,
     {
        U = U_Integ1d[i];
        V = 0.0;
-        
+
        DX = LinearValue(U,BX) - FX;
        DY = LinearValue(U,BY) - FY;
 
@@ -293,14 +293,14 @@ double LinearViewFactor( Geometry_t *GA, Geometry_t *GB )
   NFY = LinearValue(0.5,NAY);
   d = NFX*NFX + NFY*NFY;
   if ( ABS(1-d) > eps ) {
-    d = sqrt(d); NTX/=d; NTY/=d; 
+    d = sqrt(d); NTX/=d; NTY/=d;
   }
 
   NTX = LinearValue(0.5,NBX);
   NTY = LinearValue(0.5,NBY);
   d = NTX*NTX + NTY*NTY;
   if ( ABS(1-d) > eps ) {
-    d = sqrt(d); NTX/=d; NTY/=d; 
+    d = sqrt(d); NTX/=d; NTY/=d;
   }
 
   DX = LinearValue(0.5,BX)-FX;
@@ -361,13 +361,13 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
 
     int i,j;
 
-    if ( LevelA & 1 ) 
+    if ( LevelA & 1 )
     {
         Fa = 0; Fb = 1;
         goto subdivide;
     }
 
-    if ( (LevelB & 1) && (GB->GeometryType != GEOMETRY_TRIANGLE) ) 
+    if ( (LevelB & 1) && (GB->GeometryType != GEOMETRY_TRIANGLE) )
     {
         Fa = 1; Fb = 0;
         goto subdivide;
@@ -384,7 +384,7 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
 
     Fa = Fb = (*IntegrateDiffToArea[GB->GeometryType])( GB,NULL,FX,FY,FZ,DX,DY,DZ );
 
-    if ( GA != GB ) 
+    if ( GA != GB )
     {
        U = 0.5; V=0.0;
        if ( GB->GeometryType == GEOMETRY_TRIANGLE ) U = V = 1.0/3.0;
@@ -440,15 +440,15 @@ void LinearComputeViewFactors(Geometry_t *GA,Geometry_t *GB,int LevelA,int Level
               for( i=0; i<N_Integ1d; i++ )
               {
                   U = U_Integ1d[i]; V = 0.0;
-  
+
                   FX = LinearValue(U,X);
                   FY = LinearValue(U,Y);
                   FZ = 0.0;
-  
+
                   DX = LinearValue(U,NX);
                   DY = LinearValue(U,NY);
                   DZ = 0.0;
-  
+
                   EA = LinearEofA(U,V,X,Y,Z);
                   F += S_Integ1d[i] * EA *
                       (*IntegrateDiffToArea[GB->GeometryType])(GB,FX,FY,FZ,DX,DY,DZ);
@@ -509,7 +509,7 @@ subdivide:
         if ( !GB->Left ) (*Subdivide[GB->GeometryType])( GB,LevelB,1 );
 
         if ( GB->Flags & GEOMETRY_FLAG_LEAF )
-        {    
+        {
             GB->Flags &= ~GEOMETRY_FLAG_LEAF;
 
             GB->Left->Flags  |= GEOMETRY_FLAG_LEAF;

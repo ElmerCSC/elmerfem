@@ -39,6 +39,7 @@
 !-----------------------------------------------------------------------------
 SUBROUTINE PermafrostHeatTransfer_init( Model,Solver,dt,TransientSimulation )
   USE DefUtils
+  USE PermaFrostMaterials
   IMPLICIT NONE
 
   TYPE(Model_t)  :: Model
@@ -58,6 +59,13 @@ SUBROUTINE PermafrostHeatTransfer_init( Model,Solver,dt,TransientSimulation )
   CALL INFO( SolverName, '  Initializing heat transfer         ',Level=4 )
   CALL INFO( SolverName, '-------------------------------------',Level=4 )
   SolverParams => GetSolverParams()
+
+  ! Integration rule: see SetPermafrostIntegrationRule. It MUST match what the
+  ! other permafrost solvers use -- this routine creates the "Xi" integration
+  ! point variable, so CreateIpPerm sizes that storage from the rule in force
+  ! here, and the groundwater solver then writes into it. If the two disagree
+  ! the writes run past the end of each element's slice.
+  CALL SetPermafrostIntegrationRule( SolverParams )
   OutputXi = GetLogical(SolverParams, 'Output Xi', Found)
   IF (.NOT.Found) OutputXi = .FALSE.
   !PRINT *,SolverName,OutputXi
@@ -360,6 +368,12 @@ CONTAINS
     FORCE = 0._dp
     LOAD = 0._dp
 
+
+    ! Only assigned inside the conditionals below and declared without
+    ! initialisation, so ASSOCIATED() on them is undefined until then. Nullify
+    ! explicitly (not "=> NULL()", which would imply SAVE) so the
+    ! CheckIPVarSize calls are well defined.
+    NULLIFY( GWfluxVar1, GWfluxVar2, GWfluxVar3 )
     XiAtIPVar => VariableGet( Solver % Mesh % Variables, 'Xi')
     IF (.NOT.ASSOCIATED(XiAtIPVar)) THEN
       WRITE(Message,*) 'Variable Xi is not associated'
@@ -412,6 +426,13 @@ CONTAINS
     ! Numerical integration:
     !-----------------------
     IP = GaussPointsAdapt( Element )
+
+    ! IP variables are indexed Perm(ElementID)+t; their slices must be IP % n
+    ! long. See CheckIPVarSize.
+    CALL CheckIPVarSize( XiAtIPVar, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( GWfluxVar1, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( GWfluxVar2, ElementID, IP % n, SolverName )
+    CALL CheckIPVarSize( GWfluxVar3, ElementID, IP % n, SolverName )
     IF( Element % ElementIndex == 1 ) THEN
       CALL INFO(FunctionName,'Number of Gauss points for 1st element:'&
           //I2S(IP % n),Level=7)

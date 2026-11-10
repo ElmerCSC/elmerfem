@@ -244,7 +244,7 @@ SUBROUTINE AdjointSSA_SSASolver( Model,Solver,dt,TransientSimulation )
                 'It is not possible to compute SSA problems with DOFs=',&
                 STDOFs, ' . Aborting'
            CALL Fatal( SolverName, Message)
-           STOP
+           ERROR STOP
         END IF
 
      ! Read the gravity in the Body Force Section 
@@ -349,7 +349,7 @@ SUBROUTINE AdjointSSA_SSASolver( Model,Solver,dt,TransientSimulation )
                 'It is not possible to compute SSA with SSA var DOFs=',&
                 STDOFs, '. Aborting'
            CALL Fatal( SolverName, Message)
-           STOP
+           ERROR STOP
         END IF
 
 

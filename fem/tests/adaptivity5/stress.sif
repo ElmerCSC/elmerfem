@@ -43,6 +43,13 @@ Solver 1
   Adaptive Remesh = False
   Adaptive Error Limit = 0.01
 
+  ! Postprocessing on a mesh that changes under it: the projection these two
+  ! trigger keeps a matrix and permutation across calls, and they have to be
+  ! rebuilt when the mesh is refined. Nothing else combines the two, and getting
+  ! it wrong is a segfault in CRS_GlueLocalMatrix rather than a wrong answer.
+  Calculate Stresses = True
+  Calculate Strains = True
+
   Optimize Bandwidth = Logical False
   Steady State Convergence Tolerance = 1.0d-7
 End
@@ -67,6 +74,6 @@ Boundary Condition 2
   Force 1 = -20.0
 End
 
-Solver 1 :: Reference Norm = Real 0.161977494682E-03
+Solver 1 :: Reference Norm = Real 0.162429076E-03
 Solver 1 :: Reference Norm Tolerance = Real 0.05
 RUN

@@ -4,12 +4,12 @@
  */
 
 #ifdef _WIN32
-#  include <process.h>   /* _execvp */
-#  define execvp _execvp
+#  include <process.h>   /* _spawnvp */
 #else
 #  include <unistd.h>    /* execvp */
 #endif
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,6 +20,14 @@
 #define ELMERF90_LIBDIR        "@ELMER_SOLVER_HOME@/../../@ELMER_INSTALL_LIB_DIR@"
 #define ELMERF90_INCLUDE_DIR   "@ELMER_SOLVER_HOME@/include"
 #define ELMERF90_INSTALL_LIB   "@ELMER_INSTALL_LIB_DIR@"
+
+#define ELMERF90_BINDIR "@ELMER_ABS_INSTALL_PREFIX@/bin"
+#cmakedefine RELOCATE_PREFIX
+
+#if defined (RELOCATE_PREFIX)
+#  include <windows.h>
+#  include "pathtools.h"
+#endif
 
 /* Compile flags are baked in as a single whitespace-separated string and
    split at runtime, matching shell word-splitting behaviour. */
@@ -53,7 +61,17 @@ static void push(const char *s)
         fprintf(stderr, "elmerf90: too many arguments\n");
         exit(1);
     }
+
+#if defined (_WIN32)
+    // The spawn* functions on Windows require that their arguments are
+    // surrounded by double-quotes (to deal with spaces in arguments).
+    // See: https://learn.microsoft.com/en-us/cpp/c-runtime-library/spawn-wspawn-functions?view=msvc-170
+    args[nargs] = malloc(strlen(s) + 3);
+    sprintf(args[nargs], "\"%s\"", s);
+    nargs++;
+#else
     args[nargs++] = strdup(s);
+#endif
 }
 
 /* Split a whitespace-separated flag string and push each token. */
@@ -77,4 +95,210 @@ static char *join(const char *a, const char *b)
     memcpy(r, a, la);
     memcpy(r + la, b, lb + 1);
     return r;
+}
+
+/* --- compiler resolution and exec ---------------------------------------- */
+
+/* Trailing component of a path, tolerating Windows separators. Returns the
+   argument itself when there is no separator at all. */
+static const char *base_name(const char *p)
+{
+    const char *b = p;
+    for (const char *s = p; *s; s++) {
+#ifdef _WIN32
+        if (*s == '/' || *s == '\\') b = s + 1;
+#else
+        if (*s == '/') b = s + 1;
+#endif
+    }
+    return b;
+}
+
+/*
+ * exec the compiler, falling back to its bare name on PATH.
+ *
+ * ELMERF90_FC is CMAKE_Fortran_COMPILER as resolved on the *build* machine,
+ * normally an absolute path such as "/usr/bin/f95". execvp() searches PATH
+ * only for names containing no separator, so that absolute path is used
+ * verbatim: an install copied to another machine, a container, or a system
+ * where the compiler lives elsewhere would fail outright even with a
+ * perfectly good compiler of the same name on PATH.
+ *
+ * The exact build-time compiler is tried first, so a machine that still has
+ * it keeps using precisely that binary and behaviour is unchanged there. Only
+ * if that fails do we retry with the trailing name ("f95", "gfortran", ...)
+ * and let PATH resolve it.
+ *
+ * Note this is a name match, not a compatibility check -- a "gfortran" found
+ * on PATH may be a different version, or ABI-incompatible with the one that
+ * built libelmersolver. Setting ELMER_Fortran_COMPILER remains the way to be
+ * explicit.
+ *
+ * Returns the error code of the spawned process on Windows.
+ * On other platforms:
+ * Returns only on failure; on success the process has been replaced.
+ */
+static int exec_compiler(const char *fc, const char *who)
+{
+    /* exec replaces the process image without flushing stdio, so anything
+       still buffered is lost. The echoed command line is written to stdout,
+       which is fully buffered whenever it is a file or a pipe -- without this
+       it only ever appeared on a terminal, where the newline flushed it. */
+    fflush(NULL);
+
+#if defined (_WIN32)
+    /* Spawn new process and wait for its exit code on Windows. */
+
+#  if defined (RELOCATE_PREFIX)
+    /* Windows does not have an RPATH mechanism. Instead, the OS resolves DLL
+       dependencies on load time by checking the working directory and the
+       directories in the PATH environment variable.
+       Prepend the PATH environment variable with the path to the wrapper
+       executable (assuming that all DLLs for child and grandchild processes
+       are in that folder). */
+    char exe_path[MAX_PATH];
+    if (get_executable_path(NULL, exe_path, MAX_PATH) >= 1) {
+        // absolute path of folder containing executable
+        strip_n_suffix_folders(exe_path, 1);
+        size_t exe_path_len = strlen(exe_path);
+
+        // get current value of PATH environment variable
+        DWORD buffer_size = GetEnvironmentVariableA("PATH", NULL, 0);
+        if (buffer_size > 0) {
+            // allocate sufficiently large buffer to hold the final PATH
+            char *path_env = (char *) malloc(buffer_size + exe_path_len + 1);
+            if (path_env) {
+                GetEnvironmentVariableA("PATH", path_env + exe_path_len + 1,
+                                        buffer_size);
+
+                // prepend executable path
+                memcpy(path_env, exe_path, exe_path_len);
+                path_env[exe_path_len] = ';';
+
+                // set new value of PATH environment variable
+                SetEnvironmentVariableA("PATH", path_env);
+            }
+        } else {
+            // set executable path as new PATH environment variable
+            SetEnvironmentVariableA("PATH", exe_path);
+        }
+    }
+#  endif
+
+    /* _spawnvp wants argv as 'const char *const *'; our argv is built
+       as 'char **', and the mismatch warning is elevated to an error
+       by default with GCC 14 or later. Cast at the call site rather
+       than changing argv's type, since push()/args are shared with
+       other array/string logic. */
+    int status = _spawnvp(P_WAIT, fc, (const char * const *)args);
+    if (status == -1) {
+        int first_errno = errno;
+
+        const char *base = base_name(fc);
+        if (base != fc && *base) {
+            /* The command echoed above names the build-time compiler, since it is
+               printed before the exec is attempted. Say so, otherwise the
+               substitution is invisible and the echoed line is misleading. */
+            fprintf(stderr, "%s: '%s' not usable (%s), falling back to '%s' on PATH\n",
+                    who, fc, strerror(first_errno), base);
+            fflush(NULL);
+
+            free(args[0]);
+            args[0] = strdup(base);
+            status = _spawnvp(P_WAIT, base, (const char * const *)args);
+            if (status == -1)
+                fprintf(stderr,
+                        "%s: could not exec build-time compiler '%s' (%s), "
+                        "nor '%s' on PATH (%s)\n",
+                        who, fc, strerror(first_errno), base, strerror(errno));
+        } else {
+            fprintf(stderr, "%s: could not exec '%s' (%s)\n",
+                    who, fc, strerror(first_errno));
+        }
+    }
+    return (status == -1 ? 127 : status);
+#else
+    /* Replace the current process everywhere but on Windows. */
+    execvp(fc, args);
+    int first_errno = errno;
+
+    const char *base = base_name(fc);
+    if (base != fc && *base) {
+        /* The command echoed above names the build-time compiler, since it is
+           printed before the exec is attempted. Say so, otherwise the
+           substitution is invisible and the echoed line is misleading. */
+        fprintf(stderr, "%s: '%s' not usable (%s), falling back to '%s' on PATH\n",
+                who, fc, strerror(first_errno), base);
+        fflush(NULL);
+
+        free(args[0]);
+        args[0] = strdup(base);
+        execvp(base, args);
+        fprintf(stderr,
+                "%s: could not exec build-time compiler '%s' (%s), "
+                "nor '%s' on PATH (%s)\n",
+                who, fc, strerror(first_errno), base, strerror(errno));
+    } else {
+        fprintf(stderr, "%s: could not exec '%s' (%s)\n",
+                who, fc, strerror(first_errno));
+    }
+    return 127;
+#endif
+}
+
+/*
+ * Get absolute paths to the ElmerSolver modules and the headers.
+ *
+ * If the environment variable ELMER_LIB is set, it is used as the absolute path
+ * to the solver modules. Typically, that is $[prefix]/lib/elmersolver (where
+ * $[prefix] is the installation prefix).
+ *
+ * If the environment variable ELMER_HOME is set, it is used to derive the
+ * absolute path to the directory with the headers (as
+ * ${ELMER_HOME}/share/elmersolver/include).
+ *
+ * If the environment variable ELMER_HOME is set but ELMER_LIB is not set, the
+ * absolute path to the solver modules is derived as
+ * ${ELMER_HOME}/$[ELMERF90_INSTALL_LIB] (where the value of
+ * $[ELMERF90_INSTALL_LIB] can be changed during configuration, but it is
+ * lib/elmersolver by default).
+ *
+ * If any of the absolute directories cannot be derived from these environment
+ * variables, values that are derived from the installation prefix that has been
+ * set during configuration are used.
+ * If Elmer was configured with RELOCATE_PREFIX that installation prefix is
+ * relocated using the location of the wrapper executable on the file system.
+ *
+ * The arguments are allowed to be NULL in which case determination of the
+ * respective path is skipped.
+ */
+
+static void get_inc_lib_dirs(char **pincdir, char **plibdir)
+{
+    const char *env_home = getenv("ELMER_HOME");
+
+    if (pincdir) {
+        if (env_home && *env_home)
+            *pincdir = join(env_home, "/share/elmersolver/include");
+        else
+#if defined (RELOCATE_PREFIX)
+            *pincdir = single_path_relocation(ELMERF90_BINDIR, ELMERF90_INCLUDE_DIR);
+#else
+            *pincdir = strdup(ELMERF90_INCLUDE_DIR);
+#endif
+    }
+
+    if (plibdir) {
+        const char *env_lib = getenv("ELMER_LIB");
+        if (env_lib && *env_lib)
+            *plibdir = strdup(env_lib);
+        else if (env_home && *env_home)
+            *plibdir = join(env_home, "/" ELMERF90_INSTALL_LIB);
+        else
+#if defined (RELOCATE_PREFIX)
+            *plibdir = single_path_relocation(ELMERF90_BINDIR, ELMERF90_LIBDIR);
+#else
+            *plibdir = strdup(ELMERF90_LIBDIR);
+#endif
+    }
 }

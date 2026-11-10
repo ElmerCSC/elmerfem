@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -40,13 +40,13 @@ void mtrinv(double *,int);
 
 /*
  * sixteen node (cubic) quad surface element
- * 
+ *
  *      3---9---8---2
  *      |           |
  *     10  15  14   7
  *      |           |
- *     11  12  13   6 
- *    v |           | 
+ *     11  12  13   6
+ *    v |           |
  *      0---4---5---1
  *       u
  */
@@ -153,12 +153,12 @@ double elm_16node_quad_fvalue(double *F,double u,double v)
                       N[i][0] +
                       N[i][1]*u +
                       N[i][2]*uu +
-                      N[i][3]*uuu + 
+                      N[i][3]*uuu +
                       N[i][4]*v +
                       N[i][5]*uv +
                       N[i][6]*uuv +
                       N[i][7]*uuuv +
-                      N[i][8]*vv + 
+                      N[i][8]*vv +
                       N[i][9]*uvv +
                       N[i][10]*uuvv +
                       N[i][11]*uuuvv +
@@ -167,7 +167,7 @@ double elm_16node_quad_fvalue(double *F,double u,double v)
                       N[i][14]*uuvvv +
                       N[i][15]*uuuvvv
                    );
-     } 
+     }
 
      return R;
 }
@@ -187,8 +187,8 @@ void elm_16node_quad_nvalue(double *F,double u,double v)
                       N[i][2]*v +
                       N[i][3]*uu +
                       N[i][4]*uv +
-                      N[i][5]*vv + 
-                      N[i][6]*uuu + 
+                      N[i][5]*vv +
+                      N[i][6]*uuu +
                       N[i][7]*uuv +
                       N[i][8]*uvv +
                       N[i][9]*vvv +
@@ -199,7 +199,7 @@ void elm_16node_quad_nvalue(double *F,double u,double v)
                       N[i][14]*uuvvv +
                       N[i][15]*uuuvvv
                    );
-     } 
+     }
 }
 
 double elm_16node_quad_dndu_fvalue(double *F,double u,double v)
@@ -214,7 +214,7 @@ double elm_16node_quad_dndu_fvalue(double *F,double u,double v)
                       N[i][1] +
                       N[i][3]*u2 +
                       N[i][4]*v +
-                      N[i][6]*uu3 + 
+                      N[i][6]*uu3 +
                       N[i][7]*u2v +
                       N[i][8]*vv +
                       N[i][10]*uu3v +
@@ -241,7 +241,7 @@ void elm_16node_quad_dndu_nvalue(double *F,double u,double v)
                      N[i][1] +
                      N[i][3]*u2 +
                      N[i][4]*v +
-                     N[i][6]*uu3 + 
+                     N[i][6]*uu3 +
                      N[i][7]*u2v +
                      N[i][8]*vv +
                      N[i][10]*uu3v +
@@ -252,7 +252,7 @@ void elm_16node_quad_dndu_nvalue(double *F,double u,double v)
                      N[i][15]*uu3vvv
                  );
      }
-}      
+}
 
 double elm_16node_quad_dndv_fvalue(double *F,double u,double v)
 {
@@ -266,7 +266,7 @@ double elm_16node_quad_dndv_fvalue(double *F,double u,double v)
          R += F[i]*(
                       N[i][2] +
                       N[i][4]*u +
-                      N[i][5]*v2 + 
+                      N[i][5]*v2 +
                       N[i][7]*uu +
                       N[i][8]*uv2 +
                       N[i][9]*vv3 +
@@ -277,7 +277,7 @@ double elm_16node_quad_dndv_fvalue(double *F,double u,double v)
                       N[i][14]*uuvv3 +
                       N[i][15]*uuuvv3
                    );
-     } 
+     }
      return R;
 }
 
@@ -293,7 +293,7 @@ void elm_16node_quad_dndv_nvalue(double *F,double u,double v)
          F[i] = (
                       N[i][2] +
                       N[i][4]*u +
-                      N[i][5]*v2 + 
+                      N[i][5]*v2 +
                       N[i][7]*uu +
                       N[i][8]*uv2 +
                       N[i][9]*vv3 +
@@ -304,7 +304,7 @@ void elm_16node_quad_dndv_nvalue(double *F,double u,double v)
                       N[i][14]*uuvv3 +
                       N[i][15]*uuuvv3
                    );
-     } 
+     }
 }
 
 double ElementOfArea_16node(double *X,double *Y,double *Z,double u,double v)

@@ -812,7 +812,7 @@ RECURSIVE SUBROUTINE EPLSolver( Model,Solver,Timestep,TransientSimulation )
 
      IF((PenIter.EQ.NonlinearIter).AND.(RelativeChange.GT.NonlinearTol))THEN
         Write(*,*)'NOT CONVERGED'
-        STOP
+        ERROR STOP
      END IF
   END DO
   

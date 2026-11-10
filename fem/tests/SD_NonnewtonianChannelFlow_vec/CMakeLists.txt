@@ -2,6 +2,7 @@ INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
 CONFIGURE_FILE( case.sif case.sif COPYONLY)
+CONFIGURE_FILE(stabilized.sif stabilized.sif COPYONLY)
 
 file(COPY square.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 

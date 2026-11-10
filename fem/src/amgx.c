@@ -126,8 +126,8 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
   double *b_in, double *x_in,int *nonlin_update, char *config_name)
 */
 void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
-  double *b_in, double *x_in,int *nonlin_update, char *config_name, int *fcomm, 
-     int *ng_in, int *part_vec, double *bnrm_in )
+  double *b_in, double *x_in,int *nonlin_update, char *config_name, int *fcomm,
+     int *ng_in, int *part_vec, double *bnrm_in, int *solve_status )
 {
     int i,j,k,n = *n_in, ng=*ng_in, lrank, nranks, gpu_count;
     static MPI_Comm comm;
@@ -137,6 +137,11 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
     AMGX_SOLVE_STATUS status;
 
     ElmerAMGX *ptr;
+
+/* ||b|| is computed on the Fortran side (ParallelReduction in parallel) and is
+   used to scale the system, so that the convergence criteria are comparable to
+   the other linear solvers. */
+    if ( bnrm < 1.e-16 ) bnrm = 1;
 
     ElmerAMGXInitialize();
 
@@ -192,16 +197,6 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
 
     if  ( n==ng )
     {
-      double bnrm;
-
-// scale by ||b|| to get comparable convergence criteria to other linear solvers.
-
-      bnrm = 0.0;
-      for(i<0; i<n; i++ ) bnrm += b_in[i]*b_in[i];
-      bnrm = sqrt(bnrm);
-      if ( bnrm < 1.e-16 ) bnrm = 1;
-
-
       for(i=0; i<n; i++ ) b_in[i] = b_in[i]/bnrm;
       AMGX_vector_upload( ptr->b, n, 1, b_in );
       for(i=0; i<n; i++ ) b_in[i] = b_in[i]*bnrm;
@@ -212,7 +207,7 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
       // WRITE OUT MATRIX (REMOVE)
       //AMGX_write_system(ptr->A, ptr->b, ptr->x, "mymatrix.dat");
       //exit(0);
-		  
+
       AMGX_solver_setup(ptr->solver, ptr->A);
       AMGX_solver_solve(ptr->solver, ptr->b, ptr->x);
 
@@ -221,10 +216,8 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
     } else {
       double *b_t, *x_t;
 
-      b_t = (double *)calloc(  ng,sizeof(double) );
-      x_t = (double *)calloc(  ng,sizeof(double) );
-
-      if ( bnrm < 1.e-16 ) bnrm = 1;
+      b_t = (double *)calloc(  n,sizeof(double) );
+      x_t = (double *)calloc(  n,sizeof(double) );
 
       for(i=0; i<n; i++ ) b_t[i] = b_in[i]/bnrm;
       AMGX_vector_bind(ptr->b, ptr->A);
@@ -245,7 +238,8 @@ void AMGXSolve( int **a_in, int *n_in, int *rows, int *cols, double *vals,
       free(b_t); free(x_t);
     }
 
-//    AMGX_solver_get_status(ptr->solver, &status);
+    AMGX_solver_get_status(ptr->solver, &status);
+    *solve_status = (int)status;
 
 #if 0
     AMGX_solver_destroy(solver);

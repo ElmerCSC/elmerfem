@@ -1,0 +1,127 @@
+! "Quasi Stationary": the transient run without its inertial term, asked for on a
+! body with a finite density -- "no mass-matrix, despite finite densities", as the
+! one sif in the tree that uses it puts it. Both solvers run the same problem
+! against one reference value, so the two must agree that the density is not to be
+! integrated into a mass matrix here.
+!
+! The density is deliberately large enough to be loud: dropping the keyword takes
+! this 2.28E-03 to 7.91E-04, very nearly a factor of three.
+!
+! There is no damping anywhere, which is the case that failed. The mass is dropped
+! only where the element carries none, and ElasticSolve read that damping from an
+! array it had allocated and never zeroed -- so with nothing to damp it saw
+! whatever was in memory and put the inertia back. The one test that caught it,
+! elmerice/Tests/Permafrost_Biot, reached the difference through three coupled
+! solvers and was 0.017% off in the norm it checks.
+!
+! Based on ElasticBlockDampingFirstOrder.
+
+Header
+  Mesh DB "." "cube"
+End
+
+Constants
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Steady State Max Iterations = 1
+
+$tsteps=20
+  Timestepping Method = Bossak
+  Timestep Sizes = $1.0/tsteps
+  Timestep Intervals = $tsteps
+
+  Output Intervals = 0
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body Force 1
+  Name = "Force"
+  Stress Bodyforce 1 = 1.0
+  Stress Bodyforce 2 = 2.0
+  Stress Bodyforce 3 = 3.0
+End
+
+Initial Condition 1
+  Name = "Start"
+  Displacement 1 = 0.0
+  Displacement 2 = 0.0
+  Displacement 3 = 0.0
+End
+
+! No damping: with any present the inertial term comes back, in both solvers, and
+! the case this guards would not be exercised.
+Material 1
+  Density = 1.0e3
+  Youngs Modulus = 1.0e3
+  Poisson Ratio = 0.3
+End
+
+Solver 1
+  Equation = StressSolver
+  Variable = -dofs 3 DisplacementA
+  Procedure = "StressSolve" "StressSolver"
+  Quasi Stationary = Logical True
+  ! Both solvers work on the mesh as given: displacing it would leave the second
+  ! one solving on the geometry the first had already deformed.
+  Displace Mesh = Logical False
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Convergence Tolerance = 1.0e-6
+End
+
+Solver 2
+  Equation = ElasticitySolver
+  Variable = -dofs 3 DisplacementB
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Quasi Stationary = Logical True
+  Displace Mesh = Logical False
+  ! What the front sets for StressSolve's own kinematics, so that the two solvers
+  ! here are compared on the same problem.
+  Large Deflection = False
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStab
+  Linear System Preconditioning = ILU1
+  Linear System Max Iterations = 500
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 20
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+! The block has to be held: with the inertia gone and no damping this is a static
+! system at every step, and an unconstrained one would only float.
+Boundary Condition 1
+  Target Boundaries(1) = 5
+  DisplacementA 1 = Real 0.0
+  DisplacementA 2 = Real 0.0
+  DisplacementA 3 = Real 0.0
+  DisplacementB 1 = Real 0.0
+  DisplacementB 2 = Real 0.0
+  DisplacementB 3 = Real 0.0
+End
+
+Solver 1 :: Reference Norm = 2.27564999E-03
+Solver 2 :: Reference Norm = 2.27564999E-03

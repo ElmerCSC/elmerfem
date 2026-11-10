@@ -138,7 +138,7 @@ void ReadEpFile::readHeader()
   if(ui.fileName->text().endsWith(".vtu", Qt::CaseInsensitive)){
   
     vtkXMLUnstructuredGridReader* reader =  vtkXMLUnstructuredGridReader::New();
-    reader->SetFileName(ui.fileName->text().toLatin1().data());
+    reader->SetFileName(ui.fileName->text().toLocal8Bit().data());
     reader->Update();
     
 	nodes = reader->GetNumberOfPoints();
@@ -164,13 +164,13 @@ void ReadEpFile::readHeader()
 	int i = 4;
 	while(name.at(l-i-1).isNumber() && i>0) i++;
 	QString filter = name.left(l-i) + "*.vtu";
-	cout << ".vtu file: " <<  filter.toLatin1().data() << endl;
+	std::cout << ".vtu file: " <<  filter.toLocal8Bit().data() << std::endl;
 
 	QStringList filterList;
 	filterList << "*.vtu";
 	vtuFileNameList = dir.entryList(filterList,  QDir::Readable|QDir::Files|QDir::NoSymLinks, QDir::SortFlags(QDir::Name | QDir::IgnoreCase));
 	//for(int i=0; i < vtuFileNameList.length(); i++){
-	//	cout <<  vtuFileNameList.at(i).toLatin1().data() << endl;
+	//	std::cout <<  vtuFileNameList.at(i).toLocal8Bit().data() << std::endl;
 	//}
 	vtuFileNameList = vtuFileNameList.mid(vtuFileNameList.indexOf(info.fileName()));
 	timesteps = vtuFileNameList.length();

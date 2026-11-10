@@ -1,0 +1,140 @@
+! The equal-order twin of Step_heat_transient.sif: the same transient
+! convection problem with Solver 2 (Heat)'s method switched from a condensed
+! p-bubble to SUPG ("Stabilize = True"), the equal-order alternative to the
+! bubble -- the same role "Pressure Stabilization" plays in IncompressibleNSVec
+! and now also HeatSolveVec (see HeatSolver_Init0/LocalMatrix/LocalMatrixVec).
+!
+! Nothing else changes but Solver 2's "Element"/"Bubbles in Global System"
+! lines, which are simply removed: HeatSolver_Init0 supplies "Element = n:1"
+! on its own once "Stabilize = True" is seen, exactly as it supplies the
+! bubble element otherwise.
+!
+! No condensed-bubble history is involved on this path at all (no bubble to
+! condense), so it exercises the OTHER new HeatSolveVec feature -- the SUPG
+! stiffness/mass/force terms -- rather than CondensatePTransient.
+
+Header
+  Mesh DB "." "Step"
+  Include Path ""
+  Results Directory ""
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System =  Cartesian 2D
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 0.02
+  Timestep Intervals = 5
+  Output Intervals = 1
+
+  Steady State Max Iterations = 1
+
+  Post File = "stabilized.vtu"
+
+  Serendipity P Elements = False
+End
+
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-8
+End
+
+
+Body 1
+  Name = "Body1"
+  Equation = 1
+  Material = 1
+End
+
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(2) = 1 2
+  Convection = "computed"
+End
+
+
+Solver 1
+  Equation = "NS-Vec"
+
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU0
+
+  Nonlinear System Max Iterations = 1
+
+  Stokes Flow = Logical True
+  GradP Discretization = Logical False
+  Div-Curl Form = Logical False
+End
+
+
+Solver 2
+  Equation = "Heat"
+
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "Temperature"
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = BiCGStabL
+  Linear System Max Iterations = 500
+
+  Stabilize = Logical True
+
+  Linear System Convergence Tolerance = 1.0e-8
+  Linear System Preconditioning = ILU1
+End
+
+
+Material 1
+  Name = "Material"
+  Density = 1
+  Viscosity = 0.01
+  Heat Conductivity = 1.0
+  Heat Capacity = 1000.0 ! ensure convection dominated
+End
+
+Boundary Condition 1
+  Name = "Inlet"
+
+  Target Boundaries = 1
+
+  Velocity 1 = Variable "Coordinate 2"
+    Real MATC "4*(tx-1)*(2-tx)"
+  Temperature = Variable "Coordinate 2"
+    Real MATC "4*(tx-1)*(2-tx)"
+
+  Velocity 2 = 0
+End
+
+Boundary Condition 2
+  Name = "Outlet"
+  Target Boundaries = 2
+
+  External Pressure = 0
+  Velocity 2 = 0
+End
+
+Boundary Condition 3
+  Name = "Sides"
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = 3.08821397E-01
+Solver 2 :: Reference Norm = 6.39530529E-02

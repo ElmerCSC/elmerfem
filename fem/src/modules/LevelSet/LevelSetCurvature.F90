@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,13 +27,13 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 16.11.2005
 ! *
 ! *****************************************************************************/
 !------------------------------------------------------------------------------
-!>  Computes the curvature from the level set function. Additional diffusion may 
+!>  Computes the curvature from the level set function. Additional diffusion may
 !>  be added in order to limit the singular curvature peaks.
 !> \ingroup Solvers
 !------------------------------------------------------------------------------
@@ -44,7 +44,7 @@
      USE Integration
 
      IMPLICIT NONE
-!------------------------------------------------------------------------------ 
+!------------------------------------------------------------------------------
      TYPE(Model_t), TARGET :: Model
      TYPE(Solver_t) :: Solver
      REAL(KIND=dp) :: Timestep
@@ -61,7 +61,7 @@
      REAL(KIND=dp) :: Norm, Coeff, Diff, Alpha, Val, Delta
      INTEGER, POINTER :: NodeIndexes(:)
      INTEGER, POINTER :: CurvPerm(:), SurfPerm(:)
-     REAL(KIND=dp), POINTER :: Curvature(:),ForceVector(:), Curv(:),Surface(:) 
+     REAL(KIND=dp), POINTER :: Curvature(:),ForceVector(:), Curv(:),Surface(:)
      REAL(KIND=dp), ALLOCATABLE :: LocalStiffMatrix(:,:),LocalForce(:),Surf(:)
      REAL(KIND=dp) :: at,st
      CHARACTER(LEN=MAX_NAME_LEN) :: LevelSetVariableName
@@ -78,10 +78,10 @@
      CurvPerm => Solver % Variable % Perm
      IF ( SIZE( Curvature ) == 0 ) RETURN
 
-     LevelSetVariableName = ListGetString(Solver % Values,'LevelSet Variable',GotIt) 
+     LevelSetVariableName = ListGetString(Solver % Values,'LevelSet Variable',GotIt)
      IF(GotIt) THEN
        SurfSol => VariableGet( Solver % Mesh % Variables, TRIM(LevelSetVariableName) )
-     ELSE  
+     ELSE
        SurfSol => VariableGet( Solver % Mesh % Variables, 'Surface' )
      END IF
      Surface => Surfsol % Values
@@ -109,7 +109,7 @@
            LocalStiffMatrix( N, N ), &
            Surf( N ), &
            STAT=istat )
- 
+
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'CurvatureSolve', 'Memory allocation error.' )
        END IF
@@ -121,7 +121,7 @@
 !------------------------------------------------------------------------------
 
      at = CPUTime()
-     
+
      CALL Info( 'LevelSetCurvature','-------------------------------------', Level=4 )
      CALL Info( 'LevelSetCurvature','Solving Level set curvature', Level=4 )
      CALL Info( 'LevelSetCurvature','-------------------------------------', Level=4 )
@@ -133,12 +133,12 @@
 !------------------------------------------------------------------------------
 
      DO t=1,Solver % NumberOfActiveElements
-       
+
        Element => Solver % Mesh % Elements(Solver % ActiveElements(t))
        n = Element % TYPE % NumberOfNodes
        NodeIndexes => Element % NodeIndexes
        Model % CurrentElement => Element
- 
+
        ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
        ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
        ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
@@ -147,10 +147,10 @@
 
        CALL LocalMatrix( LocalStiffMatrix, LocalForce, &
            Surf, Element, n, ElementNodes )
-         
+
        CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
 
-     END DO     
+     END DO
      CALL DefaultFinishBulkAssembly()
 
 !------------------------------------------------------------------------------
@@ -160,7 +160,7 @@
      DO t=Solver % Mesh % NumberOfBulkElements + 1, &
          Solver % Mesh % NumberOfBulkElements + &
          Solver % Mesh % NumberOfBoundaryElements
-      
+
        Element => Solver % Mesh % Elements(t)
 !------------------------------------------------------------------------------
        DO i=1,Model % NumberOfBCs
@@ -169,45 +169,45 @@
            n = Element % TYPE % NumberOfNodes
            NodeIndexes => Element % NodeIndexes
            Model % CurrentElement => Element
-          
-           IF ( ANY( CurvPerm(NodeIndexes) <= 0 ) ) CYCLE         
-           
+
+           IF ( ANY( CurvPerm(NodeIndexes) <= 0 ) ) CYCLE
+
            IF ( .NOT. ListGetLogical(Model % BCs(i) % Values, &
                'Levelset Curvature BC',gotIt) ) CYCLE
 
            ElementNodes % x(1:n) = Solver % Mesh % Nodes % x(NodeIndexes)
            ElementNodes % y(1:n) = Solver % Mesh % Nodes % y(NodeIndexes)
            ElementNodes % z(1:n) = Solver % Mesh % Nodes % z(NodeIndexes)
-           
+
            Parent => Element % BoundaryInfo % Left
-          
+
            stat = ASSOCIATED( Parent )
            IF ( stat ) stat = stat .AND. ALL(CurvPerm(Parent % NodeIndexes) > 0)
-          
+
            IF ( .NOT. stat ) THEN
              Parent => Element % BoundaryInfo % Right
-             
+
             stat = ASSOCIATED( Parent )
             IF ( stat ) stat = ALL(CurvPerm(Parent % NodeIndexes) > 0)
-            
+
             IF ( .NOT. stat )  THEN
               CALL Warn( 'LevelSetCurvature', &
                   'No curvature solution available for specified boundary' )
               CYCLE
             END IF
           END IF
-          
-          pn = Parent % TYPE % NumberOfNodes           
+
+          pn = Parent % TYPE % NumberOfNodes
           ParentNodes % x(1:pn) = Solver % Mesh % Nodes % x(Parent % NodeIndexes)
           ParentNodes % y(1:pn) = Solver % Mesh % Nodes % y(Parent % NodeIndexes)
           ParentNodes % z(1:pn) = Solver % Mesh % Nodes % z(Parent % NodeIndexes)
 
           Surf(1:pn) = Surface(SurfPerm(Parent % NodeIndexes))
-          
+
 !------------------------------------------------------------------------------
 !             Get element matrix and rhs due to boundary conditions ...
 !------------------------------------------------------------------------------
-          
+
           CALL LocalBoundary( LocalStiffMatrix, LocalForce,  &
               Surf, Element, Parent, n, pn, ElementNodes, ParentNodes )
 !------------------------------------------------------------------------------
@@ -215,13 +215,13 @@
 !------------------------------------------------------------------------------
           CALL DefaultUpdateEquations( LocalStiffMatrix, LocalForce )
 !------------------------------------------------------------------------------
-           END IF   
-        END DO    
-      END DO   
+           END IF
+        END DO
+      END DO
 !------------------------------------------------------------------------------
 
      CALL DefaultFinishAssembly()
-     
+
      at = CPUTime() - at
      WRITE(Message,'(a,F8.2)') 'Assembly done in time (s):',at
      CALL Info( 'LevelSetCurvature',Message, Level=4 )
@@ -231,22 +231,22 @@
 !------------------------------------------------------------------------------
      st = CPUTime()
      Norm = DefaultSolve()
-     
+
      st = CPUTIme()-st
      WRITE(Message,'(a,F8.2)') 'Solution done in time (s):',st
      CALL Info( 'LevelSetCurvature',Message, Level=4 )
 
 !------------------------------------------------------------------------------
 
-     Coeff = ListGetConstReal(Solver % Values,'Curvature Coefficient',GotIt) 
+     Coeff = ListGetConstReal(Solver % Values,'Curvature Coefficient',GotIt)
      IF(GotIt) THEN
        Curvature = Coeff * Curvature
      END IF
 
-     Alpha = ListGetConstReal(Model % Simulation,'Levelset Bandwidth',GotIt) 
-     IF(.NOT. GotIt) Alpha = ListGetConstReal(Solver % Values,'Levelset Bandwidth',GotIt)      
+     Alpha = ListGetConstReal(Model % Simulation,'Levelset Bandwidth',GotIt)
+     IF(.NOT. GotIt) Alpha = ListGetConstReal(Solver % Values,'Levelset Bandwidth',GotIt)
      IF(GotIt) THEN
-       DO i=1,SIZE(CurvPerm) 
+       DO i=1,SIZE(CurvPerm)
          j = CurvPerm(i)
          k = SurfPerm(i)
          IF(j == 0 .OR. k == 0) CYCLE
@@ -259,7 +259,7 @@
          ELSE
            Delta = (1.0d0 + COS( (Val/Alpha) * PI ) ) / (2.0d0 * Alpha)
          END IF
-         
+
          Curvature(j) = Delta * Curvature(j)
        END DO
      END IF
@@ -316,7 +316,7 @@ CONTAINS
        u = U_Integ(t)
        v = V_Integ(t)
        w = W_Integ(t)
-       
+
 !------------------------------------------------------------------------------
 !      Basis function values & derivatives at the integration point
 !------------------------------------------------------------------------------
@@ -354,8 +354,8 @@ CONTAINS
            StiffMatrix(p,q) = StiffMatrix(p,q) + s * A
          END DO
 
-         B = - SUM( dBasisdx(p, 1:dim) * Grad(1:dim))  
-         ForceVector(p) = ForceVector(p) + s * B        
+         B = - SUM( dBasisdx(p, 1:dim) * Grad(1:dim))
+         ForceVector(p) = ForceVector(p) + s * B
 
        END DO
      END DO
@@ -423,11 +423,11 @@ CONTAINS
       END IF
 
       Normal = Normalvector( Element, ElementNodes, u, v, .TRUE. )
-      
+
       !------------------------------------------------------------------------------
       ! Need parent element basis etc., for computing normal derivatives on boundary.
       !------------------------------------------------------------------------------
-      
+
       DO i = 1,n
         DO j = 1,pn
           IF ( Element % NodeIndexes(i) == Parent % NodeIndexes(j) ) THEN
@@ -438,24 +438,24 @@ CONTAINS
           END IF
         END DO
       END DO
-      
+
       u = SUM( Basis(1:n) * x(1:n) )
       v = SUM( Basis(1:n) * y(1:n) )
       w = SUM( Basis(1:n) * z(1:n) )
-      
+
       stat = ElementInfo( Parent, ParentNodes, u, v, w, detJ, ParentBasis, ParentdBasisdx )
-          
+
       DO j = 1,DIM
         Grad(j) = SUM( ParentdBasisdx(1:pn,j) * Surf(1:pn) )
       END DO
       GradAbs = SQRT( SUM(Grad(1:dim) * Grad(1:dim)) )
 
-      IF ( GradAbs > 10*AEPS ) THEN         
+      IF ( GradAbs > 10*AEPS ) THEN
         Grad = Grad / GradAbs
       END IF
 
 !------------------------------------------------------------------------------
-      
+
       DO p=1,n
         DO q=1,n
           A = Diff * SUM( Normal(1:dim) * dBasisdx(q,1:dim)) * Basis(p)

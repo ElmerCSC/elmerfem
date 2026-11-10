@@ -64,12 +64,12 @@
 		<Parameter Widget="CheckBox" >
 			<Name> Calculate Elemental Fields </Name>
 			<Type> Logical </Type>
-			<DefaultValue> True </DefaultValue>
 			<Whatis> Calculate elemental fields using Discontinuous Galerkin basis. </Whatis>
 		</Parameter>
 		<Parameter Widget="CheckBox" >
 			<Name> Calculate Nodal Fields </Name>
 			<Type> Logical </Type>
+			<DefaultValue> True </DefaultValue>
 			<Whatis> Calculate standard nodal fields. </Whatis>
 		</Parameter>
 		<Parameter Widget="CheckBox" >

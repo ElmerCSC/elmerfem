@@ -1,5 +1,6 @@
 FUNCTION FunA( Model, n, t ) RESULT( s )
   USE DefUtils
+  IMPLICIT NONE
   TYPE(Model_t) :: Model
   INTEGER :: n
   REAL(KIND=dp) :: t,s
@@ -11,6 +12,7 @@ END FUNCTION FunA
 
 FUNCTION FunB( Model, n, t ) RESULT( s )
   USE DefUtils
+  IMPLICIT NONE
   TYPE(Model_t) :: Model
   INTEGER :: n
   REAL(KIND=dp) :: t,s
@@ -24,8 +26,9 @@ FUNCTION FunB( Model, n, t ) RESULT( s )
 END FUNCTION FunB
 
 
-FUNCTION FunC( Model, n, x  )  RESULT ( s ) 
+FUNCTION FunC( Model, n, x  )  RESULT ( s )
   USE DefUtils
+  IMPLICIT NONE
   TYPE(Model_t) :: Model
   INTEGER :: n
   REAL(KIND=dp) :: x(*), s

@@ -32,6 +32,12 @@ Simulation
   Post File = case.vtu
 End
 
+Constants
+  ! Pinned to the old natural-units default (StatElecSolve.F90 now defaults
+  ! to the real physical value). As some difference in results.
+  Permittivity Of Vacuum = 1.0
+End
+
 Body 1
   Name = "UpAir"
   Equation = 1

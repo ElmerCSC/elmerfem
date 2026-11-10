@@ -1,0 +1,144 @@
+! Same cavity as ../ThermalCompress and ../ThermalCompress_vec, this time with
+! "Compressibility Model = Perfect Gas" on IncompressibleNS (see
+! IncompressibleNS.F90, LocalBulkMatrix). "Reference Pressure" is set to an
+! atmospheric-sized value, same convention as ../CompressIdealGas's $RefP,
+! so the solved pressure DEVIATION (order "Flow BodyForce 2" x domain size)
+! stays a small perturbation on top of it and p+p0 never goes near zero.
+! Steady state only -- see ../PerfectGasCompress_vec_transient for the
+! transient path (its own MASS(dofs,dofs) term and temperature load, next to
+! "PerfectGasCompressible" in IncompressibleNS.F90).
+Header
+  Mesh DB "." "PerfectGasCompress_vec"
+End
+
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady
+  Steady State Max Iterations  = 50
+  Output Intervals = 1
+! Post File =  "PerfectGasCompress_vec.vtu"
+End
+
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force  = 1
+  Initial Condition = 1
+End
+
+$ RefT=293
+
+Initial Condition 1
+  Temperature = $RefT
+End
+
+Body Force 1
+  Flow BodyForce 2 = -10
+End
+
+
+Solver 1
+  Equation = Heat Equation
+  Procedure = "HeatSolve" "HeatSolver"
+
+  Exec Solver = Never
+
+  Variable = Temperature
+  Stabilize = True
+  Nonlinear System Max Iterations = 2
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 0.75
+  Linear System Solver = Direct
+  Linear System Iterative Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-8
+End
+
+
+Solver 2
+  Equation = Navier-Stokes
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+
+  Nonlinear Pre Solvers = 1
+
+  Nonlinear System Max Iterations = 20
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Nonlinear System Newton After Iterations = 20
+  Nonlinear System Newton After Tolerance = 1.0e-3
+  Nonlinear System Relaxation Factor = 1
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Steady State Convergence Tolerance = 1.0e-5
+End
+
+
+Equation 1
+  Active Solvers(2) = 1 2
+  Convection = Computed
+End
+
+Material 1
+  Density = 1
+  Viscosity = 1
+  Heat Capacity = 1000
+  Heat Conductivity  = 1.36986
+  Reference Temperature = $RefT
+  Compressibility Model = Perfect Gas
+  Specific Heat Ratio = $ 5.0/3.0
+  Reference Pressure = 1.0e5
+End
+
+
+Boundary Condition 1
+  Target Boundaries = 1
+
+  pressure  = 0
+  Velocity 1 = 0
+  Velocity 2 = 0
+End
+
+
+Boundary Condition 2
+  Target Boundaries = 2
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = $RefT+0.5
+End
+
+
+Boundary Condition 3
+  Target Boundaries = 3
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = Variable Coordinate 1
+    Real MATC "RefT-tx+0.5"
+End
+
+
+Boundary Condition 4
+  Target Boundaries = 4
+
+
+  Velocity 1 = 0
+  Velocity 2 = 0
+  Temperature = $RefT-0.5
+End
+
+! Two orders of magnitude smaller than ../ThermalCompress_vec's norm, which is
+! the expected scale: the density perturbation here is set by the ideal gas
+! law's response to a ~1 K temperature swing on a ~293 K background (~0.3%),
+! against Heat Expansion Coefficient = 0.25 (~25% swing) there.
+!
+! The same problem on the legacy FlowSolve (same mesh, "Stabilize = True",
+! which for a compressible model forces FlowSolve's own bubble fallback --
+! see NavierStokes.F90) converges to 5.22963E-05, 0.90% away, the same size
+! discretisation difference seen for the other two models' own legacy checks.
+Solver 2 :: Reference Norm = Real 5.1828956E-05
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
+RUN

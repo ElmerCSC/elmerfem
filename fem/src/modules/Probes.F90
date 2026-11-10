@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: Aug 24, 2023
 ! *
@@ -44,7 +44,7 @@ SUBROUTINE VolumeProbe( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp) :: dt
   LOGICAL :: TransientSimulation
 ! Local variables
-  
+
   TYPE(Mesh_t), POINTER :: Mesh
   TYPE(ValueHandle_t), POINTER :: probe_h(:)
   TYPE(GaussIntegrationPoints_t) :: IP
@@ -94,7 +94,7 @@ SUBROUTINE VolumeProbe( Model, Solver, dt, TransientSimulation )
             numsubs = numsubs + 1
             if (allocated(biases)) then
               biases(numsubs) = lenstr+1 ! last one is length of the string
-            end if  
+            end if
             exit scanstr
           end if
 
@@ -161,8 +161,8 @@ SUBROUTINE VolumeProbe( Model, Solver, dt, TransientSimulation )
    end block
 
   end do
-  
- Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh ) 
+
+ Parallel = ( ParEnv % PEs > 1 ) .AND. ( .NOT. Solver % Mesh % SingleMesh )
 
  if (Parallel) then
    do t = 1,size(integral)
@@ -171,7 +171,7 @@ SUBROUTINE VolumeProbe( Model, Solver, dt, TransientSimulation )
  end if
 
  do t = 1,size(integral)
-   CALL ListAddConstReal( Model % Simulation, 'res: volume probe ' // & 
+   CALL ListAddConstReal( Model % Simulation, 'res: volume probe ' // &
        trim(probe_names(biases(t):biases(t+1)-1)), integral(t) )
  end do
 

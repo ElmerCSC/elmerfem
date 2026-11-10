@@ -8,7 +8,8 @@
 !        analysis. Computers & Mathematics with Applications, 75(3):798-808,
 !        2018.
 !
-! Here a dimensionless form of the model is used. The four eigenvalues having
+! Here a dimensionless form of the model is used and the second-order
+! approximation is applied. The four eigenvalues having
 ! the smallest real part give the following values for a scaled propagation
 ! parameter (see [ZR18])
 !

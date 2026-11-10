@@ -30,6 +30,7 @@ Equation 2 :: Active Solvers(1) = 2
 Solver 1
   Exec Solver = "Always"
   Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

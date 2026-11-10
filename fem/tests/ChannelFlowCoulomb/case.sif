@@ -63,7 +63,7 @@ Solver 1
   Equation = Navier-Stokes
 
   Procedure = "FlowSolve" "FlowSolver"
-!  Procedure = "IncompressibleNSVec" "IncompressibleNSSolver"
+!  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
  
   Stabilization Method = Stabilized
 

@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -27,7 +27,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
@@ -52,9 +52,61 @@
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(ValueList_t), POINTER :: Params
+     LOGICAL :: Found, Bubbles, Stabilize
+     CHARACTER(LEN=MAX_NAME_LEN) :: StabilizeFlag, ElementStr
 
      Params => GetSolverParams()
      CALL ListAddInteger( Params,'Time Derivative Order',1 )
+
+     ! Resolve whether this run will condense a velocity bubble (of either
+     ! flavor: a p-element "Element = p:.. b:.." bubble, or the legacy
+     ! "Bubbles = True"/"Stabilization Method = Bubbles" one-bubble-per-node
+     ! convention) -- mirrors the resolution FlowSolver itself does from
+     ! "Bubbles"/"Stabilize"/"Stabilization Method"/"Element". Doesn't cover
+     ! the P2/Q2-P1/Q1 (P2P1) special case, which is decided per element
+     ! (basis function degree) and so cannot be resolved here.
+     Bubbles   = ListGetLogical( Params,'Bubbles', Found )
+     Stabilize = ListGetLogical( Params,'Stabilize', Found )
+     StabilizeFlag = ListGetString( Params,'Stabilization Method', Found )
+     IF ( .NOT. Found ) THEN
+       IF ( .NOT. Stabilize ) THEN
+         Bubbles = Bubbles .OR. ListCheckPresent(Params,'Element')
+       END IF
+     ELSE
+       SELECT CASE( StabilizeFlag )
+       CASE( 'bubbles', 'pbubbles' )
+         Bubbles = .TRUE.
+       END SELECT
+     END IF
+
+     ! FlowSolve always condenses a p-element bubble locally (nb > 0 always
+     ! triggers NSCondensate/NSCondensateTransient here -- there is no
+     ! "Bubbles in Global System = True" branch in FlowSolver itself), so nd
+     ! (the retained dof count) must NOT also fold the bubble dofs into the
+     ! global system, or the two bubble-counting mechanisms disagree with
+     ! each other and corrupt the condensed system. Left unset,
+     ! SetGlobalBubblesFlag defaults "Bubbles in Global System" to TRUE
+     ! whenever "Element" contains "p:"/"b:" -- default it to FALSE instead,
+     ! exactly as KESolver_Init and friends already do for their own p-bubble
+     ! case. ListAddNew, so an explicit sif setting still wins.
+     ElementStr = ListGetString( Params,'Element', Found )
+     IF ( Found ) THEN
+       IF ( INDEX(ElementStr,'b:') > 0 ) THEN
+         CALL ListAddNewLogical(Params, 'Bubbles in Global System', .FALSE.)
+       END IF
+     END IF
+
+     ! The recovery of a transient condensed bubble (see NSCondensateTransientH
+     ! in FlowSolve, mirroring IncompressibleNS's own LCondensate, and the
+     ! identical logic in KESolver_Init and friends) needs
+     ! at least TWO solves within one timestep: the bubble value recovered on
+     ! the first solve of a new timestep is still consistent with the
+     ! previous timestep's nodal solution, not this one's. ListAddNew, so an
+     ! explicit sif setting still wins.
+     IF ( TransientSimulation .AND. Bubbles .AND. .NOT. Stabilize ) THEN
+       CALL ListAddNewInteger(Params, 'Nonlinear System Min Iterations', 2)
+       CALL ListAddNewInteger(Params, 'Nonlinear System Max Iterations', 2)
+     END IF
 
    END SUBROUTINE FlowSolver_init
 
@@ -82,7 +134,7 @@
 !    Local variables
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER :: StiffMatrix
-     
+
      INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m
 
      TYPE(ValueList_t),POINTER :: Material, BC, BodyForce, Equation
@@ -141,7 +193,8 @@
        LocalTemperature(:), GasConstant(:), HeatCapacity(:),             &
        LocalTempPrev(:),SlipCoeff(:,:), PseudoCompressibility(:),        &
        PseudoPressure(:), Drag(:,:), PotentialField(:),    &
-       PotentialCoefficient(:)
+       PotentialCoefficient(:), PrevU(:), PrevV(:), PrevW(:),            &
+       xloc(:,:), xprevloc(:,:)
 
      SAVE U,V,W,MASS,STIFF,LoadVector,Viscosity, TimeForce,FORCE,ElementNodes,  &
        Alpha,Beta,ExtPressure,Pressure,PrevPressure, PrevDensity,Density,       &
@@ -150,7 +203,24 @@
        LocalTemperature, GasConstant, HeatCapacity, LocalTempPrev,MU,MV,MW,     &
        PseudoCompressibilityScale, PseudoCompressibility, PseudoPressure,       &
        PseudoPressureExists, Drag, PotentialField, PotentialCoefficient, &
-       ComputeFree, Indexes
+       ComputeFree, Indexes, PrevU, PrevV, PrevW, xloc, xprevloc
+
+     ! Per-element bubble history (current and previous timestep), needed to
+     ! form a consistent BDF(1) time derivative for a condensed velocity
+     ! bubble (of either flavor -- a p-element "Element = p:.. b:.." bubble,
+     ! or the legacy "Bubbles = True"/"Stabilization Method = Bubbles" one
+     ! bubble-per-node convention): see NSCondensateTransientH in
+     ! MatrixAssembly.F90, which mirrors CondensatePTransientH (used by
+     ! HeatSolve.F90/the turbulence solvers). It lives on Solver % Variable's
+     ! own BubbleValues/BubblePrevValues (Types.F90), not a separate array
+     ! here, since a condensed bubble's value is conceptually part of this
+     ! same Flow Solution field. Indexed by Element % ElementIndex with
+     ! stride (NSDOFs-1)*MAX(Mesh % MaxBDOFs, Mesh % MaxElementNodes) --
+     ! (NSDOFs-1) since there is no pressure bubble -- not (NSDOFs-1)*nb of
+     ! any one element, so blocks stay aligned on a mesh with mixed bubble
+     ! counts. FlowSolve never leaves a bubble in the global system (no
+     ! "Bubbles in Global System" support here), so unlike the turbulence
+     ! solvers this needs no Solver % GlobalBubbles check.
 
       REAL(KIND=dp) :: at,at0,at1,totat,st,totst
 !------------------------------------------------------------------------------
@@ -192,9 +262,9 @@
 
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) ) RETURN
-          
+
      CALL DefaultStart()
-     
+
 !    Check for local coordinate system
 
      LocalCoords = GetString( Solver % Values, 'Solver Coordinate System', &
@@ -230,7 +300,7 @@
      Transient = TransientSimulation
      Convect = .TRUE.
      FlowModel = GetString( GetSolverParams(), 'Flow Model', Gotit )
-     
+
      SELECT CASE(FlowModel)
      CASE('no convection')
        Convect = .FALSE.
@@ -284,18 +354,20 @@
          CALL ListAddConstReal( Solver % Values,'Newtonian Viscosity Condition',1.0_dp)
        END IF
      END IF
-     
+
 !------------------------------------------------------------------------------
 !     Allocate some permanent storage, this is done first time only
-!------------------------------------------------------------------------------     
+!------------------------------------------------------------------------------
      IF ( .NOT.AllocationsDone .OR. Solver % MeshChanged ) THEN
 
        N = Solver % Mesh % MaxElementDOFs
-       
+
        IF( AllocationsDone ) THEN
           DEALLOCATE(                               &
                U,  V,  W,                           &
                MU, MV, MW,                          &
+               PrevU, PrevV, PrevW,                 &
+               xloc, xprevloc,                      &
                Indexes,                             &
                Pressure,                            &
                PrevPressure,                        &
@@ -310,7 +382,7 @@
                MASS,  STIFF,                        &
                HeatExpansionCoeff,                  &
                GasConstant, HeatCapacity,           &
-               ReferenceTemperature,                & 
+               ReferenceTemperature,                &
                LocalTempPrev, LocalTemperature,     &
                PotentialField, PotentialCoefficient, &
                LoadVector, Alpha, Beta, &
@@ -319,6 +391,8 @@
 
        ALLOCATE( U(N),  V(N),  W(N),                     &
                  MU(N), MV(N), MW(N),                    &
+                 PrevU(N), PrevV(N), PrevW(N),            &
+                 xloc(NSDOFs,N), xprevloc(NSDOFs,N),      &
                  Indexes( N ),                           &
                  Pressure( N ),                          &
                  PrevPressure( N ),                      &
@@ -335,14 +409,14 @@
                  STIFF( 2*NSDOFs*N,2*NSDOFs*N ),&
                  HeatExpansionCoeff(N),                  &
                  GasConstant( N ), HeatCapacity( N ),    &
-                 ReferenceTemperature(N),                & 
+                 ReferenceTemperature(N),                &
                  LocalTempPrev(N), LocalTemperature(N),  &
                  PotentialField( N ), PotentialCoefficient( N ), &
                  LoadVector( 4,N ), Alpha( N ), Beta( N ), &
                  ExtPressure( N ), STAT=istat )
 
        Drag = 0.0d0
-       NULLIFY(Pwrk) 
+       NULLIFY(Pwrk)
 
        PseudoPressureExists = .FALSE.
        AllIncompressible = .TRUE.
@@ -367,7 +441,7 @@
              DEALLOCATE( PseudoPressure )
           END IF
           n = SIZE( FlowSolution ) / NSDOFs
-          ALLOCATE( PseudoPressure(n),STAT=istat ) 
+          ALLOCATE( PseudoPressure(n),STAT=istat )
        END IF
 
 !------------------------------------------------------------------------------
@@ -377,17 +451,16 @@
          CALL Info('FlowSolve','Enforcing relative pressure relaxation',Level=8)
          CALL ListAddNewLogical( Solver % Values,'Relative Pressure Relaxation',.TRUE.)
        END IF
-       
+
        IF ( istat /= 0 ) THEN
          CALL Fatal( 'FlowSolve','Memory allocation error, Aborting.' )
        END IF
-       
+
 !------------------------------------------------------------------------------
 
        AllocationsDone = .TRUE.
      END IF
 !------------------------------------------------------------------------------
-
 
      TimeVar => VariableGet( Solver % Mesh % Variables, 'Timestep')
      Timestep = NINT(Timevar % Values(1))
@@ -395,6 +468,13 @@
        IF ( ALLOCATED(pDensity0) ) pDensity0 = pDensity1
        SaveTimestep=Timestep
      END IF
+
+     ! Per-element bubble history for the transient condensed-bubble case:
+     ! allocate once (a no-op on every later call), sized by the mesh's own
+     ! worst-case bubble count (not this solver's nb, which can vary element
+     ! to element) -- Dofs=(NSDOFs-1) since there is no pressure bubble, so
+     ! only the velocity components are bubble-augmented.
+     IF ( Transient ) CALL DefaultBubbleHistoryUpdate( Dofs=NSDOFs-1 )
 
 !------------------------------------------------------------------------------
 !    Do some additional initialization, and go for it
@@ -411,8 +491,8 @@
      AnyRotating = ListCheckPresentAnyBodyForce(Model,'Angular Velocity') .OR. &
          ListCheckPresentAnyBodyForce(Model,'Angular Velocity 1') .OR. &
          ListCheckPresentAnyBodyForce(Model,'Angular Velocity 2') .OR. &
-         ListCheckPresentAnyBodyForce(Model,'Angular Velocity 3') 
-         
+         ListCheckPresentAnyBodyForce(Model,'Angular Velocity 3')
+
 !------------------------------------------------------------------------------
 
      ! Different options are:
@@ -426,7 +506,7 @@
      Bubbles   = ListGetLogical( Solver % Values,'Bubbles',GotIt )
      Stabilize = ListGetLogical( Solver % Values,'Stabilize',GotIt )
      LegacyBubbles = .FALSE.
-     
+
      StabilizeFlag = ListGetString( Solver % Values, &
            'Stabilization Method', GotIt )
      IF ( .NOT. GotIt ) THEN
@@ -446,7 +526,7 @@
        IF (StabilizeFlag == 'p2/p1' .OR. StabilizeFlag == 'p2p1') THEN
          P2P1 = .TRUE.
        ELSE IF( StabilizeFlag == 'bubbles' ) THEN
-         LegacyBubbles = .NOT. ListCheckPresent(Solver % Values,'Element') 
+         LegacyBubbles = .NOT. ListCheckPresent(Solver % Values,'Element')
          Bubbles = .TRUE.
        ELSE IF(StabilizeFlag == 'stabilized' ) THEN
          Stabilize = .TRUE.
@@ -458,14 +538,14 @@
          CALL Fatal('FlowSolver','Unknown "stabilization method": '//TRIM(StabilizeFlag))
        END IF
      END IF
-     
+
      IF( Stabilize .AND. Bubbles ) THEN
        CALL Fatal('FlowSolver','You cant have stabilization and bubbles both!')
-     END IF     
+     END IF
      IF( LegacyBubbles ) THEN
        CALL Info('FlowSolver','Using legacy bubbles (as opposed to elemental ones!)',Level=8)
      END IF
-       
+
      DivDiscretization = ListGetLogical( Solver % Values, &
               'Div Discretization', GotIt )
 
@@ -536,8 +616,8 @@
      totat = 0.0d0
      totst = 0.0d0
 
- 
-     ! Initialize the pressure to be used in artificial compressibility 
+
+     ! Initialize the pressure to be used in artificial compressibility
      IF(PseudoPressureExists) THEN
        PseudoPressure = FlowSolution(NSDOFs:SIZE(FlowSolution):NSDOFs)
 
@@ -546,7 +626,7 @@
        CALL Info('FlowSolve',Message,Level=5)
 
        PseudoCompressibilityScale = ListGetConstReal( Model % Simulation, &
-           'Artificial Compressibility Scaling',GotIt)      
+           'Artificial Compressibility Scaling',GotIt)
 
        IF(.NOT.GotIt) PseudoCompressibilityScale = 1.0
        IF(Transient) THEN
@@ -569,7 +649,7 @@
        CALL Info( 'FlowSolve', ' ', Level=4 )
        CALL Info( 'FlowSolve', ' ', Level=4 )
        CALL Info( 'FlowSolve', '-------------------------------------', Level=4 )
-       WRITE( Message, * ) 'NAVIER-STOKES ITERATION', iter 
+       WRITE( Message, * ) 'NAVIER-STOKES ITERATION', iter
        CALL Info( 'FlowSolve',Message, Level=4 )
        CALL Info( 'FlowSolve','-------------------------------------', Level=4 )
        CALL Info( 'FlowSolve', ' ', Level=4 )
@@ -577,7 +657,7 @@
 
 !------------------------------------------------------------------------------
        !CALL InitializeToZero( StiffMatrix, ForceVector )
-       CALL DefaultInitialize() 
+       CALL DefaultInitialize()
 !------------------------------------------------------------------------------
 
        bf_id   = -1
@@ -585,9 +665,9 @@
 
        CALL StartAdvanceOutput( 'FlowSolve', 'Assembly: ' )
        NoActive = GetNOFActive()
-       
+
        DO t = 1,NoActive
-         
+
          CALL AdvanceOutput( t, NoActive )
 
          Element => GetActiveElement(t)
@@ -641,7 +721,7 @@
                CompressibilityModel = UserDefined2
 
              CASE( 'artificial compressible' )
-               CompressibilityModel = Incompressible 
+               CompressibilityModel = Incompressible
                PseudoCompressible = .TRUE.
 
              CASE DEFAULT
@@ -659,7 +739,7 @@
              Hydrostatic = ListGetLogical( Equation,'Hydrostatic Pressure',gotIt )
            END IF
 !------------------------------------------------------------------------------
-           
+
            Rotating = .FALSE.
            IF( bf_id > 0 ) THEN
              gWork => ListGetConstRealArray( BodyForce,'Angular Velocity',GotIt)
@@ -725,7 +805,7 @@
                END IF
             END SELECT
          END IF
-         
+
          LocalTemperature = 0.0d0
          LocalTempPrev    = 0.0d0
          IF ( ASSOCIATED( TempSol ) ) THEN
@@ -751,7 +831,7 @@
              IF(PseudoCompressible) THEN
                Pressure(1:n) = GetReal( Material,'Artificial Pressure', GotIt )
                IF(.NOT. GotIt) THEN
-                 Pressure(1:nd) = PseudoPressure(FlowPerm(Indexes(1:nd))) 
+                 Pressure(1:nd) = PseudoPressure(FlowPerm(Indexes(1:nd)))
                ELSE
                  Pressure(n+1:nd) = 0.0d0
                END IF
@@ -860,18 +940,18 @@
          Porous = ListGetLogical( Material,'Porous Media', GotIt)
          IF(Porous) THEN
            CALL GetRealArray( Material,  Pwrk,'Porous Resistivity',GotIt)
-           
+
            IF( .NOT. GotIt ) THEN
              Drag( 1,1:n) = GetReal( Material,'Porous Resistivity 1',GotIt )
-	     Drag( 2,1:n) = GetReal( Material,'Porous Resistivity 2',GotIt ) 
+             Drag( 2,1:n) = GetReal( Material,'Porous Resistivity 2',GotIt )
              IF( NSDOFs -1 > 2 ) THEN
-   	       Drag( 3,1:n) = GetReal( Material,'Porous Resistivity 3',GotIt ) 
+               Drag( 3,1:n) = GetReal( Material,'Porous Resistivity 3',GotIt )
              END IF
            ELSE IF ( SIZE(Pwrk,1) == 1 ) THEN
              DO i=1,NSDOFs-1
                Drag( i,1:n ) = Pwrk( 1,1,1:n )
              END DO
-           ELSE 
+           ELSE
              DO i=1,MIN(NSDOFs,SIZE(Pwrk,1))
                Drag(i,1:n) = Pwrk(i,1,1:n)
              END DO
@@ -899,7 +979,7 @@
 
              HeatExpansionCoeff(1:n) = GetReal( Material, &
                  'Heat Expansion Coefficient' )
-             
+
              ReferenceTemperature(1:n) = GetReal( Material, &
                  'Reference Temperature' )
 
@@ -917,7 +997,7 @@
                    Tdiff = -HeatExpansionCoeff(i) * &
                                (Temperature(k) - ReferenceTemperature(i))
                  END IF
-  
+
                  LoadVector(1,i)   = Gravity(1) * Tdiff
                  LoadVector(2,i)   = Gravity(2) * Tdiff
                  IF ( NSDOFs > 3 ) THEN
@@ -933,27 +1013,27 @@
 !------------------------------------------------------------------------------
            LoadVector(1,1:n) = LoadVector(1,1:n) + ListGetReal( BodyForce, &
                'Flow Bodyforce 1',n,NodeIndexes,gotIt )
-           
+
            LoadVector(2,1:n) = LoadVector(2,1:n) + ListGetReal( BodyForce, &
                'Flow Bodyforce 2',n,NodeIndexes,gotIt )
-           
+
            IF ( NSDOFs > 3 ) THEN
              LoadVector(3,1:n) = LoadVector(3,1:n) + ListGetReal( BodyForce, &
                  'Flow Bodyforce 3',n,NodeIndexes,gotIt )
            END IF
 
 !------------------------------------------------------------------------------
-           
-           PotentialForce = ListGetLogical( BodyForce,'Potential Force',gotIt) 
+
+           PotentialForce = ListGetLogical( BodyForce,'Potential Force',gotIt)
            IF(PotentialForce) THEN
              PotentialField(1:n) = ListGetReal( BodyForce, &
-                 'Potential Field',n,NodeIndexes)             
+                 'Potential Field',n,NodeIndexes)
              PotentialCoefficient(1:n) = ListGetReal( BodyForce, &
                  'Potential Coefficient',n,NodeIndexes)
            END IF
 
 
-        
+
 !------------------------------------------------------------------------------
          END IF ! of body forces
 
@@ -1023,7 +1103,7 @@
 !------------------------------------------------------------------------------
              CASE DEFAULT
                CALL Fatal('FlowSolver','Missing compressibility model in cylindrical coordinates')
-               
+
 
            END SELECT
 !------------------------------------------------------------------------------
@@ -1035,53 +1115,114 @@
            SELECT CASE( CompressibilityModel )
 !------------------------------------------------------------------------------
            CASE( Incompressible,PerfectGas1)
-             
+
              CALL NavierStokesGeneralCompose( &
                  MASS,STIFF,FORCE, &
                  LoadVector, Viscosity,Density,U,V,W,MU,MV,MW,Stabilize, &
                  NewtonLinearization,Element,n,ElementNodes )
-             
+
            CASE DEFAULT
              CALL Fatal('FlowSolver','Missing compressibility model in general coordinates')
-             
+
            END SELECT
-           
+
 !------------------------------------------------------------------------------
          END SELECT
 
-         ! We do not have stabilized formulation for compressible fluids. 
+         ! We do not have stabilized formulation for compressible fluids.
          IF ( CompressibilityModel /= Incompressible .AND. &
                  StabilizeFlag == 'stabilized' ) THEN
             Bubbles = .TRUE.
             StabilizeFlag = 'bubbles'
          END IF
 
-         ! Internally P2P1 is dealt as special case of bubbles. 
+         ! Internally P2P1 is dealt as special case of bubbles.
          IF ( Element % TYPE % BasisFunctionDegree <= 1 .AND. P2P1 ) THEN
             Bubbles = .TRUE.
             StabilizeFlag = 'bubbles'
          END IF
-         
-         ! If bubbles are requested, but not in element formulation.
-         IF ( nb==0 .AND. Bubbles ) nb = n
-           
+
+         ! If bubbles are requested, but not in element formulation. Guarded on
+         ! .NOT. ASSOCIATED(Element % PDefs) (mirroring KESolver/Komega/
+         ! SSTKomega/Spalart-Allmaras/V2FSolver's own "Bubbles = BubblesDefault
+         ! .AND. .NOT. ASSOCIATED(Element % PDefs)"): for a genuine p-element
+         ! bubble, nb==0 means GetElementNOFBDOFs() saw Solver % GlobalBubbles
+         ! and correctly reports "no local bubble to condense, it is a real
+         ! global dof" -- a legitimate, user-selectable choice needing no
+         ! special handling here. Falling back to the legacy one-bubble-per-
+         ! node convention in that case forces local condensation the user
+         ! explicitly opted out of, mismatched against the real p-bubble
+         ! indexing, which is what used to hand NSCondensateTransient a wrong
+         ! retained/bubble dof split and abort in InvertMatrix with "LUDecomp:
+         ! Matrix is singular". A legacy (non-p) element has no PDefs, so this
+         ! fallback still fires unconditionally for it, same as before.
+         IF ( nb==0 .AND. Bubbles .AND. .NOT. ASSOCIATED(Element % PDefs) ) nb = n
+
 !------------------------------------------------------------------------------
-!        If time dependent simulation, add mass matrix to global 
+!        If time dependent simulation, add mass matrix to global
 !        matrix and global RHS vector
 !------------------------------------------------------------------------------
          TimeForce = 0.0_dp
-         IF ( Transient ) THEN
+         IF ( nb > 0 .AND. Transient ) THEN
+           ! A condensed velocity bubble's own value from the previous
+           ! timestep is not in the global solution vector (it was
+           ! eliminated from it), so Default1stOrderTime cannot form its
+           ! time derivative -- it would silently treat that history as
+           ! zero. NSCondensateTransient forms M/dt and M*xprev/dt over the
+           ! FULL retained+bubble block instead, using this element's own
+           ! recorded bubble history, before eliminating the bubble
+           ! rows/columns. Calling Default1stOrderTime as well would add
+           ! M/dt to the retained block a second time.
+           SELECT CASE( NSDOFs )
+             CASE(3)
+               PrevU(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-2,1)
+               PrevV(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-1,1)
+             CASE(4)
+               PrevU(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-3,1)
+               PrevV(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-2,1)
+               PrevW(1:nd) = Solver % Variable % PrevValues(NSDOFs*FlowPerm(Indexes(1:nd))-1,1)
+           END SELECT
+
+           xloc(1,1:nd) = U(1:nd)
+           xloc(2,1:nd) = V(1:nd)
+           xprevloc(1,1:nd) = PrevU(1:nd)
+           xprevloc(2,1:nd) = PrevV(1:nd)
+           IF ( NSDOFs == 4 ) THEN
+             xloc(3,1:nd) = W(1:nd)
+             xprevloc(3,1:nd) = PrevW(1:nd)
+           END IF
+           ! The pressure row of xloc/xprevloc couples into the bubble
+           ! momentum rows through the pressure gradient term either way, so
+           ! xloc always needs the real current pressure. xprevloc's previous
+           ! -pressure entry is only read against the mass matrix's own
+           ! pressure row, which is genuinely zero for incompressible flow
+           ! (continuity has no dp/dt) but NOT for a compressible model
+           ! (PerfectGas1/UserDefined1/UserDefined2/Thermal all give
+           ! continuity a real time derivative) -- so it must be the real
+           ! previous pressure, not an assumed zero; fetch it fresh here
+           ! rather than relying on the CompressibilityModel-specific fetch
+           ! above (PerfectGas1 only, and unconditional on nb).
+           xloc(NSDOFs,1:nd) = Pressure(1:nd)
+           xprevloc(NSDOFs,1:nd) = Solver % Variable % PrevValues( &
+               NSDOFs*FlowPerm(Indexes(1:nd)),1 )
+
+           CALL NSCondensateTransientH( Solver % Variable, Element % ElementIndex, &
+               nd, nb, NSDOFs-1, dt, MASS, STIFF, FORCE, &
+               xprevloc(:,1:nd), xloc(:,1:nd) )
+         ELSE
+           IF ( Transient ) THEN
 !------------------------------------------------------------------------------
-!          NOTE: the following will replace STIFF and FORCE
-!          with the combined information
+!            NOTE: the following will replace STIFF and FORCE
+!            with the combined information
 !------------------------------------------------------------------------------
-           CALL Default1stOrderTime( MASS, STIFF, FORCE )
+             CALL Default1stOrderTime( MASS, STIFF, FORCE )
+           END IF
+
+           IF ( nb > 0 ) THEN
+             CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
+           END IF
          END IF
-         
-         IF ( nb > 0 ) THEN
-           CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
-         END IF
-         
+
 !------------------------------------------------------------------------------
 !        Add local stiffness matrix and force vector to global matrix & vector
 !------------------------------------------------------------------------------
@@ -1107,7 +1248,7 @@
         IF ( .NOT. ActiveBoundaryElement() ) CYCLE
 
         IF( dim - GetElementDim(Element) > 1 ) CYCLE
-        
+
         n = GetElementNOFNodes()
 
         CALL GetElementNodes( ElementNodes )
@@ -1144,7 +1285,7 @@
 !         tangential force BC:
 !         \tau\cdot n = @\beta/@t (tangential derivative of something)
 !------------------------------------------------------------------------------
-              
+
           IF ( ASSOCIATED( TempSol ) ) THEN
             Beta(1:n) = GetReal( BC, &
                 'Surface Tension Expansion Coefficient',gotIt )
@@ -1156,7 +1297,7 @@
               END DO
               Beta(1:n) = Beta(1:n) * GetReal(BC, 'Surface Tension Coefficient' )
             ELSE
-              Beta(1:n) = GetReal( BC,'Surface Tension Coefficient', gotIt ) 
+              Beta(1:n) = GetReal( BC,'Surface Tension Coefficient', gotIt )
             END IF
           END IF
 
@@ -1187,22 +1328,22 @@
           END IF
 !------------------------------------------------------------------------------
           SELECT CASE( CurrentCoordinateSystem() )
-            
-          CASE( Cartesian )            
+
+          CASE( Cartesian )
             CALL NavierStokesBoundary(  STIFF, FORCE, &
                 LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, NormalTangential,   &
                 Element, n, ElementNodes )
-            
-          CASE( Cylindric, CylindricSymmetric,  AxisSymmetric )            
+
+          CASE( Cylindric, CylindricSymmetric,  AxisSymmetric )
             CALL NavierStokesCylindricalBoundary( STIFF, &
                 FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
                 NormalTangential, Element, n, ElementNodes)
-            
-          CASE DEFAULT            
+
+          CASE DEFAULT
             CALL NavierStokesGeneralBoundary( STIFF, &
                 FORCE, LoadVector, Alpha, Beta, ExtPressure, SlipCoeff, &
                 Element, n, ElementNodes)
-            
+
          END SELECT
 
 !------------------------------------------------------------------------------
@@ -1224,7 +1365,7 @@
                 U(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-2 )
                 V(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-1 )
                 W(1:n) = 0.0d0
-            
+
               CASE(4)
                 U(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-3 )
                 V(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-2 )
@@ -1246,7 +1387,7 @@
                 U(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-2 )
                 V(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-1 )
                 W(1:n) = 0.0d0
-            
+
               CASE(4)
                 U(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-3 )
                 V(1:n) = FlowSolution( NSDOFs*FlowPerm(NodeIndexes)-2 )
@@ -1293,10 +1434,10 @@
       END DO
 
       CALL DefaultFinishBoundaryAssembly()
-     
+
       !------------------------------------------------------------------------------
       !     Implicit Friction Boundaries
-      !------------------------------------------------------------------------------     
+      !------------------------------------------------------------------------------
       IF (ImplicitFrictionDirection) THEN
         ! This is a matrix level routine for setting friction such that tangential
         ! traction is the normal traction multiplied by a coefficient.
@@ -1304,7 +1445,7 @@
       ELSE
         CALL SetImplicitFriction(Model, Solver,'Implicit Friction Coefficient' )
       END IF
-      
+
       CALL DefaultFinishAssembly()
 
 !------------------------------------------------------------------------------
@@ -1325,7 +1466,7 @@
       IF(ListGetLogical(Solver % Values,'Constant-Viscosity Start',GotIt )) THEN
         CALL ListRemove( Solver % Values,'Newtonian Viscosity Condition')
       END IF
-      
+
       st = CPUTIme()-st
       totat = totat + at
       totst = totst + st
@@ -1343,7 +1484,7 @@
       CALL Info( 'FlowSolve', Message, Level=4 )
       WRITE( Message, * ) 'Relative Change : ',Solver % Variable % NonlinChange
       CALL Info( 'FlowSolve', Message, Level=4 )
-      
+
       RelativeChange = Solver % Variable % NonlinChange
       IF ( RelativeChange < NewtonTol .OR. &
              iter > NewtonIter ) NewtonLinearization = .TRUE.
@@ -1363,7 +1504,7 @@
           CALL Info('FlowSolve', 'Newton tolerance exceeded, switching back to picard', Level=6)
         END IF
       END IF
-        
+
       IF ( RelativeChange < NonLinearTol .AND. Iter<NonlinearIter ) EXIT
       IF ( Solver % Variable % Norm > MaxNorm) THEN
          CALL Warn('FlowSolve', 'Exiting as nonlinear norm is above allowed maximum!')
@@ -1380,7 +1521,7 @@
           MBFlag = GetLogical(GetSolverParams(), 'Internal Move Boundary', GotIt)
           IF ( MBFlag .OR. .NOT. GotIt ) THEN
             Relaxation = GetCReal( Solver % Values, &
-                'Free Surface Relaxation Factor', GotIt )            
+                'Free Surface Relaxation Factor', GotIt )
             IF ( .NOT.GotIt ) Relaxation = 1.0_dp
             CALL MoveBoundary( Model, Relaxation )
           END IF
@@ -1410,7 +1551,7 @@
         CASE (4)
           MidEdgeNodes(1:4) = (/ 5, 6, 7, 8 /)
         CASE (5)
-          MidEdgeNodes(1:6) = (/ 5, 6, 7, 8, 9, 10 /) 
+          MidEdgeNodes(1:6) = (/ 5, 6, 7, 8, 9, 10 /)
         CASE (6)
           MidEdgeNodes(1:8) = (/ 6, 7, 8, 9, 10, 11, 12, 13 /)
         CASE (7)
@@ -1424,10 +1565,10 @@
           i = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,1)))
           j = (dim+1) * Solver % Variable % Perm(Indexes(EdgeMap(q,2)))
           Solver % Variable % Values(m) = 0.5d0 * ( Solver % Variable % Values(i) + &
-              Solver % Variable % Values(j) )   
+              Solver % Variable % Values(j) )
         END DO
 
-        ! The pressure at the midface nodes for 409 elements: 
+        ! The pressure at the midface nodes for 409 elements:
         IF (k==4 .AND. nd==9) THEN
           res = 0.0d0
           DO q=1,4
@@ -1440,11 +1581,11 @@
 
         ! The pressure at the midpoint and at the midface nodes for 827 elements:
         IF (k==8 .AND. nd==27) THEN
-          BrickFaceMap(1,:) = (/ 1,2,6,5 /)         
+          BrickFaceMap(1,:) = (/ 1,2,6,5 /)
           BrickFaceMap(2,:) = (/ 2,3,7,6 /)
           BrickFaceMap(3,:) = (/ 4,3,7,8 /)
           BrickFaceMap(4,:) = (/ 1,4,8,5 /)
-          BrickFaceMap(5,:) = (/ 1,2,3,4 /)          
+          BrickFaceMap(5,:) = (/ 1,2,3,4 /)
           BrickFaceMap(6,:) = (/ 5,6,7,8 /)
           DO j=1,6
             res = 0.0d0
@@ -1461,7 +1602,7 @@
             i = (dim+1) * Solver % Variable % Perm(Indexes(q))
             res = res + Solver % Variable % Values(i)
           END DO
-          m = (dim+1) * Solver % Variable % Perm(Indexes(27))      
+          m = (dim+1) * Solver % Variable % Perm(Indexes(27))
           Solver % Variable % Values(m) = 0.125d0 * res
         END IF
 
@@ -1471,7 +1612,7 @@
     IF (ListGetLogical(Solver % Values,'Adaptive Mesh Refinement',GotIt)) THEN
       IF (.NOT.ListGetLogical(Solver % Values,'Library Adaptivity',GotIt)) THEN
         CALL RefineMesh( Model,Solver,FlowSolution,FlowPerm, &
-           FlowSolver_Inside_Residual, FlowSolver_Edge_Residual, FlowSolver_Boundary_Residual ) 
+           FlowSolver_Inside_Residual, FlowSolver_Edge_Residual, FlowSolver_Boundary_Residual )
       END IF
     END IF
 
@@ -1524,8 +1665,8 @@ CONTAINS
                y = Solver % Mesh % Nodes % y(NodeIndexes(k)) - y0
 
                phi = ATAN2( y,x )
-               x = R * COS( phi ) 
-               y = R * SIN( phi ) 
+               x = R * COS( phi )
+               y = R * SIN( phi )
 
                Solver % Mesh % Nodes % x(NodeIndexes(k)) = x + x0
                Solver % Mesh % Nodes % y(NodeIndexes(k)) = y + y0
@@ -1603,7 +1744,7 @@ CONTAINS
 
      DOFs = DIM + 1
      IF ( CurrentCoordinateSystem() == AxisSymmetric ) DOFs = DOFs-1
-!    
+!
 !    --------------------------------------------------
      Element => Edge % BoundaryInfo % Left
 
@@ -1727,16 +1868,16 @@ CONTAINS
 
               Tension(1:En) = Tension(1:En) * ListGetReal( &
                  Model % BCs(bc) % Values,'Surface Tension Coefficient', &
-                               En, Edge % NodeIndexes ) 
+                               En, Edge % NodeIndexes )
            ELSE
               Tension(1:En) = ListGetReal( &
                   Model % BCs(bc) % Values,'Surface Tension Coefficient', &
-                         En, Edge % NodeIndexes,gotIt ) 
+                         En, Edge % NodeIndexes,gotIt )
            END IF
         ELSE
            Tension(1:En) = ListGetReal( &
                Model % BCs(bc) % Values,'Surface Tension Coefficient', &
-                      En, Edge % NodeIndexes,gotIt ) 
+                      En, Edge % NodeIndexes,gotIt )
         END IF
 
 !
@@ -1783,7 +1924,7 @@ CONTAINS
               u = SUM( EdgeBasis(1:En) * EdgeNodes % x(1:En) )
               v = SUM( EdgeBasis(1:En) * EdgeNodes % y(1:En) )
               w = SUM( EdgeBasis(1:En) * EdgeNodes % z(1:En) )
-      
+
               CALL CoordinateSystemInfo( Metric, SqrtMetric, &
                           Symb, dSymb, u, v, w )
 
@@ -2426,7 +2567,7 @@ CONTAINS
 !          given force:
 !          -------------
            Residual(i) = -Density * SUM( NodalForce(i,1:n) * Basis(1:n) )
- 
+
            IF ( CurrentCoordinateSystem() == Cartesian ) THEN
 !             + grad(p):
 !             ----------
@@ -2603,7 +2744,7 @@ CONTAINS
               DO j=1,DIM
                  Residual(DIM+1) = Residual(DIM+1) + &
                       SUM( Velocity(j,1:n) * Basis(1:n) ) *  &
-                           SUM( NodalDensity(1:n) * dBasisdx(1:n,j) ) 
+                           SUM( NodalDensity(1:n) * dBasisdx(1:n,j) )
               END DO
            END IF
         ELSE
@@ -2627,14 +2768,14 @@ CONTAINS
               DO j=1,DIM
                  Residual(DIM+1) = Residual(DIM+1) + &
                       SUM( Velocity(j,1:n) * Basis(1:n) ) *  &
-                      SUM( NodalDensity(1:n) * dBasisdx(1:n,j) ) 
+                      SUM( NodalDensity(1:n) * dBasisdx(1:n,j) )
               END DO
            END IF
         END IF
 
         DO i=1,DIM
            FNorm = FNorm + s * (Density * SUM(NodalForce(i,1:n)*Basis(1:n))**2)
-        END DO 
+        END DO
         Area = Area + s
 
         IF ( CurrentCoordinateSystem() == Cartesian ) THEN
@@ -2663,4 +2804,4 @@ CONTAINS
   END SUBROUTINE FlowSolver_Inside_Residual
 !------------------------------------------------------------------------------
 
-!> \} 
+!> \}

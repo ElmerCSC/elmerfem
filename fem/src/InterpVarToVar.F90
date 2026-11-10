@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -114,6 +114,8 @@ CONTAINS
     !------------------------------------------------------------------------------
 
     Debug = .FALSE.
+    !PRINT *, 'DebugIVTVR1: ',ParEnv % myPE
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     ALLOCATE( FoundNodes(NewMesh % NumberOfNodes),&
          PointLocalDistance(NewMesh % NumberOfNodes))
@@ -139,9 +141,12 @@ CONTAINS
     CALL InterpolateVarToVarReducedQ( OldMesh, NewMesh, HeightName, HeightDimensions, &
          FoundNodes, PointLocalDistance, OldNodeMask, NewNodeMask, &
          OldElemMask, Variables, GlobalEps, LocalEps, NumericalEps )
+    !PRINT *, 'DebugIVTVR2: ',ParEnv % myPE
     CALL MPI_BARRIER(ParEnv % ActiveComm, ierr)
+    !PRINT *, 'DebugIVTVR2.0: ',ParEnv % myPE
 
     IF(PRESENT(UnfoundNodes)) UnfoundNodes = .NOT. FoundNodes
+    !PRINT *, 'DebugIVTVR2.1: ',ParEnv % myPE
 
     DO i=1,NewMesh % NumberOfNodes
       IF(.NOT. FoundNodes(i)) THEN
@@ -154,14 +159,17 @@ CONTAINS
       IF(Debug) PRINT *,ParEnv % MyPE,'Debug, point ',&
            i,' found with local dist: ',PointLocalDistance(i)
     END DO
+    !PRINT *, 'DebugIVTVR2.2: ',ParEnv % myPE
 
     !Sum up unfound nodes, and those where point wasn't exactly in element
     n = COUNT((.NOT. FoundNodes) .OR. (PointLocalDistance > 0.0_dp))
     dn = n
+    !PRINT *, 'DebugIVTVR2.3: ',ParEnv % myPE
     IF(Debug) THEN
        PRINT *, 'Partition ',ParEnv % MyPE,' could not find ',n,'points!'
     END IF
     CALL SParActiveSUM(dn,2)
+    !PRINT *, 'DebugIVTVR3: ',ParEnv % myPE
 
     !Special case: all found
     !----------------------
@@ -278,6 +286,7 @@ CONTAINS
        END DO
        DEALLOCATE(nodes_x,nodes_y,nodes_z,BB)
     END IF Sending
+    !PRINT *, 'DebugIVTVR4: ',ParEnv % myPE
 
     ! receive points from others:
     ! ----------------------------
@@ -302,6 +311,7 @@ CONTAINS
             1104, ELMER_COMM_WORLD, status, ierr )
     END DO
 
+    !PRINT *, 'DebugIVTVR5: ',ParEnv % myPE
     DO i=1,ParEnv % PEs
        IF ( Parenv % mype == i-1 .OR. .NOT. ParEnv % Active(i) ) CYCLE
 
@@ -487,6 +497,7 @@ CONTAINS
        CALL ReleaseMesh(Nmesh)
        DEALLOCATE(foundnodes, SendLocalDistance, nMesh)
     END DO
+    !PRINT *, 'DebugIVTVR6: ',ParEnv % myPE
     DEALLOCATE(ProcRecv)
 
     ! Receive interpolated values:
@@ -614,6 +625,8 @@ CONTAINS
        DEALLOCATE(astore,vperm,RecvLocalDistance, BetterFound, ProcSend(proc+1) % perm)
 
     END DO
+    !PRINT *, 'DebugIVTVR7: ',ParEnv % myPE
+    Var => VariableGet( NewMesh % Variables, HeightName, ThisOnly = .TRUE. )
 
     DEALLOCATE(PointLocalDistance)
     IF ( ALLOCATED(Perm) ) DEALLOCATE(Perm,ProcSend)
@@ -625,7 +638,9 @@ CONTAINS
   SUBROUTINE InterpolateVarToVarReducedQ( OldMesh, NewMesh,HeightName,HeightDimensions, &
        FoundNodes, LocalDistances, OldNodeMask, NewNodeMask, OldElemMask, &
        Variables, GlobalEps, LocalEps, NumericalEps)
-    !This subroutine takes each boundary node on the specified boundary of the new mesh and finds its height (y coord in 2D) by performing (DIM - 1) interpolaton through boundary elements of the old mesh.
+    ! This subroutine takes each boundary node on the specified boundary of the new mesh and 
+    ! finds its height (y coord in 2D) by performing (DIM - 1) interpolaton through boundary
+    ! elements of the old mesh.
 
     !-------------------------------------------------------------------------------
     TYPE(Mesh_t), TARGET, INTENT(IN)  :: OldMesh
@@ -663,6 +678,7 @@ CONTAINS
     !========================================
 
     Debug = .FALSE.
+    !PRINT *, 'DebugIVTVRQ1: ',ParEnv % myPE
 
     !For hydromesh calving purposes
     IF(HeightName == 'temp residual') THEN
@@ -711,6 +727,7 @@ CONTAINS
          NULLIFY(PermVar)
        ! This assumes that the mesh connectivity is the same...
        ELSE
+         !PRINT *, 'DebugIVTVRQ2b: ',ParEnv % myPE
          ALLOCATE( NewHeight(SIZE(OldHeight) ) )
          NewHeight = 0.0_dp
          ALLOCATE( NewPerm(SIZE(OldPerm) ) )
@@ -737,7 +754,7 @@ CONTAINS
     ELSE
        eps_global_limit = ListGetConstReal( CurrentModel % Simulation,  &
             'Interpolation Global Epsilon', Found)
-       IF(.NOT. Found) eps_global_limit = 1.0e-10
+       IF(.NOT. Found) eps_global_limit = 1.0d-10
     END IF
 
     IF(PRESENT(LocalEps)) THEN
@@ -745,7 +762,7 @@ CONTAINS
     ELSE
        eps_local_limit = ListGetConstReal( CurrentModel % Simulation,  &
             'Interpolation Local Epsilon', Found )
-       IF(.NOT. Found) eps_local_limit = 1.0e-10
+       IF(.NOT. Found) eps_local_limit = 1.0d-10
     END IF
 
     IF(PRESENT(NumericalEps)) THEN
@@ -763,6 +780,7 @@ CONTAINS
     ElementNodes % x = 0.0_dp
     ElementNodes % y = 0.0_dp
     ElementNodes % z = 0.0_dp
+    !PRINT *, 'DebugIVTVRQ3: ',ParEnv % myPE
 
     !========================================
     !             Action
@@ -844,6 +862,7 @@ CONTAINS
           IF(eps_local > eps_local_limit) EXIT
 
        END DO
+       !PRINT *, 'DebugIVTVRQ4: ',ParEnv % myPE
 
        IF (.NOT.Found) THEN
           !CHANGE
@@ -851,6 +870,11 @@ CONTAINS
           !interpolating between ice mesh and larger footprint hydrological mesh
           IF(GMUnfound) THEN
             WorkVar => VariableGet(NewMesh % Variables, "groundedmask", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
+            IF(ASSOCIATED(WorkVar)) THEN
+              WorkVar % Values(WorkVar % Perm(i)) = -1.0
+            END IF
+            NULLIFY(WorkVar)
+            WorkVar => VariableGet(NewMesh % Variables, "gmcheck", ThisOnly=.TRUE., UnfoundFatal=.FALSE.)
             IF(ASSOCIATED(WorkVar)) THEN
               WorkVar % Values(WorkVar % Perm(i)) = -1.0
             END IF
@@ -945,10 +969,12 @@ CONTAINS
        END IF
 
     END DO
+    !PRINT *, 'DebugIVTVRQ5: ',ParEnv % myPE
 
     DEALLOCATE( ElementNodes % x, ElementNodes % y, &
          ElementNodes % z, ElementValues )
 
+    !PRINT *, 'DebugIVTVRQ6: ',ParEnv % myPE
 
     !------------------------------------------------------------------------------
   END SUBROUTINE InterpolateVarToVarReducedQ

@@ -60,7 +60,7 @@
         stride, MaxNN, Next, NodesPerLevel, LeftTgt, RightTgt, &
         county, PMeshBCNums(3), DOFs, PathCount, ValidPathCount, active,&
         WriteNodeCount, MeshBC, GroupCount, GroupStart, GroupEnd, col, &
-        FrontLineCount, ShiftIdx, err
+        FrontLineCount, ShiftIdx, err, SaveParallelComm
    INTEGER, PARAMETER :: GeoUnit = 11
    INTEGER, POINTER :: CalvingPerm(:), TopPerm(:)=>NULL(), BotPerm(:)=>NULL(), &
         LeftPerm(:)=>NULL(), RightPerm(:)=>NULL(), FrontPerm(:)=>NULL(), &
@@ -355,6 +355,13 @@
           DO i=2,PEs
              disps(i) = disps(i-1) + PFaceNodeCount(i-1)
           END DO
+       END IF
+
+       IF(.NOT. Boss) THEN
+         ALLOCATE(FaceNodesT % x(1), FaceNodesT % y(1), FaceNodesT % z (1))
+         FaceNodesT % x(1) = 0
+         FaceNodesT % y(1) = 0
+         FaceNodesT % z(1) = 0
        END IF
 
        !Global NodeNumbers
@@ -822,13 +829,16 @@
 
     CrevVar => VariableGet(PlaneMesh % Variables, "ave_cindex", .TRUE.)
     PCSolver % Variable => CrevVar
+    PCSolver % Variable % Values => CrevVar % Values
     PCSolver % Matrix % Perm => CrevVar % Perm
 
     !----------------------------------------------------
     ! Run Project Calving solver
     !----------------------------------------------------
     SaveParallelActive = ParEnv % Active(ParEnv % MyPE+1)
+    SaveParallelComm = ParEnv % ActiveComm
     CALL ParallelActive(.TRUE.)
+    ParEnv % ActiveComm = ELMER_COMM_WORLD
 
     Model % Solver => PCSolver
     CALL SingleSolver( Model, PCSolver, PCSolver % dt, .FALSE. )
@@ -1508,6 +1518,7 @@
 
        DEALLOCATE(PWorkLogical)
        CALL ParallelActive(SaveParallelActive)
+       ParEnv % ActiveComm = SaveParallelComm
 
        !Now, for any uncalved nodes, set heightdirich from current height
        DO i=1, Mesh % NumberOfNodes
@@ -1724,6 +1735,7 @@
 
     FirstTime = .FALSE.
 
+    PCSolver % Variable % Values => NULL()
     PCSolver % Variable => NULL()
     PCSolver % Matrix % Perm => NULL()
     CALL FreeMatrix(PCSolver % Matrix)

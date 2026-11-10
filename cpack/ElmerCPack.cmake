@@ -91,40 +91,26 @@ ENDIF()
 
 IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
   MARK_AS_ADVANCED(MAKE_NSIS_PACKAGE MAKE_ZIP_PACKAGE CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
-  SET(MAKE_ZIP_PACKAGE TRUE CACHE BOOL "Create windows .zip file")
-  SET(MAKE_NSIS_PACKAGE TRUE CACHE BOOL "Create windows installer executable")
-  SET(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS TRUE CACHE BOOL "Bundle dlls in windows install.")
+  SET(MAKE_ZIP_PACKAGE TRUE CACHE BOOL "Create Windows .zip file")
+  SET(MAKE_NSIS_PACKAGE TRUE CACHE BOOL "Create Windows installer executable")
+  SET(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS TRUE CACHE BOOL "Bundle dlls in Windows installer.")
 
   IF(CPACK_BUNDLE_EXTRA_WINDOWS_DLLS)
-    INSTALL(FILES ${LAPACK_LIBRARIES} DESTINATION "bin")
-    IF(NOT(LAPACK_LIB))
-      FIND_FILE(LAPACK_LIB liblapack.dll PATH_SUFFIXES "bin")
-    ENDIF()
-    IF(NOT(BLAS_LIB))
-      FIND_FILE(BLAS_LIB libblas.dll PATH_SUFFIXES "bin")
-    ENDIF()
-
-    # msys2 runtime dynamic link libraries
-    INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_msys2/bin" DESTINATION ".")
-
-# Here we augment the installation by some needed dll's that should be included with QT5. 
-# This is a quick and dirty remedy. I'm sure there is a prettier way too. 
-    IF(WITH_QT5)
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_qt5/bin" DESTINATION ".")
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../platforms" DESTINATION "bin")
-	ENDIF()
-    IF(WITH_VTK)
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_vtk/bin" DESTINATION ".")
-    ENDIF()
-    IF(WITH_OCC)
-      INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bundle_oce/bin" DESTINATION ".")
-    ENDIF()
-
     IF(BUNDLE_STRIPPED_GFORTRAN)
       # TODO: This will make the windows package to be GPL3
       INSTALL(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../stripped_gfortran" DESTINATION "." COMPONENT "stripped_gfortran")
       SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DESCRIPTION "A stripped version of x86_64-w64-mingw32-gfortran 10.2.0 compiler for compiling Elmer modules.")
       SET(CPACK_COMPONENT_STRIPPED_GFORTRAN_DISPLAY_NAME "gfortran 10.2.0")
+    ENDIF()
+
+    OPTION(BUNDLE_MSYS2_PACKAGES "Bundle additional packages from MSYS2" OFF)
+    IF(BUNDLE_MSYS2_PACKAGES)
+      # default value for the prefix where the packages are installed/extracted
+      SET(BUNDLE_MSYS2_PACKAGES_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}/../msys2_prefix"
+          CACHE STRING "Prefix with the MSYS2 packages for the Windows installer")
+      INSTALL(DIRECTORY "${BUNDLE_MSYS2_PACKAGES_PREFIX}/" DESTINATION "." COMPONENT "MSYS2_PACKAGES")
+      SET(CPACK_COMPONENT_MSYS2_PACKAGES_DESCRIPTION "Additional packages from MSYS2 (e.g., gfortran).")
+      SET(CPACK_COMPONENT_MSYS2_PACKAGES_DISPLAY_NAME "MSYS2 packages")
     ENDIF()
 
     IF(WITH_MPI)
@@ -143,7 +129,7 @@ IF(CMAKE_SYSTEM_NAME MATCHES "Windows")
   ENDIF()
 
   IF(MAKE_NSIS_PACKAGE)
-    SET(CPACK_GENERATOR "NSIS")
+    SET(CPACK_GENERATOR "NSIS64")
   ENDIF()
   IF(MAKE_ZIP_PACKAGE)
     SET(CPACK_GENERATOR "${CPACK_GENERATOR};ZIP")

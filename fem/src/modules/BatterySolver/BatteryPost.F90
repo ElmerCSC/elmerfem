@@ -24,7 +24,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: Material
   INTEGER :: t,i,j,k,l,n,dofs,CsNodes,iLeft,iRight,jLeft,jRight,matid,NUnderStoich, &
       SocModel
-  INTEGER, POINTER :: CsPerm(:)  
+  INTEGER, POINTER :: CsPerm(:)
   REAL(KIND=dp) :: Cs_max,pFull,pNill,cs_avg,p1,p2
   LOGICAL :: Anode, Cathode, SurfaceSOC
   REAL(KIND=dp) :: CathodeSOC, AnodeSOC, MeanSOC, FluxCoeff, mincserr, maxcserr, &
@@ -32,7 +32,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
       ElectrolyteU, EndArea, pActive, StoichLimit, DischTime, CurrApp, &
       Capacity, SOCAlt, CellCapacity, InitSOC, PrevSOC
   LOGICAL :: Found, Visited = .FALSE.
-  TYPE(Variable_t), POINTER :: AveVarPtr 
+  TYPE(Variable_t), POINTER :: AveVarPtr
 
 
   SAVE Visited, iLeft, iRight, jLeft, jRight, PrevSOC, InitSOC
@@ -43,16 +43,16 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
 
   CALL Info(Caller,'-------------------------------------------------------')
   CALL Info(Caller,'Postprocessing information on battery status')
-  CALL Info(Caller,'-------------------------------------------------------')  
+  CALL Info(Caller,'-------------------------------------------------------')
 
   Params => GetSolverParams()
 
   EndArea = ListGetCReal( Model % Constants,'Electrode Plate Area',Found )
   IF(.NOT. Found ) EndArea = 1.0_dp
 
-  IF(.NOT. Visited) THEN  
-    iLeft = ExtremeLeftNode( SubMesh ) 
-    iRight = ExtremeRightNode( SubMesh )     
+  IF(.NOT. Visited) THEN
+    iLeft = ExtremeLeftNode( SubMesh )
+    iRight = ExtremeRightNode( SubMesh )
     jLeft = Cs1DVar % Perm(iLeft)
     jRight = Cs1DVar % Perm(iRight)
     InitSOC =  ListGetCReal( Params, 'Initial SOC', Found)
@@ -61,8 +61,8 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
     Visited = .TRUE.
   END IF
 
-  CsPerm => CsVar % Perm  
-  CsNodes = SIZE( CsVar % Values ) 
+  CsPerm => CsVar % Perm
+  CsNodes = SIZE( CsVar % Values )
 
   CsFullVar => VariableGet( MainMesh % Variables,'Cs profile')
   dofs = CsFullVar % dofs
@@ -80,13 +80,13 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   ! Compute the average of solid phase potential
   ! It is not enough to take a number average since we are integrating over
   ! a sphere. Instead use averaging over the whole volume integral.
-  !----------------------------------------------------------------------  
+  !----------------------------------------------------------------------
   DO j=1, MainMesh % NumberOfNodes
     k = CsPerm(j)
     IF( k == 0 ) CYCLE
 
     ! Copy the 1D concentration values related to a node
-    Cs1DVar % Values(1:dofs) = CsFullVar % Values(dofs*(k-1)+1:dofs*k)    
+    Cs1DVar % Values(1:dofs) = CsFullVar % Values(dofs*(k-1)+1:dofs*k)
     CsVar % Values(k) = Cs1DVar % Values(jRight)
 
     ! Calculate average of 1D mesh using the weight vector precomputed by 1D solver.
@@ -95,7 +95,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
 
     CsAveVar % Values(k) = cs_avg
 
-    ! The difference in the extreme outer and inner locations of the 1d sphere    
+    ! The difference in the extreme outer and inner locations of the 1d sphere
     IF( ASSOCIATED( CsDiffVar ) ) THEN
       p1 = Cs1dVar % Values(jright)
       p2 = Cs1dVar % Values(jleft)
@@ -105,7 +105,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   END DO
 
   SurfaceSOC = ListGetLogical( Params,&
-      'SOC on Surface',Found ) 
+      'SOC on Surface',Found )
   IF( SurfaceSOC ) THEN
     CALL Info(Caller,'Using surface concentration to evaluate SOC',Level=7)
     AveVarPtr => CsVar
@@ -129,14 +129,14 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   DO matid = 1, CurrentModel % NumberOfMaterials
     Material => CurrentModel % Materials(matid) % Values
     Anode = ListGetLogical( Material,'Anode',Found )
-    Cathode = ListGetLogical( Material,'Cathode',Found ) 
+    Cathode = ListGetLogical( Material,'Cathode',Found )
     IF(.NOT. ( Anode .OR. Cathode ) ) CYCLE
 
-    pFull = ListGetCReal( Material,'Stoichiometry at Full Charge' ) 
+    pFull = ListGetCReal( Material,'Stoichiometry at Full Charge' )
     pNill = ListGetCReal( Material,'Stoichiometry at Nill Charge' )
     Cs_Max = ListGetCReal( Material,'Maximum solid phase concentration')
     Anode = ListGetLogical( Material,'Anode',Found )
-    Cathode = ListGetLogical( Material,'Cathode',Found ) 
+    Cathode = ListGetLogical( Material,'Cathode',Found )
     pActive = ListGetCReal( Material,'Active Particle Volume Fraction')
 
     ! Computing State of Charge for anode and cathode
@@ -174,14 +174,14 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
     END IF
 
     IF( ASSOCIATED( CsErrVar ) ) THEN
-      FluxCoeff = SolidFluxScaling( Material )        
+      FluxCoeff = SolidFluxScaling( Material )
       IF( Anode ) THEN
-        WHERE ( AnodeWeight > 0 )                    
+        WHERE ( AnodeWeight > 0 )
           CsErrVar % Values = (CsInitVar % Values - CsAveVar % Values ) / &
               ( 3 * FLuxCoeff * JliIntegVar % Values ) - 1
         END WHERE
       ELSE
-        WHERE ( AnodeWeight < 0 )          
+        WHERE ( AnodeWeight < 0 )
           CsErrVar % Values = (CsInitVar % Values - CsAveVar % Values ) / &
               ( 3 * FLuxCoeff * JliIntegVar % Values ) - 1
         END WHERE
@@ -189,14 +189,14 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
       mincserr = MINVAL( CsErrVar % Values )
       maxcserr = MAXVAL( CsErrVar % Values )
       CALL ListAddConstReal( Model % Simulation,'res: min cs error',mincserr)
-      CALL ListAddConstReal( Model % Simulation,'res: max cs error',maxcserr)      
+      CALL ListAddConstReal( Model % Simulation,'res: max cs error',maxcserr)
     END IF
 
   END DO
 
   IF( SocModel /= 3 ) THEN
-    AnodeSOC = SUM( SOCVar % Values * AnodeWeight, AnodeWeight > 0 ) 
-    CathodeSOC = -SUM( SOCVar % Values * AnodeWeight, AnodeWeight < 0 ) 
+    AnodeSOC = SUM( SOCVar % Values * AnodeWeight, AnodeWeight > 0 )
+    CathodeSOC = -SUM( SOCVar % Values * AnodeWeight, AnodeWeight < 0 )
     MeanSOC = ( AnodeSOC + CathodeSOC ) / ( AnodeWeightSum + CathodeWeightSum )
 
     AnodeSOC = AnodeSOC / AnodeWeightSum
@@ -210,7 +210,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   END IF
 
   IF( ListGetLogical( Params,'Calculate Charges',Found ) ) THEN
-    CALL IntegrateElectrolyte()  
+    CALL IntegrateElectrolyte()
 
     CALL ListAddConstReal( Model % Simulation,'res: Anode charge',AnodeQ )
     CALL ListAddConstReal( Model % Simulation,'res: Cathode charge',CathodeQ )
@@ -220,7 +220,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
     CathodeU = SUM( -AnodeWeight * PhiSVar % Values, AnodeWeight < 0 ) / CathodeWeightSum
 
     CALL ListAddConstReal( Model % Simulation,'res: Anode Mean Potential',AnodeU )
-    CALL ListAddConstReal( Model % Simulation,'res: Cathode Mean Potential',CathodeU )   
+    CALL ListAddConstReal( Model % Simulation,'res: Cathode Mean Potential',CathodeU )
     CALL ListAddConstReal( Model % Simulation,'res: Electrolyte Mean Potential',ElectrolyteU )
   END IF
 
@@ -230,7 +230,7 @@ SUBROUTINE BatteryPost( Model,Solver,dt,Transient )
   NUnderStoich = COUNT( CsVar % Values <= StoichLimit )
   IF ( Found .AND. NUnderStoich > 0 ) THEN
     CALL Warn(Caller,'Discharge in '//I2S(NUnderStoich)//&
-        ' nodes has reached the stoichiometric limit!')  
+        ' nodes has reached the stoichiometric limit!')
   END IF
 
   ! Check that there are no negative concentrations.
@@ -297,12 +297,12 @@ CONTAINS
   SUBROUTINE IntegrateElectrolyte()
 
     REAL(KIND=dp) :: Basis(8), ElemPot(8), DetJ, Weight, SumWeight
-    TYPE(Nodes_t), SAVE :: Nodes      
+    TYPE(Nodes_t), SAVE :: Nodes
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: Material, PrevMaterial
     TYPE(Element_t), POINTER :: Element
     INTEGER :: t, n, elem
-    LOGICAL :: Anode, Stat, AnodeOrCathode           
+    LOGICAL :: Anode, Stat, AnodeOrCathode
     TYPE(Mesh_t), POINTER :: Mesh
 
     Mesh => GetMesh()
@@ -321,12 +321,12 @@ CONTAINS
         pActive = ListGetCReal( Material,'Electrolyte Volume Fraction')
       END IF
 
-      n = GetElementNOFNodes( Element )        
+      n = GetElementNOFNodes( Element )
       CALL GetElementNodes( Nodes, UElement=Element )
 
       IP = GaussPoints( Element )
 
-      ElemPot(1:n) = PhiEVar % Values( PhiEVar % Perm( Element % NodeIndexes ) ) 
+      ElemPot(1:n) = PhiEVar % Values( PhiEVar % Perm( Element % NodeIndexes ) )
 
       DO t=1,IP % n
         stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), &

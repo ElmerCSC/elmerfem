@@ -5,7 +5,7 @@
 ! Study the test case 'DirichletNeumannSlave' to compare the strategy
 ! to a loosely coupled iteration.
 !
-! Peter Råback / 14.11.2023
+! Peter Rback / 14.11.2023
 !--------------------------------------------------------------------
 
 Header

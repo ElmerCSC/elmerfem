@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,35 +13,35 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
 !/******************************************************************************
 ! *
-! *  Authors: Juha Ruokolainen
+! *  Authors: Juha Ruokolainen, Daniel Reeves
 ! *  Email:   Juha.Ruokolainen@csc.fi
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 08 Jun 1997
 ! *
 ! *****************************************************************************/
 
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 !------------------------------------------------------------------------------
 !>  Module containing the direct solvers for linear systems given in CRS format.
-!> Included are Lapack band matrix solver, multifrontal Umfpack, MUMPS, SuperLU, 
-!> and Pardiso. Note that many of these are linked in with ElmerSolver only 
-!> if they are made available at the compilation time. 
+!> Included are Lapack band matrix solver, multifrontal Umfpack, MUMPS, SuperLU,
+!> Pardiso, and NVIDIA's GPU-based cuDSS. Note that many of these are linked in with ElmerSolver only
+!> if they are made available at the compilation time.
 !------------------------------------------------------------------------------
 
 #include "../config.h"
@@ -49,10 +49,17 @@
 MODULE DirectSolve
 
    USE CRSMatrix
-   USE BandMatrix
    USE SParIterSolve
+   USE ParallelUtils, ONLY : ParallelSumVector
 
    IMPLICIT NONE
+
+   ! How hard MumpsLocal_Factorize tries to grow ICNTL(14), the percentage of
+   ! extra working space, when Mumps reports the analysis estimate was too
+   ! small. Doubling from 20 five times reaches 640, which is far past what a
+   ! merely badly estimated case needs.
+   INTEGER, PARAMETER :: MumpsWorkspaceRetries = 5
+   INTEGER, PARAMETER :: MumpsWorkspaceMin = 20
 
 CONTAINS
 
@@ -68,7 +75,7 @@ CONTAINS
      REAL(KIND=dp) :: x(*),b(*)
 !------------------------------------------------------------------------------
 
-   
+
      INTEGER :: i,j,k,istat,Subband,N
      COMPLEX(KIND=dp), ALLOCATABLE :: BA(:,:)
 
@@ -171,7 +178,7 @@ CONTAINS
 
      END IF
 !------------------------------------------------------------------------------
-  END SUBROUTINE ComplexBandSolver 
+  END SUBROUTINE ComplexBandSolver
 !------------------------------------------------------------------------------
 
 
@@ -291,7 +298,7 @@ CONTAINS
      END IF
 
 !------------------------------------------------------------------------------
-  END SUBROUTINE BandSolver 
+  END SUBROUTINE BandSolver
 !------------------------------------------------------------------------------
 
 
@@ -415,7 +422,7 @@ CONTAINS
   INTEGER(KIND=UMFPACK_LONG_FORTRAN_TYPE), ALLOCATABLE :: LRows(:), LCols(:)
 
   SAVE iInfo, Control
- 
+
   LOGICAL :: Factorize, FreeFactorize, stat, BigMode
 
   IF ( PRESENT(Free_Fact) ) THEN
@@ -474,7 +481,7 @@ CONTAINS
 
     IF (iInfo(1)<0) THEN
       PRINT *, 'Error occurred in umf4sym: ', iInfo(1)
-      STOP EXIT_ERROR
+      ERROR STOP EXIT_ERROR
     END IF
 
     IF ( BigMode ) THEN
@@ -485,7 +492,7 @@ CONTAINS
 
     IF (iinfo(1)<0) THEN
       PRINT*, 'Error occurred in umf4num: ', iinfo(1)
-      STOP EXIT_ERROR
+      ERROR STOP EXIT_ERROR
     ENDIF
 
     IF ( BigMode ) THEN
@@ -508,9 +515,9 @@ CONTAINS
 
   IF (iinfo(1)<0) THEN
     PRINT*, 'Error occurred in umf4sol: ', iinfo(1)
-    STOP EXIT_ERROR
+    ERROR STOP EXIT_ERROR
   END IF
- 
+
   FreeFactorize = ListGetLogical( Solver % Values, &
       'Linear System Free Factorization', stat )
   IF ( .NOT. stat ) FreeFactorize = .TRUE.
@@ -619,6 +626,836 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Solves a linear system using NVIDIA's GPU cuDSS (CUDA direct sparse solver).
+!> Single-GPU only, single MPI. Upper-triangle extraction only for SPD systems.
+!> Complex systems always use the general matrix type for factorization (LU).
+!> CUDSS_SolveSystem subroutine was written by D. Reeves.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_SolveSystem( Solver,A,x,b,Free_fact )
+!------------------------------------------------------------------------------
+  LOGICAL, OPTIONAL :: Free_Fact
+  TYPE(Matrix_t) :: A
+  TYPE(Solver_t) :: Solver
+  REAL(KIND=dp) :: x(*), b(*)
+
+#ifdef HAVE_CUDSS
+  INTERFACE
+     FUNCTION cudss_ffactorize(n,nnz,rows,cols,vals,mtype) RESULT(cudss) &
+         BIND(c,NAME="cudss_ffactorize")
+        USE Types
+        INTEGER :: n, nnz, mtype, Rows(*), Cols(*)
+        REAL(KIND=dp) :: Vals(*)
+        INTEGER(KIND=AddrInt) :: cudss
+     END FUNCTION cudss_ffactorize
+
+     SUBROUTINE cudss_fsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_fsolve")
+        USE Types
+        REAL(KIND=dp) :: x(*), b(*)
+        INTEGER :: n, status
+        INTEGER(KIND=AddrInt) :: cudss
+     END SUBROUTINE cudss_fsolve
+
+     ! Complex counterparts. These take the system in *complex* CSR of order
+     ! n = A % NumberOfRows/2, not Elmer's real 2n storage.
+     FUNCTION cudss_zfactorize(n,nnz,rows,cols,vals,mtype) RESULT(cudss) &
+         BIND(c,NAME="cudss_zfactorize")
+        USE Types
+        INTEGER :: n, nnz, mtype, Rows(*), Cols(*)
+        COMPLEX(KIND=dp) :: Vals(*)
+        INTEGER(KIND=AddrInt) :: cudss
+     END FUNCTION cudss_zfactorize
+
+     SUBROUTINE cudss_zsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_zsolve")
+        USE Types
+        COMPLEX(KIND=dp) :: x(*), b(*)
+        INTEGER :: n, status
+        INTEGER(KIND=AddrInt) :: cudss
+     END SUBROUTINE cudss_zsolve
+
+     SUBROUTINE cudss_ffree(cudss) BIND(c,NAME="cudss_ffree")
+        USE Types
+        INTEGER(KIND=AddrInt) :: cudss
+     END SUBROUTINE cudss_ffree
+  END INTERFACE
+
+  LOGICAL :: Factorize, FreeFactorize, Found, MatSym, MatPD, Scaled
+  INTEGER :: i, j, k, n, ip, nzutd, mtype, allocstat, nnz, SolveOk
+  CHARACTER(:), ALLOCATABLE :: mat_type
+  INTEGER, POINTER CONTIG :: Rows(:), Cols(:)
+  REAL(KIND=dp), POINTER CONTIG :: Vals(:)
+  INTEGER, ALLOCATABLE, TARGET :: TRows(:), TCols(:)
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: TVals(:)
+  INTEGER, ALLOCATABLE :: ZRows(:), ZCols(:)
+  COMPLEX(KIND=dp), ALLOCATABLE :: ZVals(:), zb(:), zx(:)
+
+  IF ( PRESENT(Free_Fact) ) THEN
+    IF ( Free_Fact ) THEN
+      IF ( A % Cudss/=0 ) THEN
+        CALL cudss_ffree(A % Cudss)
+        A % Cudss = 0
+      END IF
+      RETURN
+    END IF
+  END IF
+
+  IF ( ParEnv % PEs > 1 ) THEN
+#ifdef HAVE_MPI
+    IF ( ASSOCIATED(A % ParallelInfo) ) THEN
+      IF ( A % Complex ) THEN
+        CALL CUDSS_DistSolveComplex( Solver, A, x, b, Free_Fact )
+      ELSE
+        CALL CUDSS_DistSolveReal( Solver, A, x, b, Free_Fact )
+      END IF
+      RETURN
+    END IF
+#endif
+    CALL Fatal('CUDSS_SolveSystem', &
+        'cuDSS parallel mode requires ParallelInfo (built by ParallelInitMatrix); '// &
+        'the no-ParallelInfo parallel case is not implemented.')
+  END IF
+
+  ! A complex system is stored by Elmer as a real one of twice the order,
+  ! each complex entry occupying a 2x2 block. n is the complex order; it is
+  ! needed on every solve, not just on the ones that refactorize.
+  n = A % NumberOfRows
+  IF ( A % Complex ) n = A % NumberOfRows / 2
+
+  Factorize = ListGetLogical( Solver % Values, &
+     'Linear System Refactorize', Found )
+  IF ( .NOT. Found ) Factorize = .TRUE.
+
+  IF ( Factorize .OR. A % Cudss==0 ) THEN
+    IF ( A % Cudss/=0 ) THEN
+      CALL cudss_ffree(A % Cudss)
+      A % Cudss = 0
+    END IF
+
+    ! Linear System Matrix Type Positive Definite keyword (as Pardiso_SolveSystem),
+    ! mapped to cuDSS's own matrix types. cuDSS also supports Hermitian matrices,
+    ! HPD and Real Symmetric factorization, not implemented, check docs
+    mat_type = ListGetString(Solver % Values,'Linear System Matrix Type',Found)
+    IF ( Found ) THEN
+      SELECT CASE(mat_type)
+      CASE('positive definite')
+        mtype = 2
+      CASE DEFAULT
+        mtype = 0
+      END SELECT
+    ELSE
+      MatSym = ListGetLogical(Solver % Values,'Linear System Symmetric', Found)
+      MatPD  = ListGetLogical(Solver % Values,'Linear System Positive Definite', Found)
+
+      ! Force unsymmetric mode when "row equilibration" is used.
+      Scaled = ListGetLogical(Solver % Values,'Linear System Scaling', Found)
+      IF ( .NOT. Found ) Scaled = .TRUE.
+      IF ( Scaled .AND. MatSym ) THEN
+        IF ( ListGetLogical(Solver % Values,'Linear System Row Equilibration',Found) ) THEN
+          CALL Info('CUDSS_SolveSystem', &
+              'Row equilibration is on: treating the system as general, as '// &
+              'the scaling does not preserve numeric symmetry.', Level=6)
+          MatSym = .FALSE.
+        END IF
+      END IF
+
+      IF ( MatSym .AND. MatPD ) THEN
+        mtype = 2
+      ELSE
+        mtype = 0
+      END IF
+    END IF
+
+    ! Complex systems always use the general matrix type (same as MUMPS).
+    ! Factorization for Hermitian matrices could be implemented. Complex
+    ! symmetric systems would be more complicated. Check cuDSS data types.
+    IF ( A % Complex .AND. mtype /= 0 ) THEN
+      CALL Info('CUDSS_SolveSystem', &
+          'Complex system: using the general cuDSS matrix type, the only one '// &
+          'cuDSS documents for complex values other than the Hermitian ones.', &
+          Level=6)
+      mtype = 0
+    END IF
+
+    IF ( A % Complex ) THEN
+      ! Pack the real 2n x 2n storage into complex CSR of order n. The
+      ! conventions are those of ZMumps_SolveSystem: complex row i/2+1 is
+      ! taken from real row i (odd), its entries stride by two, the complex
+      ! column is Cols(j)/2+1 and the value is CMPLX(Values(j),-Values(j+1)).
+      nnz = (A % Rows(A % NumberOfRows+1)-1) / 4
+
+      ALLOCATE( ZRows(n+1), ZCols(nnz), ZVals(nnz), STAT=allocstat )
+      IF ( allocstat /= 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem', &
+            'Memory allocation for the complex matrix failed')
+      END IF
+
+      k = 0
+      ZRows(1) = 1
+      DO i=1,A % NumberOfRows,2
+        ip = i/2 + 1
+        DO j=A % Rows(i),A % Rows(i+1)-1,2
+          k = k + 1
+          ZCols(k) = A % Cols(j)/2 + 1
+          ZVals(k) = CMPLX( A % Values(j), -A % Values(j+1), KIND=dp )
+        END DO
+        ZRows(ip+1) = k + 1
+      END DO
+
+      A % Cudss = cudss_zfactorize( n, nnz, ZRows, ZCols, ZVals, mtype )
+      DEALLOCATE( ZRows, ZCols, ZVals )
+
+      IF ( A % Cudss == 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem','cuDSS analysis/factorization failed.')
+      END IF
+    ! real general system,
+    ELSE IF ( mtype == 0 ) THEN
+      Rows => A % Rows
+      Cols => A % Cols
+      Vals => A % Values
+    ELSE
+      ! mtype is 2 here: copy upper triangular part of symmetric positive definite system
+      nzutd = 0
+      DO i=1,A % NumberOfRows
+        nzutd = nzutd + A % Rows(i+1)-A % Diag(i)
+      END DO
+
+      ALLOCATE( TVals(nzutd), TCols(nzutd), TRows(A % NumberOfRows+1), STAT=allocstat )
+      IF ( allocstat /= 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem', &
+            'Memory allocation for row and column indices failed')
+      END IF
+
+      TRows(1) = 1
+      DO i=1,A % NumberOfRows
+        nzutd = A % Rows(i+1)-A % Diag(i)
+        TRows(i+1) = TRows(i)+nzutd
+        DO j=0,nzutd-1
+          TCols(TRows(i)+j) = A % Cols(A % Diag(i)+j)
+          TVals(TRows(i)+j) = A % Values(A % Diag(i)+j)
+        END DO
+      END DO
+
+      Rows => TRows
+      Cols => TCols
+      Vals => TVals
+    END IF
+
+    IF ( .NOT. A % Complex ) THEN
+      nnz = Rows(A % NumberOfRows+1)-1
+      A % Cudss = cudss_ffactorize( A % NumberOfRows, nnz, Rows, Cols, Vals, mtype )
+
+      IF ( mtype /= 0 ) DEALLOCATE( TRows, TCols, TVals )
+
+      IF ( A % Cudss == 0 ) THEN
+        CALL Fatal('CUDSS_SolveSystem','cuDSS analysis/factorization failed.')
+      END IF
+    END IF
+  END IF
+
+  IF ( A % Complex ) THEN
+    ALLOCATE( zb(n), zx(n), STAT=allocstat )
+    IF ( allocstat /= 0 ) THEN
+      CALL Fatal('CUDSS_SolveSystem', &
+          'Memory allocation for the complex right-hand side failed')
+    END IF
+
+    DO i=1,A % NumberOfRows,2
+      zb(i/2+1) = CMPLX( b(i), b(i+1), KIND=dp )
+    END DO
+
+    CALL cudss_zsolve( A % Cudss, n, zx, zb, SolveOk )
+    IF ( SolveOk == 0 ) THEN
+      DEALLOCATE( zb, zx )
+      CALL Fatal('CUDSS_SolveSystem','cuDSS solve failed.')
+    END IF
+
+    DO i=1,A % NumberOfRows,2
+      x(i)   = REAL( zx(i/2+1), KIND=dp )
+      x(i+1) = AIMAG( zx(i/2+1) )
+    END DO
+
+    DEALLOCATE( zb, zx )
+  ELSE
+    CALL cudss_fsolve( A % Cudss, A % NumberOfRows, x, b, SolveOk )
+    IF ( SolveOk == 0 ) CALL Fatal('CUDSS_SolveSystem','cuDSS solve failed.')
+  END IF
+
+  FreeFactorize = ListGetLogical( Solver % Values, &
+      'Linear System Free Factorization', Found )
+  IF ( .NOT. Found ) FreeFactorize = .TRUE.
+
+  IF ( Factorize .AND. FreeFactorize ) THEN
+    CALL cudss_ffree(A % Cudss)
+    A % Cudss = 0
+  END IF
+#else
+   CALL Fatal( 'CUDSS_SolveSystem', 'cuDSS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_SolveSystem
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Distributed (MGMN) cuDSS solve for a general real system
+!> Ranks are assigned contiguous range of global indices with ContinuousNumbering 
+!> for the rows they own. Then cuDSS receives non-overlapping block-row partition.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_DistSolveReal( Solver, A, x, b, Free_Fact )
+!------------------------------------------------------------------------------
+#ifdef HAVE_CUDSS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+#endif
+    LOGICAL, OPTIONAL :: Free_Fact
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp) :: x(*), b(*)
+
+#ifdef HAVE_CUDSS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTERFACE
+      FUNCTION cudss_dfactorize_par(nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
+          rows,cols,vals,mtype,fcomm) RESULT(cudss) BIND(c,NAME="cudss_dfactorize_par")
+        USE Types
+        INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,fcomm
+        INTEGER :: rows(*), cols(*)
+        REAL(KIND=dp) :: vals(*)
+        INTEGER(KIND=AddrInt) :: cudss
+      END FUNCTION cudss_dfactorize_par
+
+      SUBROUTINE cudss_fsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_fsolve")
+        USE Types
+        REAL(KIND=dp) :: x(*), b(*)
+        INTEGER :: n, status
+        INTEGER(KIND=AddrInt) :: cudss
+      END SUBROUTINE cudss_fsolve
+    END INTERFACE
+
+    LOGICAL :: Factorize, FreeFactorize, Found
+    INTEGER :: n, i, nOwnLoc, gStartLoc, nGlob, nnzLoc, nnzGlob
+    INTEGER :: first_row, last_row, mtype, SolveOk, ierr
+    INTEGER, ALLOCATABLE :: Owner(:), Rloc(:), Cloc(:)
+    REAL(KIND=dp), ALLOCATABLE :: Vloc(:), bsum(:), bloc(:), xloc(:)
+
+    ! Free-only entry (matches the serial path's Free_Fact handling).
+    IF ( PRESENT(Free_Fact) ) THEN
+      IF ( Free_Fact ) THEN
+        CALL CUDSS_FreeHandle( A )
+        RETURN
+      END IF
+    END IF
+
+    n = A % NumberOfRows
+
+    ! Global continuous numbering
+    CALL CUDSS_GRenumberAndCount( A, Owner, nOwnLoc, gStartLoc, nGlob )
+
+    first_row = gStartLoc                 ! 0-based, inclusive
+    last_row  = gStartLoc + nOwnLoc - 1   ! empty rank: last_row = first_row-1
+
+    mtype = 0   ! real general only in this draft
+
+    Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
+    IF ( .NOT. Found ) Factorize = .TRUE.
+
+    IF ( Factorize .OR. A % Cudss==0 ) THEN
+      CALL CUDSS_FreeHandle( A )
+
+      ! Assemble the owned rows into one fully summed CSR with global column
+      ! indices. This is where the shared interface rows are summed into their
+      ! owner -- the clean partition does not overlap, so cuDSS does not sum.
+      CALL CUDSS_AssembleOwnedRowsR( A, Owner, nOwnLoc, gStartLoc, &
+              Rloc, Cloc, Vloc, nnzLoc )
+      CALL MPI_ALLREDUCE( nnzLoc, nnzGlob, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
+
+      A % Cudss = cudss_dfactorize_par( nGlob, nnzGlob, nOwnLoc, nnzLoc, &
+              first_row, last_row, Rloc, Cloc, Vloc, mtype, A % Comm )
+      DEALLOCATE( Rloc, Cloc, Vloc )
+
+      IF ( A % Cudss == 0 ) &
+          CALL Fatal('CUDSS_SolveSystem','distributed cuDSS factorization failed.')
+    END IF
+
+    ! Right-hand side: ParallelSumVector makes every shared row hold the full,
+    ! summed value on all sharers; we then take the owned rows into the local
+    ! block. b itself is left untouched (work on a copy).
+    ALLOCATE( bsum(n), bloc(MAX(nOwnLoc,1)), xloc(MAX(nOwnLoc,1)) )
+    bsum(1:n) = b(1:n)
+    CALL ParallelSumVector( A, bsum )
+    DO i=1,n
+      IF ( Owner(i)==1 ) bloc(A % Gorder(i)-gStartLoc) = bsum(i)
+    END DO
+    DEALLOCATE( bsum )
+
+    CALL cudss_fsolve( A % Cudss, nOwnLoc, xloc, bloc, SolveOk )
+    IF ( SolveOk == 0 ) &
+        CALL Fatal('CUDSS_SolveSystem','distributed cuDSS solve failed.')
+
+    ! Scatter the owned solution onto our rows, then let the shared rows pick up
+    ! their owner's value (the non-owned rows are zero going into the sum, and
+    ! adding zero is exact), exactly as MumpsScatterSolutionR does.
+    x(1:n) = 0.0_dp
+    DO i=1,n
+      IF ( Owner(i)==1 ) x(i) = xloc(A % Gorder(i)-gStartLoc)
+    END DO
+    CALL ParallelSumVector( A, x(1:n) )
+
+    DEALLOCATE( bloc, xloc, Owner )
+
+    FreeFactorize = ListGetLogical( Solver % Values, &
+        'Linear System Free Factorization', Found )
+    IF ( .NOT. Found ) FreeFactorize = .TRUE.
+    IF ( Factorize .AND. FreeFactorize ) THEN
+      CALL CUDSS_FreeHandle( A )
+    END IF
+#else
+    CALL Fatal( 'CUDSS_DistSolveReal', 'cuDSS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_DistSolveReal
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Distributed (MGMN) cuDSS solve for a complex system.
+!> Renumbers/reassembles in real 2x2-block representation of complex system and then
+!> uses that to factorize in complex arithmetic (CUDSS_C_64F) in cuDSS. 
+!> If the renumbering/reassembling of consecutive rows is not unanimous across ranks,
+!> then falls back to real factorization of the original 2x2-block matrix.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_DistSolveComplex( Solver, A, x, b, Free_Fact )
+!------------------------------------------------------------------------------
+#ifdef HAVE_CUDSS
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+#endif
+    LOGICAL, OPTIONAL :: Free_Fact
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp) :: x(*), b(*)
+
+#ifdef HAVE_CUDSS
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTERFACE
+      FUNCTION cudss_zdfactorize_par(nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
+          rows,cols,vals,mtype,fcomm) RESULT(cudss) BIND(c,NAME="cudss_zdfactorize_par")
+        USE Types
+        INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,fcomm
+        INTEGER :: rows(*), cols(*)
+        COMPLEX(KIND=dp) :: vals(*)
+        INTEGER(KIND=AddrInt) :: cudss
+      END FUNCTION cudss_zdfactorize_par
+
+      SUBROUTINE cudss_zsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_zsolve")
+        USE Types
+        COMPLEX(KIND=dp) :: x(*), b(*)
+        INTEGER :: n, status
+        INTEGER(KIND=AddrInt) :: cudss
+      END SUBROUTINE cudss_zsolve
+    END INTERFACE
+
+    LOGICAL :: Factorize, FreeFactorize, Found
+    INTEGER :: n, i, lc, nOwnLoc, gStartLoc, nOwnC, gStartC, nGlob, nGlobC
+    INTEGER :: nnzLoc, nnzLocC, nnzGlobC, first_row, last_row, mtype, SolveOk, ierr
+    INTEGER :: evenLoc, evenAll
+    INTEGER, ALLOCATABLE :: Owner(:), Rloc(:), Cloc(:), ZRloc(:), ZCloc(:)
+    REAL(KIND=dp), ALLOCATABLE :: Vloc(:), bsum(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: ZVloc(:), zbloc(:), zxloc(:)
+
+    ! Free-only entry.
+    IF ( PRESENT(Free_Fact) ) THEN
+      IF ( Free_Fact ) THEN
+        CALL CUDSS_FreeHandle( A )
+        RETURN
+      END IF
+    END IF
+
+    n = A % NumberOfRows
+
+    ! Global continuous numbering
+    CALL CUDSS_GRenumberAndCount( A, Owner, nOwnLoc, gStartLoc, nGlob )
+
+    ! Complex blocks need an even owned base and count on every rank; the choice
+    ! must be unanimous or the collective factorize would diverge. If it does not
+    ! hold everywhere, fall back to the real-ERF driver (which redoes the
+    ! numbering, harmlessly, since it is deterministic).
+    evenLoc = 0
+    IF ( MODULO(gStartLoc,2)==0 .AND. MODULO(nOwnLoc,2)==0 ) evenLoc = 1
+    CALL MPI_ALLREDUCE( evenLoc, evenAll, 1, MPI_INTEGER, MPI_MIN, A % Comm, ierr )
+    IF ( evenAll == 0 ) THEN
+      DEALLOCATE( Owner )
+      CALL Info('CUDSS_SolveSystem', &
+          'Complex blocks do not number cleanly; using the real 2x2-block form.', Level=6)
+      CALL CUDSS_DistSolveReal( Solver, A, x, b, Free_Fact )
+      RETURN
+    END IF
+
+    nOwnC   = nOwnLoc / 2
+    gStartC = gStartLoc / 2
+    nGlobC  = nGlob / 2
+
+    first_row = gStartC                 ! 0-based complex, inclusive
+    last_row  = gStartC + nOwnC - 1
+
+    mtype = 0   ! general (the complex systems Elmer sends here are not Hermitian)
+
+    Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
+    IF ( .NOT. Found ) Factorize = .TRUE.
+
+    IF ( Factorize .OR. A % Cudss==0 ) THEN
+      CALL CUDSS_FreeHandle( A )
+
+      ! Assemble the owned scalar rows (real, summed), then pack the 2x2 blocks
+      ! into a complex CSR of order nOwnC.
+      CALL CUDSS_AssembleOwnedRowsR( A, Owner, nOwnLoc, gStartLoc, &
+              Rloc, Cloc, Vloc, nnzLoc )
+      CALL CUDSS_PackOwnedComplex( Rloc, Cloc, Vloc, nOwnC, &
+              ZRloc, ZCloc, ZVloc, nnzLocC )
+      DEALLOCATE( Rloc, Cloc, Vloc )
+
+      CALL MPI_ALLREDUCE( nnzLocC, nnzGlobC, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
+
+      A % Cudss = cudss_zdfactorize_par( nGlobC, nnzGlobC, nOwnC, nnzLocC, &
+              first_row, last_row, ZRloc, ZCloc, ZVloc, mtype, A % Comm )
+      DEALLOCATE( ZRloc, ZCloc, ZVloc )
+
+      IF ( A % Cudss == 0 ) &
+          CALL Fatal('CUDSS_SolveSystem','distributed complex cuDSS factorization failed.')
+    END IF
+
+    ! Right-hand side: sum shared contributions in the real 2n vector, then pack
+    ! each owned block's (Re,Im) scalar pair into one complex entry.
+    ALLOCATE( bsum(n), zbloc(MAX(nOwnC,1)), zxloc(MAX(nOwnC,1)) )
+    bsum(1:n) = b(1:n)
+    CALL ParallelSumVector( A, bsum )
+    DO i=1,n,2                                  ! odd scalar rows = block first rows
+      IF ( Owner(i)==1 ) THEN
+        lc = (A % Gorder(i)+1)/2 - gStartC      ! local complex row
+        zbloc(lc) = CMPLX( bsum(i), bsum(i+1), KIND=dp )
+      END IF
+    END DO
+    DEALLOCATE( bsum )
+
+    CALL cudss_zsolve( A % Cudss, nOwnC, zxloc, zbloc, SolveOk )
+    IF ( SolveOk == 0 ) &
+        CALL Fatal('CUDSS_SolveSystem','distributed complex cuDSS solve failed.')
+
+    ! Scatter the owned solution back into the real 2n vector (Re,Im per block),
+    ! then let the shared rows pick up their owner's value.
+    x(1:n) = 0.0_dp
+    DO i=1,n,2
+      IF ( Owner(i)==1 ) THEN
+        lc = (A % Gorder(i)+1)/2 - gStartC
+        x(i)   = REAL( zxloc(lc), KIND=dp )
+        x(i+1) = AIMAG( zxloc(lc) )
+      END IF
+    END DO
+    CALL ParallelSumVector( A, x(1:n) )
+
+    DEALLOCATE( zbloc, zxloc, Owner )
+
+    FreeFactorize = ListGetLogical( Solver % Values, &
+        'Linear System Free Factorization', Found )
+    IF ( .NOT. Found ) FreeFactorize = .TRUE.
+    IF ( Factorize .AND. FreeFactorize ) THEN
+      CALL CUDSS_FreeHandle( A )
+    END IF
+#else
+    CALL Fatal( 'CUDSS_DistSolveComplex', 'cuDSS Solver has not been installed.' )
+#endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_DistSolveComplex
+!------------------------------------------------------------------------------
+
+
+#ifdef HAVE_CUDSS
+!------------------------------------------------------------------------------
+!> Global contiguous renumbering of dofs with ContinuousNumbering and counting global 
+!> dofs with MPI_ALLREDUCE for CUDSS MGMN. This rank is assigned to rows
+!> [gStartLoc+1, gStartLoc+nOwnLoc] in the global system.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_GRenumberAndCount( A, Owner, nOwnLoc, gStartLoc, nGlob )
+!------------------------------------------------------------------------------
+#ifdef ELMER_HAVE_MPI_MODULE
+    USE mpi
+#endif
+    TYPE(Matrix_t) :: A
+    INTEGER, ALLOCATABLE :: Owner(:)
+    INTEGER :: nOwnLoc, gStartLoc, nGlob
+#ifdef ELMER_HAVE_MPIF_HEADER
+    INCLUDE 'mpif.h'
+#endif
+    INTEGER :: n, ierr
+!------------------------------------------------------------------------------
+    n = A % NumberOfRows
+    IF ( ASSOCIATED(A % Gorder) ) DEALLOCATE(A % Gorder)
+    ALLOCATE( A % Gorder(n), Owner(n) )
+    CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner, &
+            nOwn=nOwnLoc, gStart=gStartLoc )
+    CALL MPI_ALLREDUCE( SUM(Owner), nGlob, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_GRenumberAndCount
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Free the stored cuDSS factorization handle if one is held, then clear it.
+!> Shared by the distributed drivers for the free-only entry, the refactor
+!> teardown, and the post-solve free.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_FreeHandle( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+    INTERFACE
+      SUBROUTINE cudss_ffree(cudss) BIND(c,NAME="cudss_ffree")
+        USE Types
+        INTEGER(KIND=AddrInt) :: cudss
+      END SUBROUTINE cudss_ffree
+    END INTERFACE
+    IF ( A % Cudss /= 0 ) THEN
+      CALL cudss_ffree( A % Cudss )
+      A % Cudss = 0
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_FreeHandle
+!------------------------------------------------------------------------------
+#endif
+
+
+!------------------------------------------------------------------------------
+!> Pack an owned-block real 2x2 CSR (scalar-row space, as produced by
+!> CUDSS_AssembleOwnedRowsR) into a complex CSR of order nOwnC. 
+!> The complex CSR values are collected from the odd rows of the real 
+!> 2x2-block matrix.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_PackOwnedComplex( Rloc, Cloc, Vloc, nOwnC, &
+             ZRloc, ZCloc, ZVloc, nnzLocC )
+!------------------------------------------------------------------------------
+    INTEGER :: Rloc(:), Cloc(:), nOwnC, nnzLocC
+    INTEGER, ALLOCATABLE :: ZRloc(:), ZCloc(:)
+    REAL(KIND=dp) :: Vloc(:)
+    COMPLEX(KIND=dp), ALLOCATABLE :: ZVloc(:)
+    INTEGER :: kc, p, hi, q, nnzR
+!------------------------------------------------------------------------------
+    ! Complex nnz = half the real nnz of the odd rows. The odd scalar row of
+    ! block kc is local row 2*kc-1.
+    nnzR = 0
+    DO kc=1,nOwnC
+      nnzR = nnzR + ( Rloc(2*kc) - Rloc(2*kc-1) )
+    END DO
+    nnzLocC = nnzR / 2
+
+    ALLOCATE( ZRloc(nOwnC+1), ZCloc(MAX(nnzLocC,1)), ZVloc(MAX(nnzLocC,1)) )
+    ZRloc(1) = 1
+    q = 0
+    DO kc=1,nOwnC
+      p  = Rloc(2*kc-1)
+      hi = Rloc(2*kc) - 1
+      DO WHILE ( p < hi )
+        ! Expect the ERF pair: col 2m-1 (a) immediately followed by col 2m (-b).
+        IF ( Cloc(p+1) /= Cloc(p)+1 .OR. MODULO(Cloc(p),2)/=1 ) &
+            CALL Fatal('CUDSS_PackOwnedComplex', &
+                'Owned real block is not in 2x2 ERF pairing; cannot pack to complex.')
+        q = q + 1
+        ZCloc(q) = (Cloc(p)+1)/2                         ! global complex column (1-based)
+        ZVloc(q) = CMPLX( Vloc(p), -Vloc(p+1), KIND=dp ) ! a + b i
+        p = p + 2
+      END DO
+      ZRloc(kc+1) = q + 1
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_PackOwnedComplex
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Build the fully assembled CSR of this rank's owned rows for the distributed
+!> cuDSS solve. Every local row is sent to the rank that owns it (owned rows go
+!> to self), tagged with global row and column indices; the owner accumulates
+!> all contributions, summing the partial interface rows that several
+!> partitions hold. Duplicate columns within a row are merged so the result is
+!> a clean CSR (global 1-based column indices, owned rows in global order).
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_AssembleOwnedRowsR( A, Owner, nOwnLoc, gStartLoc, &
+             Rloc, Cloc, Vloc, nnzLoc )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    INTEGER :: Owner(:), nOwnLoc, gStartLoc, nnzLoc
+    INTEGER, ALLOCATABLE :: Rloc(:), Cloc(:)
+    REAL(KIND=dp), ALLOCATABLE :: Vloc(:)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER, POINTER :: nb(:)
+    INTEGER :: PEs, me, n, i, j, k, tgt, ierr, nsend, nrecv, lr, p, q, lo, hi, col, ndist
+    INTEGER, ALLOCATABLE :: scnt(:), sdsp(:), rcnt(:), rdsp(:), pos(:)
+    INTEGER, ALLOCATABLE :: sGrow(:), sGcol(:), rGrow(:), rGcol(:)
+    REAL(KIND=dp), ALLOCATABLE :: sVal(:), rVal(:)
+    INTEGER, ALLOCATABLE :: cnt(:), stageRow(:), stageCol(:)
+    REAL(KIND=dp), ALLOCATABLE :: stageVal(:)
+    REAL(KIND=dp) :: v
+!------------------------------------------------------------------------------
+    n   = A % NumberOfRows
+    PEs = ParEnv % PEs
+    me  = ParEnv % MyPE
+
+    ALLOCATE( scnt(PEs), sdsp(PEs), rcnt(PEs), rdsp(PEs), pos(PEs) )
+
+    ! Count entries bound for each row's owner (owned rows -> self).
+    scnt = 0
+    DO i=1,n
+      IF ( Owner(i)==1 ) THEN
+        tgt = me
+      ELSE
+        nb => A % ParallelInfo % NeighbourList(i) % Neighbours
+        tgt = nb(1)
+      END IF
+      scnt(tgt+1) = scnt(tgt+1) + ( A % Rows(i+1) - A % Rows(i) )
+    END DO
+
+    sdsp(1) = 0
+    DO i=2,PEs
+      sdsp(i) = sdsp(i-1) + scnt(i-1)
+    END DO
+    nsend = sdsp(PEs) + scnt(PEs)
+    ALLOCATE( sGrow(MAX(nsend,1)), sGcol(MAX(nsend,1)), sVal(MAX(nsend,1)) )
+
+    ! Pack (global row, global column, value) grouped by target rank.
+    pos = sdsp
+    DO i=1,n
+      IF ( Owner(i)==1 ) THEN
+        tgt = me
+      ELSE
+        nb => A % ParallelInfo % NeighbourList(i) % Neighbours
+        tgt = nb(1)
+      END IF
+      DO j=A % Rows(i), A % Rows(i+1)-1
+        pos(tgt+1) = pos(tgt+1) + 1
+        sGrow(pos(tgt+1)) = A % Gorder(i)
+        sGcol(pos(tgt+1)) = A % Gorder(A % Cols(j))
+        sVal (pos(tgt+1)) = A % Values(j)
+      END DO
+    END DO
+
+    CALL MPI_ALLTOALL( scnt, 1, MPI_INTEGER, rcnt, 1, MPI_INTEGER, A % Comm, ierr )
+    rdsp(1) = 0
+    DO i=2,PEs
+      rdsp(i) = rdsp(i-1) + rcnt(i-1)
+    END DO
+    nrecv = rdsp(PEs) + rcnt(PEs)
+
+    ALLOCATE( rGrow(MAX(nrecv,1)), rGcol(MAX(nrecv,1)), rVal(MAX(nrecv,1)) )
+    CALL MPI_ALLTOALLV( sGrow, scnt, sdsp, MPI_INTEGER, &
+                        rGrow, rcnt, rdsp, MPI_INTEGER, A % Comm, ierr )
+    CALL MPI_ALLTOALLV( sGcol, scnt, sdsp, MPI_INTEGER, &
+                        rGcol, rcnt, rdsp, MPI_INTEGER, A % Comm, ierr )
+    CALL MPI_ALLTOALLV( sVal, scnt, sdsp, MPI_DOUBLE_PRECISION, &
+                        rVal, rcnt, rdsp, MPI_DOUBLE_PRECISION, A % Comm, ierr )
+    DEALLOCATE( sGrow, sGcol, sVal )
+
+    ! Bin received entries by owned local row (global row - gStartLoc).
+    ALLOCATE( cnt(MAX(nOwnLoc,1)) )
+    cnt = 0
+    DO k=1,nrecv
+      lr = rGrow(k) - gStartLoc
+      IF ( lr < 1 .OR. lr > nOwnLoc ) &
+          CALL Fatal('CUDSS_AssembleOwnedRowsR', &
+              'Received a row this rank does not own; numbering is inconsistent.')
+      cnt(lr) = cnt(lr) + 1
+    END DO
+
+    ALLOCATE( stageRow(nOwnLoc+1) )
+    stageRow(1) = 1
+    DO lr=1,nOwnLoc
+      stageRow(lr+1) = stageRow(lr) + cnt(lr)
+    END DO
+
+    ALLOCATE( stageCol(MAX(nrecv,1)), stageVal(MAX(nrecv,1)) )
+    cnt = stageRow(1:nOwnLoc)          ! running insertion position per row
+    DO k=1,nrecv
+      lr = rGrow(k) - gStartLoc
+      stageCol(cnt(lr)) = rGcol(k)
+      stageVal(cnt(lr)) = rVal(k)
+      cnt(lr) = cnt(lr) + 1
+    END DO
+    DEALLOCATE( rGrow, rGcol, rVal )
+
+    ! Sort each row segment by column and count the distinct columns, so the
+    ! merged CSR can be sized exactly. Segments are small (partitions/elements
+    ! touching the dof), so an insertion sort is fine.
+    ALLOCATE( Rloc(nOwnLoc+1) )
+    nnzLoc = 0
+    DO lr=1,nOwnLoc
+      lo = stageRow(lr); hi = stageRow(lr+1)-1
+      CALL CUDSS_SortRowSegment( stageCol, stageVal, lo, hi )
+      IF ( hi >= lo ) THEN
+        ndist = 1
+        DO p=lo+1,hi
+          IF ( stageCol(p) /= stageCol(p-1) ) ndist = ndist + 1
+        END DO
+        nnzLoc = nnzLoc + ndist
+      END IF
+    END DO
+
+    ! Emit the merged CSR, summing duplicate columns.
+    ALLOCATE( Cloc(MAX(nnzLoc,1)), Vloc(MAX(nnzLoc,1)) )
+    Rloc(1) = 1
+    q = 0
+    DO lr=1,nOwnLoc
+      lo = stageRow(lr); hi = stageRow(lr+1)-1
+      p = lo
+      DO WHILE ( p <= hi )
+        col = stageCol(p); v = stageVal(p); p = p + 1
+        DO WHILE ( p <= hi .AND. stageCol(p) == col )
+          v = v + stageVal(p); p = p + 1
+        END DO
+        q = q + 1
+        Cloc(q) = col      ! global 1-based column (C side rebases to 0)
+        Vloc(q) = v
+      END DO
+      Rloc(lr+1) = q + 1
+    END DO
+
+    DEALLOCATE( stageCol, stageVal, stageRow, cnt, scnt, sdsp, rcnt, rdsp, pos )
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_AssembleOwnedRowsR
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Insertion sort of one CSR row segment [lo,hi] ascending by column index,
+!> carrying the matching values. Used by CUDSS_AssembleOwnedRowsR to merge
+!> duplicate columns; row segments are short, so insertion sort suffices.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_SortRowSegment( col, val, lo, hi )
+!------------------------------------------------------------------------------
+    INTEGER :: col(:), lo, hi
+    REAL(KIND=dp) :: val(:)
+    INTEGER :: p, q, ckey
+    REAL(KIND=dp) :: vkey
+!------------------------------------------------------------------------------
+    DO p=lo+1,hi
+      ckey = col(p); vkey = val(p); q = p - 1
+      DO WHILE ( q >= lo .AND. col(q) > ckey )
+        col(q+1) = col(q); val(q+1) = val(q); q = q - 1
+      END DO
+      col(q+1) = ckey; val(q+1) = vkey
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_SortRowSegment
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Solves a linear system using SuiteSparseQR multifrontal direct solver courtesy
 !> of University of Florida.
 !------------------------------------------------------------------------------
@@ -704,12 +1541,502 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
+#ifdef HAVE_MUMPS
+!------------------------------------------------------------------------------
+!> The in-place reductions of the MUMPS paths, in one place. MPI_IN_PLACE is not
+!> usable with every MPI and compiler combination -- MS-MPI with gfortran on
+!> Windows is the one the build probes for, ELMER_BROKEN_MPI_IN_PLACE -- and
+!> there it does not merely fail to reduce, it faults inside MPI. Where the probe
+!> says so these fall back to the scratch copy the code used before, which is the
+!> same arithmetic on the same data in the same order. Wrapping them keeps that to
+!> one #ifdef per type instead of one at every call site.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsAndAll( val, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    LOGICAL :: val
+    INTEGER :: Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    LOGICAL :: buf
+    buf = val
+    CALL MPI_ALLREDUCE( buf, val, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, val, 1, MPI_LOGICAL, MPI_LAND, Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsAndAll
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllS( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    REAL :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL, ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_REAL, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_REAL, MPI_SUM, Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllS
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllC( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    COMPLEX :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    COMPLEX, ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_COMPLEX, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_COMPLEX, MPI_SUM, Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllC
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllD( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    REAL(KIND=dp) :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    REAL(KIND=dp), ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_DOUBLE_PRECISION, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_DOUBLE_PRECISION, MPI_SUM, &
+        Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllD
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSumAllZ( x, n, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    INTEGER :: n, Comm
+    COMPLEX(KIND=dp) :: x(n)
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: ierr
+#  ifdef ELMER_BROKEN_MPI_IN_PLACE
+    COMPLEX(KIND=dp), ALLOCATABLE :: buf(:)
+    ALLOCATE( buf(n) )
+    buf = x
+    CALL MPI_ALLREDUCE( buf, x, n, MPI_DOUBLE_COMPLEX, MPI_SUM, Comm, ierr )
+    DEALLOCATE( buf )
+#  else
+    CALL MPI_ALLREDUCE( MPI_IN_PLACE, x, n, MPI_DOUBLE_COMPLEX, MPI_SUM, &
+        Comm, ierr )
+#  endif
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSumAllZ
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Begin a redistribution plan for MUMPS's distributed solution: the half of it
+!> that is known as soon as the global numbering is, namely which contiguous
+!> range of global indices each rank owns. ContinuousNumbering already produced
+!> those ranges -- it hands each rank a base index from its predecessor and
+!> numbers the rows it owns consecutively from there -- so only the lengths need
+!> collecting. That is what makes "who owns this index" a search in a table of
+!> P+1 bounds rather than something that has to be looked up over the network.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsSolPlanInit( A, gStart, nOwn, nGlob, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    INTEGER :: gStart, nOwn, nGlob, Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    INTEGER :: i, PEs, me, ierr
+    LOGICAL :: Usable
+    INTEGER, ALLOCATABLE :: cnt(:), gb(:)
+!------------------------------------------------------------------------------
+    CALL MumpsFreeSolPlan( A )
+
+    CALL MPI_COMM_SIZE( Comm, PEs, ierr )
+    CALL MPI_COMM_RANK( Comm, me, ierr )
+
+    ALLOCATE( cnt(PEs), gb(0:PEs) )
+    CALL MPI_ALLGATHER( nOwn, 1, MPI_INTEGER, cnt, 1, MPI_INTEGER, Comm, ierr )
+    gb(0) = 0
+    DO i=1,PEs
+      gb(i) = gb(i-1) + cnt(i)
+    END DO
+    DEALLOCATE( cnt )
+
+    ! Three things have to hold. The plan leaves the shared rows to
+    ! ParallelSumVector, which reaches into the matrix's parallel structures; a
+    ! parallel solve always has them by the time it gets here, since
+    ! SolveLinearSystem takes the serial branch when ParallelInitMatrix could
+    ! not build them, but the plan is optional so declining beats depending on
+    ! it. And the bounds only mean what the plan assumes if the ranks are
+    ! ordered here the way ContinuousNumbering ordered them and their ranges
+    ! tile the whole system. All three are one comparison each.
+    Usable = ASSOCIATED( A % ParMatrix ) .AND. &
+             gb(me) == gStart .AND. gb(PEs) == nGlob
+
+    ! The decision has to be unanimous. The two redistribution routes make
+    ! different collective calls, so a rank quietly opting out while the others
+    ! carried on would hang rather than fall back.
+    CALL MumpsAndAll( Usable, Comm )
+
+    IF( .NOT. Usable ) THEN
+      CALL Info('MumpsSolPlanInit','Cannot map the distributed solution '// &
+          'directly; keeping the gathered redistribution',Level=6)
+      DEALLOCATE( gb )
+      RETURN
+    END IF
+
+    ALLOCATE( A % MumpsSolPlan )
+    ALLOCATE( A % MumpsSolPlan % gBound(0:PEs) )
+    A % MumpsSolPlan % gBound = gb
+    A % MumpsSolPlan % gStart = gStart
+    A % MumpsSolPlan % nOwn   = nOwn
+    A % MumpsSolPlan % nGlob  = nGlob
+    DEALLOCATE( gb )
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsSolPlanInit
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Finish the plan, or confirm the one already built still applies. MUMPS only
+!> reports its solution distribution in ISOL_loc on exit from a solve, so the
+!> rest of the plan cannot be built until after the first one. It is stable for
+!> the life of the factorization in practice, but nothing in the user guide says
+!> it must be, so the ISOL_loc it was built for is kept and compared -- a local
+!> O(lsol_loc) test -- and the plan is rebuilt if it ever differs.
+!> nblk is 1 for a real system and 2 for a complex one, i.e. the number of
+!> scalar matrix rows per index MUMPS is working with.
+!------------------------------------------------------------------------------
+  FUNCTION MumpsSolPlanReady( A, isol, nsol, nblk, Comm ) RESULT( Ready )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    INTEGER :: isol(:), nsol, nblk, Comm
+    LOGICAL :: Ready
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    TYPE(MumpsSolPlan_t), POINTER :: P
+    INTEGER :: i,j,k,lo,hi,mid,PEs,ierr,g,nrecv
+    LOGICAL :: Ok
+    INTEGER, ALLOCATABLE :: own2row(:), sIdx(:), rIdx(:), pos(:)
+!------------------------------------------------------------------------------
+    Ready = .FALSE.
+
+    ! MumpsSolPlanInit made its decision collectively, so either every rank has
+    ! a plan under construction or none has.
+    IF( .NOT. ASSOCIATED( A % MumpsSolPlan ) ) RETURN
+    P => A % MumpsSolPlan
+    CALL MPI_COMM_SIZE( Comm, PEs, ierr )
+
+    ! Is the plan we already hold still the right one? MUMPS reports its
+    ! solution distribution only on exit from a solve, so the plan cannot be
+    ! built before the first one. It is a property of the factorization and does
+    ! not change in practice, but the user guide does not promise that, so the
+    ! ISOL_loc it was built for is kept and compared. The comparison is local
+    ! and the answer must be unanimous, hence the one word reduction.
+    Ok = .FALSE.
+    IF( P % Built ) THEN
+      IF( P % nSend == nsol ) Ok = ALL( P % isol == isol(1:nsol) )
+    END IF
+    CALL MumpsAndAll( Ok, Comm )
+    IF( Ok ) THEN
+      Ready = .TRUE.
+      RETURN
+    END IF
+    IF( P % Built ) THEN
+      CALL Info('MumpsSolPlanReady','MUMPS returned a different solution '// &
+          'distribution; rebuilding the redistribution plan',Level=6)
+      P % Built = .FALSE.
+    END IF
+
+    ! Global index -> our local row, for the rows we own. The owned indices are
+    ! contiguous, so this is an offset into an array of nOwn rather than a search.
+    ALLOCATE( own2row(MAX(P % nOwn,1)) )
+    own2row = 0
+    DO i=1,A % NumberOfRows,nblk
+      g = (A % Gorder(i)-1)/nblk + 1
+      IF( g > P % gStart .AND. g <= P % gStart + P % nOwn ) &
+          own2row(g - P % gStart) = i
+    END DO
+
+    IF( ALLOCATED(P % sCnt) ) DEALLOCATE(P % sCnt,P % sDsp,P % rCnt,P % rDsp)
+    ALLOCATE( P % sCnt(PEs), P % sDsp(PEs), P % rCnt(PEs), P % rDsp(PEs) )
+    IF( ALLOCATED(P % sPerm) ) DEALLOCATE(P % sPerm)
+    ALLOCATE( P % sPerm(MAX(nsol,1)), sIdx(MAX(nsol,1)), pos(PEs) )
+    P % nSend = nsol
+
+    ! Bin our share of the solution by the rank owning each index. Two passes,
+    ! counting then placing, so the send buffer comes out grouped by rank.
+    Ok = .TRUE.
+    P % sCnt = 0
+    DO k=1,nsol
+      g = isol(k)
+      IF( g < 1 .OR. g > P % nGlob ) THEN
+        Ok = .FALSE.
+        EXIT
+      END IF
+      lo = 0; hi = PEs
+      DO WHILE( hi - lo > 1 )
+        mid = (lo + hi)/2
+        IF( g > P % gBound(mid) ) THEN
+          lo = mid
+        ELSE
+          hi = mid
+        END IF
+      END DO
+      P % sCnt(lo+1) = P % sCnt(lo+1) + 1
+    END DO
+
+    IF( Ok ) THEN
+      P % sDsp(1) = 0
+      DO i=2,PEs
+        P % sDsp(i) = P % sDsp(i-1) + P % sCnt(i-1)
+      END DO
+      pos = P % sDsp
+      DO k=1,nsol
+        g = isol(k)
+        lo = 0; hi = PEs
+        DO WHILE( hi - lo > 1 )
+          mid = (lo + hi)/2
+          IF( g > P % gBound(mid) ) THEN
+            lo = mid
+          ELSE
+            hi = mid
+          END IF
+        END DO
+        pos(lo+1) = pos(lo+1) + 1
+        P % sPerm(pos(lo+1)) = k
+        sIdx(pos(lo+1)) = g
+      END DO
+
+      CALL MPI_ALLTOALL( P % sCnt, 1, MPI_INTEGER, &
+                         P % rCnt, 1, MPI_INTEGER, Comm, ierr )
+      P % rDsp(1) = 0
+      DO i=2,PEs
+        P % rDsp(i) = P % rDsp(i-1) + P % rCnt(i-1)
+      END DO
+      nrecv = SUM( P % rCnt )
+
+      ! Every index we own should arrive exactly once, MUMPS's distribution
+      ! being a partition of the system. If it is not, the premise of the plan
+      ! is wrong and the gathered route is the honest fallback.
+      IF( nrecv /= P % nOwn ) Ok = .FALSE.
+      P % nRecv = nrecv
+    END IF
+
+    IF( Ok ) THEN
+      IF( ALLOCATED(P % rRow) ) DEALLOCATE(P % rRow)
+      ALLOCATE( rIdx(MAX(nrecv,1)), P % rRow(MAX(nrecv,1)) )
+      CALL MPI_ALLTOALLV( sIdx, P % sCnt, P % sDsp, MPI_INTEGER, &
+                          rIdx, P % rCnt, P % rDsp, MPI_INTEGER, Comm, ierr )
+      DO j=1,nrecv
+        g = rIdx(j) - P % gStart
+        IF( g < 1 .OR. g > P % nOwn ) THEN
+          Ok = .FALSE.
+          EXIT
+        END IF
+        P % rRow(j) = own2row(g)
+        IF( P % rRow(j) == 0 ) THEN
+          Ok = .FALSE.
+          EXIT
+        END IF
+      END DO
+    END IF
+
+    ! Unanimous again: every rank runs the same collectives from here on, so
+    ! they must agree on which route the solves will take.
+    CALL MumpsAndAll( Ok, Comm )
+
+    IF( .NOT. Ok ) THEN
+      CALL Info('MumpsSolPlanReady','Could not map the distributed solution '// &
+          'onto the owned rows; keeping the gathered redistribution',Level=6)
+      CALL MumpsFreeSolPlan( A )
+      RETURN
+    END IF
+
+    IF( ALLOCATED(P % isol) ) DEALLOCATE(P % isol)
+    ALLOCATE( P % isol(nsol) )
+    P % isol = isol(1:nsol)
+
+    P % Built = .TRUE.
+    Ready = .TRUE.
+    CALL Info('MumpsSolPlanReady','Solution redistribution plan built',Level=8)
+!------------------------------------------------------------------------------
+  END FUNCTION MumpsSolPlanReady
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Move MUMPS's distributed solution onto our own rows: one MPI_ALLTOALLV that
+!> carries each value straight to the rank owning that row, then Elmer's own
+!> parallel sum to hand the shared rows their owner's value. The rows we do not
+!> own are zero going into that sum and adding zero is exact, so the result is
+!> the same bits the global gather produced.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsScatterSolutionR( A, sol, x, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    REAL(KIND=dp) :: sol(:)
+    REAL(KIND=dp) :: x(*)
+    INTEGER :: Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    TYPE(MumpsSolPlan_t), POINTER :: P
+    REAL(KIND=dp), ALLOCATABLE :: sBuf(:), rBuf(:)
+    INTEGER :: k, n, ns, nr, ierr
+!------------------------------------------------------------------------------
+    P => A % MumpsSolPlan
+    n = A % NumberOfRows
+    ns = P % nSend; nr = P % nRecv
+    ALLOCATE( sBuf(MAX(ns,1)), rBuf(MAX(nr,1)) )
+
+    DO k=1,ns
+      sBuf(k) = sol(P % sPerm(k))
+    END DO
+
+    CALL MPI_ALLTOALLV( sBuf, P % sCnt, P % sDsp, MPI_DOUBLE_PRECISION, &
+                        rBuf, P % rCnt, P % rDsp, MPI_DOUBLE_PRECISION, Comm, ierr )
+
+    x(1:n) = 0.0_dp
+    DO k=1,nr
+      x(P % rRow(k)) = rBuf(k)
+    END DO
+    DEALLOCATE( sBuf, rBuf )
+
+    CALL ParallelSumVector( A, x(1:n) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsScatterSolutionR
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The complex counterpart. The plan is in block indices, so a received entry
+!> fills the two consecutive scalar rows of its block.
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsScatterSolutionZ( A, sol, x, Comm )
+!------------------------------------------------------------------------------
+#  if defined(ELMER_HAVE_MPI_MODULE)
+    USE mpi
+#  endif
+    TYPE(Matrix_t) :: A
+    COMPLEX(KIND=dp) :: sol(:)
+    REAL(KIND=dp) :: x(*)
+    INTEGER :: Comm
+#  if defined(ELMER_HAVE_MPIF_HEADER)
+    INCLUDE 'mpif.h'
+#  endif
+    TYPE(MumpsSolPlan_t), POINTER :: P
+    COMPLEX(KIND=dp), ALLOCATABLE :: sBuf(:), rBuf(:)
+    INTEGER :: k, n, ns, nr, ierr
+!------------------------------------------------------------------------------
+    P => A % MumpsSolPlan
+    n = A % NumberOfRows
+    ns = P % nSend; nr = P % nRecv
+    ALLOCATE( sBuf(MAX(ns,1)), rBuf(MAX(nr,1)) )
+
+    DO k=1,ns
+      sBuf(k) = sol(P % sPerm(k))
+    END DO
+
+    CALL MPI_ALLTOALLV( sBuf, P % sCnt, P % sDsp, MPI_DOUBLE_COMPLEX, &
+                        rBuf, P % rCnt, P % rDsp, MPI_DOUBLE_COMPLEX, Comm, ierr )
+
+    x(1:n) = 0.0_dp
+    DO k=1,nr
+      x(P % rRow(k))   =  REAL( rBuf(k), KIND=dp )
+      x(P % rRow(k)+1) = AIMAG( rBuf(k) )
+    END DO
+    DEALLOCATE( sBuf, rBuf )
+
+    CALL ParallelSumVector( A, x(1:n) )
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsScatterSolutionZ
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+  SUBROUTINE MumpsFreeSolPlan( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+!------------------------------------------------------------------------------
+    IF( ASSOCIATED( A % MumpsSolPlan ) ) THEN
+      DEALLOCATE( A % MumpsSolPlan )
+      A % MumpsSolPlan => NULL()
+    END IF
+!------------------------------------------------------------------------------
+  END SUBROUTINE MumpsFreeSolPlan
+!------------------------------------------------------------------------------
+#endif
+
  SUBROUTINE FreeMumpsFactorizations(A)
 !------------------------------------------------------------------------------
     TYPE(Matrix_t) :: A
 
 !------------------------------------------------------------------------------
 #ifdef HAVE_MUMPS
+    CALL MumpsFreeSolPlan( A )
+
     IF(ASSOCIATED(A % SMumpsID)) THEN
       IF(ASSOCIATED(A % SMumpsID % irn_loc)) THEN
         DEALLOCATE( A % SMumpsID % irn_loc, &
@@ -749,10 +2076,16 @@ CONTAINS
     END IF
 
     IF(ASSOCIATED(A % MumpsID)) THEN
+#ifdef HAVE_MUMPS_DIST_RHS
+      IF(ASSOCIATED(A % MumpsID % irhs_loc)) THEN
+        DEALLOCATE( A % MumpsID % irhs_loc, A % MumpsID % rhs_loc )
+      END IF
+#endif
       IF(ASSOCIATED(A % MumpsID % irn_loc)) THEN
         DEALLOCATE( A % MumpsID % irn_loc, &
-           A % MumpsID % jcn_loc, A % MumpsID % Rhs,  &
+           A % MumpsID % jcn_loc, &
              A % MumpsID % isol_loc, A % MumpsID % sol_loc)
+        IF(ASSOCIATED(A % MumpsID % Rhs)) DEALLOCATE( A % MumpsID % Rhs )
         IF(.NOT.ASSOCIATED(A % MumpsID % A_loc, A % Values)) DEALLOCATE( A % MumpsID % A_loc )
       ELSE
         DEALLOCATE( A % MumpsID % irn, A % MumpsID % jcn, &
@@ -768,10 +2101,16 @@ CONTAINS
     END IF
 
     IF(ASSOCIATED(A % ZMumpsID)) THEN
+#ifdef HAVE_MUMPS_DIST_RHS
+      IF(ASSOCIATED(A % ZMumpsID % irhs_loc)) THEN
+        DEALLOCATE( A % ZMumpsID % irhs_loc, A % ZMumpsID % rhs_loc )
+      END IF
+#endif
       IF(ASSOCIATED(A % ZMumpsID % irn_loc)) THEN
         DEALLOCATE( A % ZMumpsID % irn_loc, &
-           A % ZMumpsID % jcn_loc, A % ZMumpsID % Rhs,  &
+           A % ZMumpsID % jcn_loc, &
              A % ZMumpsID % isol_loc, A % ZMumpsID % sol_loc)
+        IF(ASSOCIATED(A % ZMumpsID % Rhs)) DEALLOCATE( A % ZMumpsID % Rhs )
         DEALLOCATE( A % ZMumpsID % A_loc )
       ELSE
         DEALLOCATE( A % ZMumpsID % irn, A % ZMumpsID % jcn, &
@@ -819,7 +2158,6 @@ CONTAINS
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
 
-  REAL, ALLOCATABLE :: dbuf(:)
 
   Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
@@ -900,6 +2238,8 @@ CONTAINS
     icntlft = ListGetInteger(Solver % Values, &
           'mumps percentage increase working space', stat)
     IF (stat) A % SMumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % SMumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       ! Centralized matrix and solution
@@ -993,6 +2333,33 @@ CONTAINS
     CALL SMumps(A % SMumpsID)
     CALL Flush(6)
 
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % SMumpsID % INFOG(1) /= -8 .AND. A % SMumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % SMumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % SMumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('SMumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % SMumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % SMumpsID % ICNTL(14)),Level=5)
+      A % SMumpsID % job = 2
+      CALL SMumps(A % SMumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % SMumpsID % INFOG(1) < 0) THEN
+      IF (A % SMumpsID % INFOG(1) == -8 .OR. A % SMumpsID % INFOG(1) == -9) &
+          CALL Warn('SMumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % SMumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('SMumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % SMumpsID % INFOG(1))//' INFOG(2)='//I2S(A % SMumpsID % INFOG(2)))
+    END IF
+
     IF(.NOT.SerialMode) THEN
       A % SMumpsID % lsol_loc = A % Smumpsid % info(23)
       ALLOCATE(A % SMumpsID % sol_loc(A % SMumpsId % lsol_loc))
@@ -1023,10 +2390,8 @@ CONTAINS
       A % SMumpsId % RHS(ip) = b(i)
     END DO
 
-    ALLOCATE( dbuf(A % SMumpsID % n) )
-    dbuf = A % SMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % SMumpsID % RHS, &
-      A % SMumpsID % n, MPI_REAL, MPI_SUM, A % SMumpsID % Comm, ierr )
+    CALL MumpsSumAllS( A % SMumpsID % RHS, A % SMumpsID % n, &
+      A % SMumpsID % Comm )
 
  ! Solution:
     A % SMumpsID % job = 3
@@ -1037,11 +2402,8 @@ CONTAINS
     DO i=1,A % SMumpsID % lsol_loc
       A % SMumpsID % RHS(A % SMumpsID % isol_loc(i)) = A % SMumpsID % sol_loc(i)
     END DO
-    dbuf = A % SMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % SMumpsID % RHS, &
-      A % SMumpsID % n, MPI_REAL, MPI_SUM,A %  SMumpsID % Comm, ierr )
-
-    DEALLOCATE(dbuf)
+    CALL MumpsSumAllS( A % SMumpsID % RHS, A % SMumpsID % n, &
+      A % SMumpsID % Comm )
 
  ! Select the values which belong to us:
     DO i=1,A % NumberOfRows
@@ -1090,7 +2452,6 @@ CONTAINS
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
 
-  COMPLEX, ALLOCATABLE :: dbuf(:)
 
   LOGICAL :: SerialMode
 
@@ -1154,6 +2515,8 @@ CONTAINS
     icntlft = ListGetInteger(Solver % Values, &
           'mumps percentage increase working space', stat)
     IF (stat) A % CMumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % CMumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       A % CMumpsID % icntl(18) = 0
@@ -1226,6 +2589,33 @@ CONTAINS
     CALL CMumps(A % CMumpsID)
     CALL Flush(6)
 
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % CMumpsID % INFOG(1) /= -8 .AND. A % CMumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % CMumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % CMumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('CMumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % CMumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % CMumpsID % ICNTL(14)),Level=5)
+      A % CMumpsID % job = 2
+      CALL CMumps(A % CMumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % CMumpsID % INFOG(1) < 0) THEN
+      IF (A % CMumpsID % INFOG(1) == -8 .OR. A % CMumpsID % INFOG(1) == -9) &
+          CALL Warn('CMumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % CMumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('CMumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % CMumpsID % INFOG(1))//' INFOG(2)='//I2S(A % CMumpsID % INFOG(2)))
+    END IF
+
     IF(.NOT.SerialMode) THEN
       A % CMumpsID % lsol_loc = A % CMumpsid % info(23)
       ALLOCATE(A % CMumpsID % sol_loc(A % CMumpsId % lsol_loc))
@@ -1259,10 +2649,8 @@ CONTAINS
       A % CMumpsId % RHS(ip) = CMPLX( b(i), b(i+1) )
     END DO
 
-    ALLOCATE( dbuf(A % CMumpsID % n) )
-    dbuf = A % CMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % CMumpsID % RHS, &
-      A % CMumpsID % n, MPI_COMPLEX, MPI_SUM, A % CMumpsID % Comm, ierr )
+    CALL MumpsSumAllC( A % CMumpsID % RHS, A % CMumpsID % n, &
+      A % CMumpsID % Comm )
 
     A % CMumpsID % job = 3
     CALL CMumps(A % CMumpsID)
@@ -1272,11 +2660,8 @@ CONTAINS
     DO i=1,A % CMumpsID % lsol_loc
       A % CMumpsID % RHS(A % CMumpsID % isol_loc(i)) = A % CMumpsID % sol_loc(i)
     END DO
-    dbuf = A % CMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % CMumpsID % RHS, &
-      A % CMumpsID % N, MPI_COMPLEX, MPI_SUM, A %  CMumpsID % Comm, ierr )
-
-    DEALLOCATE(dbuf)
+    CALL MumpsSumAllC( A % CMumpsID % RHS, A % CMumpsID % N, &
+      A % CMumpsID % Comm )
 
  ! Select the values which belong to us:
     DO i=1,A % NumberOfRows,2
@@ -1319,18 +2704,23 @@ CONTAINS
 #  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
-  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc
+  INTEGER :: i,j,n,ip,ierr,icntlft,nzloc,nOwnLoc,gStartLoc
   LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled, SerialMode
+  LOGICAL :: UseGathered, PlanOk
 
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
-
-  REAL(KIND=dp), ALLOCATABLE :: dbuf(:)
 
   Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
 
   SerialMode = (ParEnv % PEs <= 1)
+
+  ! Escape hatch, and the way the two redistribution routes get compared: with
+  ! this set the solution comes back through the global gather even when the
+  ! direct mapping is available. One binary, one keyword, everything else equal.
+  UseGathered = ListGetLogical( Solver % Values, &
+          'Linear System Mumps Gathered Solution', stat )
 
   IF ( Factorize .OR. .NOT.ASSOCIATED(A % MumpsID) ) THEN
     CALL FreeMumpsFactorizations(A)
@@ -1380,11 +2770,15 @@ CONTAINS
       n = SIZE(A % ParallelInfo % GlobalDOFs)
 
       ALLOCATE( A % Gorder(n), Owner(n) )
-      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner, &
+              nOwn=nOwnLoc, gStart=gStartLoc )
 
       CALL MPI_ALLREDUCE( SUM(Owner), A % MumpsID % n, &
          1, MPI_INTEGER, MPI_SUM, A % MumpsID % Comm, ierr )
       DEALLOCATE(Owner)
+
+      CALL MumpsSolPlanInit( A, gStartLoc, nOwnLoc, A % MumpsID % n, &
+              A % MumpsID % Comm )
     ELSE
       CALL MPI_ALLREDUCE( A % NumberOfRows, A % MumpsId % n, &
             1, MPI_INTEGER, MPI_MAX, A % Comm, ierr )
@@ -1406,6 +2800,8 @@ CONTAINS
     icntlft = ListGetInteger(Solver % Values, &
           'mumps percentage increase working space', stat)
     IF (stat) A % MumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % MumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       A % MumpsID % icntl(18) = 0 ! centralized matrix
@@ -1490,12 +2886,64 @@ CONTAINS
         END DO
       END IF
 
-      ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
+      ! Distributed right-hand side. Every rank offers only its own rows, each
+      ! tagged with its global index in IRHS_loc, and MUMPS sums the rows whose
+      ! index turns up on more than one rank. That summation is exactly how the
+      ! local contributions on a shared row have to be combined, and it is the
+      ! same property ICNTL(18)=3 above already relies on for the coefficients,
+      ! so the global sized gather that used to precede every solve is not
+      ! needed at all. Rows nobody offers would be taken as zero; here every
+      ! local row is offered, as before.
+#ifdef HAVE_MUMPS_DIST_RHS
+      A % MumpsID % icntl(20) = 10 ! distributed rhs
+      A % MumpsID % NRHS = 1
+      A % MumpsID % Nloc_RHS = A % NumberOfRows
+      A % MumpsID % LRHS_loc = A % NumberOfRows
+      ALLOCATE( A % MumpsID % irhs_loc(A % NumberOfRows), &
+                A % MumpsID % rhs_loc(A % NumberOfRows) )
+      DO i=1,A % NumberOfRows
+        A % MumpsID % irhs_loc(i) = A % Gorder(i)
+      END DO
+#endif
+
+      ! No global sized buffer is reserved here. MUMPS does not read RHS while
+      ! ICNTL(21)=1, and the redistribution below only needs one if it has to
+      ! fall back to the gathered route, so it is allocated where that happens.
+      ! Reserving it anyway would give back the per-rank global vector that the
+      ! whole exercise was about removing.
+      A % MumpsID % rhs => NULL()
     END IF
 
     A % MumpsID % job = 4
     CALL DMumps(A % MumpsID)
     CALL Flush(6)
+
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % MumpsID % INFOG(1) /= -8 .AND. A % MumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % MumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % MumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('Mumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % MumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % MumpsID % ICNTL(14)),Level=5)
+      A % MumpsID % job = 2
+      CALL DMumps(A % MumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % MumpsID % INFOG(1) < 0) THEN
+      IF (A % MumpsID % INFOG(1) == -8 .OR. A % MumpsID % INFOG(1) == -9) &
+          CALL Warn('Mumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % MumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('Mumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % MumpsID % INFOG(1))//' INFOG(2)='//I2S(A % MumpsID % INFOG(2)))
+    END IF
 
     IF(.NOT.SerialMode) THEN
       A % MumpsID % lsol_loc = A % mumpsid % info(23)
@@ -1519,39 +2967,53 @@ CONTAINS
       x(i) = A % MumpsID % RHS(i)
     END DO
   ELSE
- ! sum the rhs from all procs. Could be done for neighbours only (i guess):
+ ! Hand over our own rows only; MUMPS sums the shared ones (see ICNTL(20)
+ ! above), which is what the global allreduce used to do here.
  ! ------------------------------------------------------------------------
+#ifdef HAVE_MUMPS_DIST_RHS
+    DO i=1,A % NumberOfRows
+      A % MumpsID % rhs_loc(i) = b(i)
+    END DO
+#else
+    IF(.NOT.ASSOCIATED(A % MumpsID % rhs)) &
+        ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
     A % MumpsID % RHS = 0
     DO i=1,A % NumberOfRows
       ip = A % Gorder(i)
       A % MumpsId % RHS(ip) = b(i)
     END DO
-
-    ALLOCATE( dbuf(A % MumpsID % n) )
-    dbuf = A % MumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % MumpsID % RHS, &
-      A % MumpsID % n, MPI_DOUBLE_PRECISION, MPI_SUM, A % MumpsID % Comm, ierr )
+    CALL MumpsSumAllD( A % MumpsID % RHS, A % MumpsID % n, &
+      A % MumpsID % Comm )
+#endif
 
  ! Solution:
     A % MumpsID % job = 3
     CALL DMumps(A % MumpsID)
 
- ! Distribute the solution to all:
-    A % MumpsId % Rhs = 0
-    DO i=1,A % MumpsID % lsol_loc
-      A % MumpsID % RHS(A % MumpsID % isol_loc(i)) = A % MumpsID % sol_loc(i)
-    END DO
-    dbuf = A % MumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % MumpsID % RHS, &
-      A % MumpsID % N, MPI_DOUBLE_PRECISION, MPI_SUM,A %  MumpsID % Comm, ierr )
+ ! Distribute the solution onto our own rows. One all-to-all carrying just the
+ ! values that have to move, when the plan could be built; otherwise the old
+ ! route through a vector of global length.
+    PlanOk = .FALSE.
+    IF( .NOT. UseGathered ) &
+        PlanOk = MumpsSolPlanReady( A, A % MumpsID % isol_loc, &
+            A % MumpsID % lsol_loc, 1, A % MumpsID % Comm )
+    IF( PlanOk ) THEN
+      CALL MumpsScatterSolutionR( A, A % MumpsID % sol_loc, x, A % MumpsID % Comm )
+    ELSE
+      IF(.NOT.ASSOCIATED(A % MumpsID % rhs)) &
+          ALLOCATE(A % MumpsID % rhs(A % MumpsId % n))
+      A % MumpsId % Rhs = 0
+      DO i=1,A % MumpsID % lsol_loc
+        A % MumpsID % RHS(A % MumpsID % isol_loc(i)) = A % MumpsID % sol_loc(i)
+      END DO
+      CALL MumpsSumAllD( A % MumpsID % RHS, A % MumpsID % N, &
+        A % MumpsID % Comm )
 
-    DEALLOCATE(dbuf)
-
- ! Select the values which belong to us:
-    DO i=1,A % NumberOfRows
-      ip = A % Gorder(i)
-      x(i) = A % MumpsId % RHS(ip)
-    END DO
+      DO i=1,A % NumberOfRows
+        ip = A % Gorder(i)
+        x(i) = A % MumpsId % RHS(ip)
+      END DO
+    END IF
   END IF
 
   FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
@@ -1587,18 +3049,23 @@ CONTAINS
 #  endif
 
   INTEGER, ALLOCATABLE :: Owner(:)
-  INTEGER :: i,j,k,l,n,ip,ierr,icntlft,nzloc
+  INTEGER :: i,j,k,l,n,ip,ierr,icntlft,nzloc,nOwnLoc,gStartLoc
   LOGICAL :: Factorize, FreeFactorize, stat, matsym, matspd, scaled, SerialMode
+  LOGICAL :: UseGathered, PlanOk
 
   INTEGER, ALLOCATABLE :: memb(:)
   INTEGER :: Comm_active, Group_active, Group_world
-
-  COMPLEX(KIND=dp), ALLOCATABLE :: dbuf(:)
 
   Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', stat )
   IF ( .NOT. stat ) Factorize = .TRUE.
 
   SerialMode = (ParEnv % PEs <= 1)
+
+  ! Escape hatch, and the way the two redistribution routes get compared: with
+  ! this set the solution comes back through the global gather even when the
+  ! direct mapping is available. One binary, one keyword, everything else equal.
+  UseGathered = ListGetLogical( Solver % Values, &
+          'Linear System Mumps Gathered Solution', stat )
 
   IF ( Factorize .OR. .NOT.ASSOCIATED(A % ZMumpsID) ) THEN
     CALL FreeMumpsFactorizations(A)
@@ -1629,9 +3096,19 @@ CONTAINS
     ELSE IF(ASSOCIATED(A % ParallelInfo)) THEN
       n = SIZE(A % ParallelInfo % GlobalDOFs)
       ALLOCATE( A % Gorder(n), Owner(n) )
-      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner )
+      CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner, &
+              nOwn=nOwnLoc, gStart=gStartLoc )
       CALL MPI_ALLREDUCE( SUM(Owner)/2,A % ZMumpsID % n,1,MPI_INTEGER, MPI_SUM,A % ZMumpsID % Comm,ierr )
       DEALLOCATE(Owner)
+
+      ! The plan works in complex block indices. A block owns two consecutive
+      ! scalar rows, so both a rank's owned scalar row count and the base it
+      ! starts numbering from are even; if they are not, the pairing assumption
+      ! does not hold and no plan is offered.
+      IF( MODULO(gStartLoc,2) == 0 .AND. MODULO(nOwnLoc,2) == 0 ) THEN
+        CALL MumpsSolPlanInit( A, gStartLoc/2, nOwnLoc/2, A % ZMumpsID % n, &
+                A % ZMumpsID % Comm )
+      END IF
     ELSE
       CALL MPI_ALLREDUCE( A % NumberOfRows/2, A % ZMumpsId % n, 1, MPI_INTEGER, MPI_MAX, A % Comm, ierr )
 
@@ -1651,6 +3128,8 @@ CONTAINS
 
     icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
     IF (stat) A % ZMumpsID % icntl(14) = icntlft
+    icntlft = ListGetInteger(Solver % Values, 'mumps gpus per rank', stat)
+    IF (stat) A % ZMumpsID % icntl(51) = icntlft
 
     IF(SerialMode) THEN
       A % ZMumpsID % icntl(18) = 0 ! centralized matrix
@@ -1715,12 +3194,59 @@ CONTAINS
         END DO
       END IF
 
-      ALLOCATE(A % ZMumpsID % rhs(A % ZMumpsId % n))
+      ! Distributed right-hand side, as in the real path above: our own block
+      ! rows only, tagged with their global block index, and MUMPS sums the
+      ! ones that several ranks offer.
+#ifdef HAVE_MUMPS_DIST_RHS
+      A % ZMumpsID % icntl(20) = 10 ! distributed rhs
+      A % ZMumpsID % NRHS = 1
+      A % ZMumpsID % Nloc_RHS = A % NumberOfRows / 2
+      A % ZMumpsID % LRHS_loc = A % NumberOfRows / 2
+      ALLOCATE( A % ZMumpsID % irhs_loc(A % NumberOfRows/2), &
+                A % ZMumpsID % rhs_loc(A % NumberOfRows/2) )
+      DO i=1,A % NumberOfRows,2
+        A % ZMumpsID % irhs_loc(i/2+1) = (A % Gorder(i)-1)/2 + 1
+      END DO
+#endif
+
+      ! No global sized buffer is reserved here. MUMPS does not read RHS while
+      ! ICNTL(21)=1, and the redistribution below only needs one if it has to
+      ! fall back to the gathered route, so it is allocated where that happens.
+      ! Reserving it anyway would give back the per-rank global vector that the
+      ! whole exercise was about removing.
+      A % ZMumpsID % rhs => NULL()
     END IF
 
     A % ZMumpsID % job = 4
     CALL ZMumps(A % ZMumpsID)
     CALL Flush(6)
+
+    ! JOB=4 was analysis plus factorization, and its outcome was never looked
+    ! at: on failure info(23) below is meaningless and gets used as an
+    ! allocation size. INFOG is the globally reduced status, so every rank
+    ! reaches the same verdict and the retry stays collective. -8 and -9 are
+    ! just a working space estimate that fell short, so grow ICNTL(14) and redo
+    ! the factorization; the analysis JOB=4 already did remains valid.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % ZMumpsID % INFOG(1) /= -8 .AND. A % ZMumpsID % INFOG(1) /= -9) EXIT
+      icntlft = MAX(A % ZMumpsID % ICNTL(14), MumpsWorkspaceMin)
+      A % ZMumpsID % ICNTL(14) = 2*icntlft
+      CALL Info('ZMumps_SolveSystem','Mumps ran out of working space (INFOG(1)='// &
+          I2S(A % ZMumpsID % INFOG(1))//'), retrying with ICNTL(14)='// &
+          I2S(A % ZMumpsID % ICNTL(14)),Level=5)
+      A % ZMumpsID % job = 2
+      CALL ZMumps(A % ZMumpsID)
+      CALL Flush(6)
+    END DO
+
+    IF (A % ZMumpsID % INFOG(1) < 0) THEN
+      IF (A % ZMumpsID % INFOG(1) == -8 .OR. A % ZMumpsID % INFOG(1) == -9) &
+          CALL Warn('ZMumps_SolveSystem','Still out of working space at ICNTL(14)='// &
+              I2S(A % ZMumpsID % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
+      CALL Fatal('ZMumps_SolveSystem','Mumps factorization failed, INFOG(1)='// &
+          I2S(A % ZMumpsID % INFOG(1))//' INFOG(2)='//I2S(A % ZMumpsID % INFOG(2)))
+    END IF
 
     IF(.NOT.SerialMode) THEN
       A % ZMumpsID % lsol_loc = A % Zmumpsid % info(23)
@@ -1748,37 +3274,50 @@ CONTAINS
       x(i+1) = AIMAG( A % ZMumpsID % RHS(ip) )
     END DO
   ELSE
- ! sum the rhs from all procs:
+ ! Our own block rows only; MUMPS sums the shared ones.
+#ifdef HAVE_MUMPS_DIST_RHS
+    DO i=1,A % NumberOfRows,2
+      A % ZMumpsID % rhs_loc(i/2+1) = CMPLX(b(i), b(i+1), KIND=dp)
+    END DO
+#else
+    IF(.NOT.ASSOCIATED(A % ZMumpsID % rhs)) &
+        ALLOCATE(A % ZMumpsID % rhs(A % ZMumpsId % n))
     A % ZMumpsID % RHS = 0
     DO i=1,A % NumberOfRows,2
       ip = (A % Gorder(i)-1)/2+1
       A % ZMumpsId % RHS(ip) = CMPLX(b(i), b(i+1), KIND=dp)
     END DO
-    ALLOCATE( dbuf(A % ZMumpsID % n) )
-    dbuf = A % ZMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % ZMumpsID % RHS, &
-      A % ZMumpsID % n, MPI_DOUBLE_COMPLEX, MPI_SUM, A % ZMumpsID % Comm, ierr )
+    CALL MumpsSumAllZ( A % ZMumpsID % RHS, A % ZMumpsID % n, &
+      A % ZMumpsID % Comm )
+#endif
 
     A % ZMumpsID % job = 3
     CALL ZMumps(A % ZMumpsID)
 
- ! Distribute the solution to all:
-    A % ZMumpsId % Rhs = 0
-    DO i=1,A % ZMumpsID % lsol_loc
-      A % ZMumpsID % RHS(A % ZMumpsID % isol_loc(i)) = A % ZMumpsID % sol_loc(i)
-    END DO
-    dbuf = A % ZMumpsId % RHS
-    CALL MPI_ALLREDUCE( dbuf, A % ZMumpsID % RHS, &
-      A % ZMumpsID % N, MPI_DOUBLE_COMPLEX, MPI_SUM,A %  ZMumpsID % Comm, ierr )
+ ! Distribute the solution onto our own rows; see the real path for the two
+ ! routes.
+    PlanOk = .FALSE.
+    IF( .NOT. UseGathered ) &
+        PlanOk = MumpsSolPlanReady( A, A % ZMumpsID % isol_loc, &
+            A % ZMumpsID % lsol_loc, 2, A % ZMumpsID % Comm )
+    IF( PlanOk ) THEN
+      CALL MumpsScatterSolutionZ( A, A % ZMumpsID % sol_loc, x, A % ZMumpsID % Comm )
+    ELSE
+      IF(.NOT.ASSOCIATED(A % ZMumpsID % rhs)) &
+          ALLOCATE(A % ZMumpsID % rhs(A % ZMumpsId % n))
+      A % ZMumpsId % Rhs = 0
+      DO i=1,A % ZMumpsID % lsol_loc
+        A % ZMumpsID % RHS(A % ZMumpsID % isol_loc(i)) = A % ZMumpsID % sol_loc(i)
+      END DO
+      CALL MumpsSumAllZ( A % ZMumpsID % RHS, A % ZMumpsID % N, &
+        A % ZMumpsID % Comm )
 
-    DEALLOCATE(dbuf)
-
- ! Select the values which belong to us:
-    DO i=1,A % NumberOfRows,2
-      ip = (A % Gorder(i)-1)/2+1
-      x(i)   = REAL( A % ZMumpsId % RHS(ip), KIND=dp )
-      x(i+1) = AIMAG( A % ZMumpsId % RHS(ip) )
-    END DO
+      DO i=1,A % NumberOfRows,2
+        ip = (A % Gorder(i)-1)/2+1
+        x(i)   = REAL( A % ZMumpsId % RHS(ip), KIND=dp )
+        x(i+1) = AIMAG( A % ZMumpsId % RHS(ip) )
+      END DO
+    END IF
   END IF
 
   FreeFactorize = ListGetLogical( Solver % Values, 'Linear System Free Factorization', stat )
@@ -1825,7 +3364,7 @@ CONTAINS
      IF (Factorize .OR. .NOT. ASSOCIATED(A % mumpsIDL)) THEN
        CALL MumpsLocal_Factorize(Solver, A)
      END IF
-       
+
      ! Set RHS
      A % mumpsIDL % NRHS = 1
      A % mumpsIDL % LRHS = A % mumpsIDL % n
@@ -1997,8 +3536,24 @@ CONTAINS
     IF (nullpiv) THEN
       A % mumpsIDL % ICNTL(24) = 1
       A % mumpsIDL % CNTL(1) = 1D-2     ! Pivoting threshold
-      A % mumpsIDL % CNTL(3) = 1D-9    ! Null pivot detection threshold
-      A % mumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
+
+      ! Null pivot detection threshold. Positive values are relative to the
+      ! norm of the preprocessed matrix, so this is scale invariant, but the
+      ! value still decides the numerical rank on its own. Too large and a
+      ! genuine (stiff) mode is declared to be in the kernel; too small and a
+      ! nearly floating subdomain -- one attached to the rest by a single node
+      ! or edge, which graph partitioners produce readily -- is not detected
+      ! and the local solve stays singular. Both failures are silent, so make
+      ! it tunable instead of a hardwired guess.
+      A % mumpsIDL % CNTL(3) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Threshold', stat)
+      IF (.NOT. stat) A % mumpsIDL % CNTL(3) = 1D-9
+
+      ! Value placed on the diagonal in place of a detected null pivot.
+      A % mumpsIDL % CNTL(5) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Fixation', stat)
+      IF (.NOT. stat) A % mumpsIDL % CNTL(5) = 1D6
+
       A % mumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
     END IF
 
@@ -2051,6 +3606,15 @@ CONTAINS
           END IF
         END DO
       END DO
+
+      ! Only the triangle was written, so that is how many triplets there are.
+      ! NZ was set from the full entry count above, which left Mumps reading the
+      ! remaining half of IRN, JCN and A uninitialised. It reports them as
+      ! "index out of range" and discards them -- INFO(1)=1 with a count in
+      ! INFO(2) -- which is luck rather than safety: an uninitialised index that
+      ! happens to land inside the matrix is accepted as a real entry carrying
+      ! an uninitialised value.
+      A % mumpsIDL % NZ = nzloc
     END IF
 
     icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
@@ -2071,8 +3635,29 @@ CONTAINS
     CALL DMumps(A % mumpsIDL)
     CALL Flush(6)
 
+    ! INFO(1) = -8 or -9 only means the working space guessed at analysis time
+    ! was too small, which ICNTL(14) exists to enlarge. Retry the factorization
+    ! rather than dying: the analysis is still valid, so JOB=2 can simply be
+    ! repeated. Without this a case that UMFPACK factorizes happily is fatal as
+    ! soon as UMFPACK is not the one doing it.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % mumpsIDL % INFO(1) /= -8 .AND. A % mumpsIDL % INFO(1) /= -9) EXIT
+      icntlft = MAX(A % mumpsIDL % ICNTL(14), MumpsWorkspaceMin)
+      A % mumpsIDL % ICNTL(14) = 2*icntlft
+      CALL Info('MumpsLocal_Factorize','Mumps ran out of working space (INFO(1)='// &
+          I2S(A % mumpsIDL % INFO(1))//'), retrying with '// &
+          'ICNTL(14)='//I2S(A % mumpsIDL % ICNTL(14)),Level=5)
+      A % mumpsIDL % JOB = 2
+      CALL DMumps(A % mumpsIDL)
+      CALL Flush(6)
+    END DO
+
     ! Check return status
     IF (A % mumpsIDL % INFO(1)<0) THEN
+      IF (A % mumpsIDL % INFO(1) == -8 .OR. A % mumpsIDL % INFO(1) == -9) &
+          CALL Warn('MumpsLocal_Factorize','Still out of working space at ICNTL(14)='// &
+              I2S(A % mumpsIDL % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
       CALL Fatal('MumpsLocal_Factorize','Mumps factorize phase failed')
     END IF
 
@@ -2129,10 +3714,10 @@ CONTAINS
     ! Check if matrix is symmetric or spd
     matsym = ListGetLogical(Solver % Values, &
         'Linear System Symmetric', stat)
- 
+
     matspd = ListGetLogical(Solver % Values, &
         'Linear System Positive Definite', stat)
- 
+
     A % ZmumpsIDL % SYM = 0
 !   IF (matsym) THEN
 !     IF (matspd) THEN
@@ -2169,8 +3754,17 @@ CONTAINS
     IF (nullpiv) THEN
       A % ZmumpsIDL % ICNTL(24) = 1
       A % ZmumpsIDL % CNTL(1) = 1D-2     ! Pivoting threshold
-      A % ZmumpsIDL % CNTL(3) = 1D-9     ! Null pivot detection threshold
-      A % ZmumpsIDL % CNTL(5) = 1D6      ! Fixation value for null pivots
+
+      ! See the real valued counterpart above for what these control and why
+      ! the null pivot threshold is worth being able to set from the sif.
+      A % ZmumpsIDL % CNTL(3) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Threshold', stat)
+      IF (.NOT. stat) A % ZmumpsIDL % CNTL(3) = 1D-9
+
+      A % ZmumpsIDL % CNTL(5) = ListGetConstReal(Solver % Values, &
+          'Mumps Null Pivot Fixation', stat)
+      IF (.NOT. stat) A % ZmumpsIDL % CNTL(5) = 1D6
+
       A % ZmumpsIDL % CNTL(13) = 1       ! Do not use ScaLAPACK on the root node
     END IF
 
@@ -2225,6 +3819,10 @@ CONTAINS
           END IF
         END DO
       END DO
+
+      ! See the real valued counterpart: only the triangle is written, so NZ has
+      ! to say so rather than count the whole matrix.
+      A % ZmumpsIDL % NZ = nzloc
     END IF
 
     icntlft = ListGetInteger(Solver % Values, 'mumps percentage increase working space', stat)
@@ -2245,8 +3843,26 @@ CONTAINS
     CALL ZMumps(A % ZmumpsIDL)
     CALL Flush(6)
 
+    ! See the real valued counterpart: -8 and -9 are a working space guess that
+    ! was too small, not a failed factorization.
+    DO i = 1, MumpsWorkspaceRetries
+      IF (A % ZmumpsIDL % INFO(1) /= -8 .AND. A % ZmumpsIDL % INFO(1) /= -9) EXIT
+      icntlft = MAX(A % ZmumpsIDL % ICNTL(14), MumpsWorkspaceMin)
+      A % ZmumpsIDL % ICNTL(14) = 2*icntlft
+      CALL Info('ZMumpsLocal_Factorize','Mumps ran out of working space (INFO(1)='// &
+          I2S(A % ZmumpsIDL % INFO(1))//'), retrying with '// &
+          'ICNTL(14)='//I2S(A % ZmumpsIDL % ICNTL(14)),Level=5)
+      A % ZmumpsIDL % JOB = 2
+      CALL ZMumps(A % ZmumpsIDL)
+      CALL Flush(6)
+    END DO
+
     ! Check return status
     IF (A % ZmumpsIDL % INFO(1)<0) THEN
+      IF (A % ZmumpsIDL % INFO(1) == -8 .OR. A % ZmumpsIDL % INFO(1) == -9) &
+          CALL Warn('ZMumpsLocal_Factorize','Still out of working space at ICNTL(14)='// &
+              I2S(A % ZmumpsIDL % ICNTL(14))//'; raise > mumps percentage increase '// &
+              'working space < to start higher.')
       CALL Fatal('ZMumpsLocal_Factorize','Mumps factorize phase failed')
     END IF
 
@@ -2454,7 +4070,7 @@ CONTAINS
       x(1:n) = b(1:n)
       nnz = A % Rows(n+1)-1
 
-      nprocs = ListGetInteger( Solver % Values, & 
+      nprocs = ListGetInteger( Solver % Values, &
               'Linear System Number of Threads', stat )
       IF ( .NOT. stat ) nprocs = 1
 !
@@ -2475,7 +4091,7 @@ CONTAINS
         iopt = 1
         call Solve_SuperLU( iopt, nprocs, n, nnz, nrhs, A % Values, A % Cols, &
               A % Rows, x, n, A % SuperLU_Factors, iinfo )
- 
+
         if (iinfo .eq. 0) then
            write (*,*) 'Factorization succeeded'
         else
@@ -2506,7 +4122,7 @@ CONTAINS
                     A % Rows, x, n, A % SuperLU_Factors, iinfo )
         A % SuperLU_Factors = 0
       END IF
-#endif      
+#endif
 !------------------------------------------------------------------------------
   END SUBROUTINE SuperLU_SolveSystem
 !------------------------------------------------------------------------------
@@ -2550,7 +4166,7 @@ CONTAINS
   n_dof_partition = A % NumberOfRows
 
 !  INTERFACE
-!     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals, n_n, n_ranks) RESULT(handle) BIND(c,name='permon_initsolve') 
+!     FUNCTION Permon_InitSolve(n, gnum, nd, dinds, dvals, n_n, n_ranks) RESULT(handle) BIND(c,name='permon_initsolve')
 !        USE, INTRINSIC :: ISO_C_BINDING
 !        TYPE(C_PTR) :: handle
 !        INTEGER(C_INT), VALUE :: n, nd, n_n
@@ -2670,7 +4286,7 @@ CONTAINS
     INTEGER, POINTER :: Iparm(:)
     INTEGER i, j, k, nz, idum(1), nzutd
     LOGICAL :: Found, matsym, matpd
-    REAL*8  :: ddum(1)
+    REAL(KIND=dp)  :: ddum(1)
 
     LOGICAL :: Factorize, FreeFactorize
     INTEGER :: tlen, allocstat
@@ -2686,7 +4302,7 @@ CONTAINS
 
     ! Set matrix type for Pardiso
     mat_type = ListGetString(Solver % Values,'Linear System Matrix Type',Found)
-    
+
     IF (Found) THEN
       SELECT CASE(mat_type)
       CASE('positive definite')
@@ -2752,7 +4368,7 @@ CONTAINS
       DO i=1,n
         nzutd = nzutd + A % Rows(i+1)-A % Diag(i)
       END DO
-      
+
       ALLOCATE( values(nzutd), cols(nzutd), rows(n+1), STAT=allocstat)
       IF (allocstat /= 0) THEN
         CALL Fatal('Pardiso_SolveSystem', &
@@ -2770,7 +4386,7 @@ CONTAINS
           Values(Rows(i)+j)=A % Values(A%Diag(i)+j)
         END DO
       END DO
-      
+
     ELSE
       Cols => A % Cols
       Rows => A % Rows
@@ -2805,7 +4421,7 @@ CONTAINS
       iparm => A % PardisoParam
       iparm = 0
       A % PardisoId = 0
- 
+
       ! Set up scaling values for solver based on matrix type
       CALL pardisoinit(A % PardisoId, mtype, iparm)
 
@@ -2896,7 +4512,7 @@ CONTAINS
       INTEGER, POINTER :: Iparm(:)
       INTEGER i, j, k, nz, idum(1)
       LOGICAL :: Found, Symm, Posdef
-      REAL*8  waltime1, waltime2, ddum(1), dparm(64)
+      REAL(KIND=dp)  waltime1, waltime2, ddum(1), dparm(64)
 
       LOGICAL :: Factorize, FreeFactorize
       INTEGER :: tlen
@@ -3009,7 +4625,7 @@ CONTAINS
 
         IF (ierror /= 0) THEN
           WRITE(*,*) 'The following ERROR was detected: ', ierror
-          STOP EXIT_ERROR
+          ERROR STOP EXIT_ERROR
         END IF
 
 !..     Factorization.
@@ -3019,7 +4635,7 @@ CONTAINS
 
         IF (ierror /= 0) THEN
            WRITE(*,*) 'The following ERROR was detected: ', ierror
-          STOP EXIT_ERROR
+          ERROR STOP EXIT_ERROR
         ENDIF
       END IF
 
@@ -3317,14 +4933,14 @@ CONTAINS
     lrow = 1      ! Next row to add
     rptr = 1      ! Pointer to next row to add, equals ia(lrow)
     lind = Order(1)-1 ! Row pointer for the first round
-    
-    ! Add rows of matrix 
+
+    ! Add rows of matrix
     DO i=1,n
       ! Add empty rows until the beginning of the row to add
       ! (first round adds nothing due to choice of lind)
       tind = Order(i)
       rsize = (tind-lind)-1
-      
+
       ! Put zeroes to the diagonal
       DO j=1,rsize
         ia(lrow+j)=rptr+j
@@ -3334,7 +4950,7 @@ CONTAINS
       ! Set up row pointers
       rptr = rptr + rsize
       lrow = lrow + rsize
-      
+
       ! Add next row
       rind = iperm(i)
       lind = A % rows(rind)
@@ -3357,10 +4973,10 @@ CONTAINS
           aa(rptr+(j-lind))=A % values(j)
         END DO
       END IF
-        
+
       ! Sort column indices
       CALL SortF(rsize, ja(rptr:rptr+rsize), aa(rptr:rptr+rsize))
-        
+
       ! Set up row pointers
       rptr = rptr + rsize
       lrow = lrow + 1
@@ -3400,7 +5016,7 @@ CONTAINS
       iparm(11)=0       ! Do not use scalings from symmetric weighted matching
       iparm(13)=0       ! Do not use permutations from symmetric weighted matching
     END IF
-    
+
     iparm(21)=1         ! Do not use Bunch Kaufman pivoting
     iparm(27)=0         ! Do not check sparse matrix representation
     iparm(28)=0         ! Use double precision
@@ -3522,6 +5138,9 @@ CONTAINS
         CALL SPQR_SolveSystem( Solver, A, x, b, Free_Fact )
         CALL Cholmod_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
+#ifdef HAVE_CUDSS
+        CALL CUDSS_SolveSystem( Solver, A, x, b, Free_Fact )
+#endif
 #ifdef HAVE_FETI4I
         CALL Permon_SolveSystem( Solver, A, x, b, Free_Fact )
 #endif
@@ -3531,14 +5150,14 @@ CONTAINS
 
     Method=ListGetString(Solver % Values,'Linear System Direct Method',GotIt)
     IF ( .NOT. GotIt ) Method = 'banded'
-    
-    
+
+
     CALL Info('DirectSolver','Using direct method: '//Method,Level=9)
 
 #if !defined (HAVE_UMFPACK) && defined (HAVE_MUMPS)
     IF ( Method == 'umfpack' .OR. Method == 'big umfpack' ) THEN
       CALL Warn( 'CheckLinearSolverOptions', 'UMFPACK solver not installed, using MUMPS instead!' )
-      Method = 'mumps'
+      Method = 'mumpslocal'
     END IF
 #endif
 
@@ -3579,7 +5198,7 @@ CONTAINS
         ELSE
           CALL MumpsLocal_SolveSystem( Solver, A, x, b )
         END IF
-          
+
       CASE( 'superlu' )
         CALL SuperLU_SolveSystem( Solver, A, x, b )
 
@@ -3592,6 +5211,9 @@ CONTAINS
       CASE( 'cpardiso' )
         CALL CPardiso_SolveSystem( Solver, A, x, b )
 
+      CASE( 'cudss' )
+        CALL CUDSS_SolveSystem( Solver, A, x, b )
+
       CASE DEFAULT
         CALL Fatal( 'DirectSolver', 'Unknown direct solver method.' )
     END SELECT
@@ -3601,7 +5223,7 @@ CONTAINS
     IF( ASSOCIATED( Solver % Variable ) ) THEN
       Solver % Variable % LinConverged = 1
     END IF
-    
+
 !------------------------------------------------------------------------------
   END SUBROUTINE DirectSolver
 !------------------------------------------------------------------------------

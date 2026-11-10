@@ -90,6 +90,7 @@ OPTION(HAVE_QP "Fortran compiler and runtime support quadruple-precision floatin
 SET(WITH_Mumps FALSE CACHE BOOL "Use Mumps sparse direct solver")
 SET(WITH_Hypre FALSE CACHE BOOL "Use Hypre linear algebra library")
 SET(WITH_CHOLMOD FALSE CACHE BOOL "Use CHOLMOD linear algebra library")
+SET(WITH_CUDSS FALSE CACHE BOOL "Use NVIDIA cuDSS GPU sparse direct solver")
 SET(WITH_UMFPACK TRUE CACHE BOOL "Use UMFPACK for LU factorization")
 SET(WITH_ELMERGUI FALSE CACHE BOOL "Include ElmerGUI")
 SET(WITH_ElmerIce FALSE CACHE BOOL "Include ElmerIce")
@@ -100,6 +101,7 @@ SET(WITH_ELMERGUILOGGER FALSE CACHE BOOL "Include ElmerGUI logger")
 SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared libraries relative to prefix.")
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
+SET(WITH_PERMON FALSE CACHE BOOL "Use PERMON")
 SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
@@ -115,6 +117,11 @@ SET(INCLUDE_ELMER_MODULES "" CACHE STRING "Semicolon separated list of solver mo
 
 # Let user select if the contiguous attribute is used or not
 SET(USE_CONTIGUOUS FALSE CACHE BOOL "Use contiguous attribute")
+
+OPTION(EXTERNAL_METIS "Link to external Metis library" OFF)
+
+# Optionally, relocate the installation prefix based on binary location
+OPTION(RELOCATE_PREFIX "Relocate installation prefix on runtime" OFF)
 
 MARK_AS_ADVANCED(WITH_ELMERPOST)
 
@@ -208,15 +215,8 @@ IF(WITH_OpenMP)
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
   SET(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-
-  # Set variables for supported OpenMP version
-  IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.0)
-    SET(HAVE_OPENMP40 TRUE)
-    MARK_AS_ADVANCED(HAVE_OPENMP40)
-    IF(OpenMP_Fortran_VERSION VERSION_GREATER_EQUAL 4.5)
-      SET(HAVE_OPENMP45 TRUE)
-      MARK_AS_ADVANCED(HAVE_OPENMP45)
-    ENDIF()
+  IF(OpenMP_Fortran_INCLUDE_DIR)
+    INCLUDE_DIRECTORIES("${OpenMP_Fortran_INCLUDE_DIR}")
   ENDIF()
 ENDIF()
 
@@ -241,6 +241,27 @@ IF(WITH_MPI)
     )
 
   FIND_PACKAGE(MPI REQUIRED)
+
+  # The test suite runs cases with up to eight tasks, more than the cores of a
+  # typical runner or workstation. OpenMPI counts slots and refuses to place more
+  # ranks than it has, so those cases fail to launch at all rather than merely
+  # running slowly. Ask for oversubscription so that they run. The flag is
+  # OpenMPI's own and other launchers reject arguments they do not know, so
+  # settle the vendor by asking mpiexec rather than by guessing from its path.
+  # RUN_ELMER_TEST already divides OMP_NUM_THREADS by the task count and pins
+  # OMP_WAIT_POLICY to PASSIVE, which is what keeps the resulting
+  # oversubscription a graceful slowdown instead of a stall.
+  IF(MPIEXEC AND NOT MPIEXEC_PREFLAGS)
+    EXECUTE_PROCESS(COMMAND "${MPIEXEC}" --version
+      RESULT_VARIABLE MPIEXEC_VERSION_RESULT
+      OUTPUT_VARIABLE MPIEXEC_VERSION_OUTPUT
+      ERROR_VARIABLE MPIEXEC_VERSION_OUTPUT
+      TIMEOUT 60)
+    IF(MPIEXEC_VERSION_RESULT EQUAL 0 AND MPIEXEC_VERSION_OUTPUT MATCHES "Open MPI")
+      SET(MPIEXEC_PREFLAGS "--oversubscribe")
+      MESSAGE(STATUS "  MPI test launcher: OpenMPI, adding --oversubscribe")
+    ENDIF()
+  ENDIF()
 
   # Check features of found MPI
   INCLUDE(testMPIcapabilities)
@@ -281,6 +302,36 @@ ENDIF()
 IF(WITH_CHOLMOD)
   FIND_PACKAGE(CHOLMOD)
   FIND_PACKAGE(SPQR)
+ENDIF()
+
+# cuDSS: NVIDIA's GPU sparse direct solver. 
+IF(WITH_CUDSS)
+  FIND_PACKAGE(CUDAToolkit REQUIRED)
+
+  # Find cuDSS from CUDSS_ROOT.
+  FIND_PACKAGE(CUDSS REQUIRED)
+  SET(COMPILE_CUDSS_COMMLAYER TRUE CACHE BOOL "Compile cuDSS communication layer library. Not required if the cuDSS supplied one works.")
+
+
+  IF(COMPILE_CUDSS_COMMLAYER)
+    SET(CUDSS_COMMLAYER_SRC_MPI "${CUDSS_INCLUDE_DIR}/../src/cudss_commlayer_openmpi.cu" CACHE FILEPATH "Source file for the cuDSS MPI communication layer.")
+    include(CheckLanguage)
+    check_language(CUDA)
+    if(CMAKE_CUDA_COMPILER)
+      enable_language(CUDA)
+    else()
+      message(FATAL_ERROR "cuDSS communication layer requires a CUDA compiler.")
+    endif()
+
+    add_library(elmer_cudss_commlayer SHARED ${CUDSS_COMMLAYER_SRC_MPI})
+    target_include_directories(elmer_cudss_commlayer PRIVATE ${CUDA_INCLUDE_DIR} ${CUDSS_INCLUDE_DIR})
+    target_link_libraries(elmer_cudss_commlayer PRIVATE MPI::MPI_C CUDA::cudart)
+    install(TARGETS elmer_cudss_commlayer LIBRARY DESTINATION ${ELMER_INSTALL_LIB_DIR})
+    SET(ELMER_CUDSS_COMMLAYER_NAME "\"libelmer_cudss_commlayer${CMAKE_SHARED_LIBRARY_SUFFIX}\"" CACHE INTERNAL "")
+  ELSE()
+    SET(ELMER_CUDSS_COMMLAYER_NAME NULL INTERNAL)
+  ENDIF(COMPILE_CUDSS_COMMLAYER)
+
 ENDIF()
 
 # if(APPLE)
@@ -580,12 +631,102 @@ IF(MPI_FOUND)
   IF(WITH_FETI4I)
     FIND_PACKAGE(FETI4I REQUIRED)
   ENDIF()
+
+  IF(WITH_PERMON)
+    IF(NOT PERMON_DIR)
+      MESSAGE(FATAL_ERROR "WITH_PERMON=ON but PERMON_DIR is not set")
+    ENDIF()
+
+    SET(PERMON_INCLUDE_DIR "${PERMON_DIR}/include")
+    SET(PERMON_LIB_DIR     "${PERMON_DIR}/${PETSC_ARCH}/lib")
+    MESSAGE(STATUS "DEBUG PERMON_DIR=${PERMON_DIR} PETSC_ARCH=${PETSC_ARCH}")
+    
+    IF(EXISTS "${PERMON_LIB_DIR}/libpermon.so")
+      SET(PERMON_LIBRARIES "${PERMON_LIB_DIR}/libpermon.so")
+    ELSEIF(EXISTS "${PERMON_LIB_DIR}/libpermon.a")
+      SET(PERMON_LIBRARIES "${PERMON_LIB_DIR}/libpermon.a")
+    ELSE()
+      MESSAGE(FATAL_ERROR "Could not find libpermon.so or libpermon.a at ${PERMON_LIB_DIR}")
+    ENDIF()
+
+    INCLUDE_DIRECTORIES(${PERMON_INCLUDE_DIR})
+    SET(HAVE_PERMON TRUE CACHE BOOL "PERMON support enabled")
+    ADD_DEFINITIONS(-DHAVE_PERMON)
+  ENDIF()
 ENDIF()
 
 IF(Mumps_FOUND)
   SET(HAVE_MUMPS TRUE)
   MARK_AS_ADVANCED(HAVE_MUMPS)
   # LINK_DIRECTORIES(${MUMPS_LIBRARIES})
+
+  # The distributed right-hand side -- ICNTL(20)=10 with RHS_loc, IRHS_loc,
+  # Nloc_RHS and LRHS_loc -- appeared in MUMPS 5.3. Probe for the field itself
+  # rather than compare version strings: the field is what the code needs, and
+  # it has to be present in both the real and the complex struct.
+  SET(_mumps_dist_rhs TRUE)
+  FOREACH(_h dmumps_struc.h zmumps_struc.h)
+    SET(_mumps_hit "")
+    FOREACH(_d ${Mumps_INCLUDE_DIR})
+      IF(EXISTS "${_d}/${_h}")
+        FILE(STRINGS "${_d}/${_h}" _mumps_hit REGEX "IRHS_loc")
+      ENDIF()
+      IF(_mumps_hit)
+        BREAK()
+      ENDIF()
+    ENDFOREACH()
+    IF(NOT _mumps_hit)
+      SET(_mumps_dist_rhs FALSE)
+    ENDIF()
+  ENDFOREACH()
+
+  # MUMPS's own reductions cannot work on MinGW if MUMPS is built without
+  # -DAVOID_MPI_IN_PLACE. The reason is that MPI_IN_PLACE of MS-MPI is unusable
+  # with Fortran 77 and GFortran: mpif.h keeps the sentinel in COMMON /MPIPRIV1/
+  # and imports the block with a !DEC$ directive, Intel syntax that GFortran
+  # treats as a comment. GFortran does not support dllimport attributes on
+  # COMMON blocks at all. So with GFortran, each application uses its own
+  # zero-filled copy, the address matches nothing the C layer compares against,
+  # and MPI reads that memory as a real send buffer.
+  # MUMPS provides -DAVOID_MPI_IN_PLACE for exactly this case. MSYS2 uses it
+  # since August 2026. For versions of MUMPS compiled without that definition on
+  # MinGW, all 27 of its in-place reductions won't work correctly. ICNTL(20)=10
+  # walks into them every time: analysis and factorization are unaffected
+  # (INFO(1)=0), the solve then corrupts the heap or returns zeros. Established
+  # in a Windows VM with a standalone MUMPS program containing no Elmer at all,
+  # on MUMPS 5.9.0 and on the 5.7.3, and confirmed by rebuilding MUMPS from
+  # source: without the macro the distributed right-hand side gives sum(x)=0 in
+  # five runs out of five - with it, the answer is correct. Other platforms are
+  # not affected because they share variables across shared library borders
+  # differently.
+  # Elmer's own reductions are not affected because they use the Fortran 90
+  # module of MPI (which has a work-around to "DLLIMPORT" MPI_IN_PLACE in
+  # MSYS2), or they take a copy path via ELMER_BROKEN_MPI_IN_PLACE if necessary.
+  # There are four additional sites (in ?sol_distrhs.F) in MUPMPS where the
+  # guard is missing altogether. (Those turn out to be latent: the value misread
+  # there is zero, which that code reads as "no allocation failure". What runs
+  # instead is the gathered assembly under the #else in DirectSolve.F90, the
+  # route every MUMPS older than 5.3 takes.)
+  # With versions of MUMPS 5.3 or later on MinGW that are built without
+  # -DAVOID_MPI_IN_PLACE, set -DELMER_MUMPS_DIST_RHS=OFF when configuring Elmer
+  # to avoid the problematic code paths.
+  OPTION(ELMER_MUMPS_DIST_RHS
+    "Hand MUMPS a distributed right-hand side (requires MUMPS 5.3 or newer)"
+    ON)
+  MARK_AS_ADVANCED(ELMER_MUMPS_DIST_RHS)
+
+  IF(_mumps_dist_rhs AND ELMER_MUMPS_DIST_RHS)
+    SET(HAVE_MUMPS_DIST_RHS TRUE)
+    MARK_AS_ADVANCED(HAVE_MUMPS_DIST_RHS)
+    MESSAGE(STATUS "Mumps has the distributed right-hand side")
+  ELSEIF(_mumps_dist_rhs)
+    MESSAGE(STATUS "Mumps has the distributed right-hand side but "
+                   "ELMER_MUMPS_DIST_RHS is off; the right-hand side will be "
+                   "gathered instead")
+  ELSE()
+    MESSAGE(STATUS "Mumps has no distributed right-hand side (needs 5.3 or "
+                   "newer); the right-hand side will be gathered instead")
+  ENDIF()
 ENDIF()
 
 IF(Hypre_FOUND)
@@ -593,6 +734,32 @@ IF(Hypre_FOUND)
   MARK_AS_ADVANCED(HAVE_HYPRE)
   INCLUDE_DIRECTORIES(${Hypre_INCLUDE_DIR})
   # LINK_DIRECTORIES(${Hypre_LIBRARIES})
+
+  # Check if Hypre was built with --with-cuda flag
+  SET(_hypre_using_cuda FALSE)
+  FOREACH(_d ${Hypre_INCLUDE_DIR})
+    IF(EXISTS "${_d}/HYPRE_config.h")
+      FILE(STRINGS "${_d}/HYPRE_config.h" _hypre_cuda_hit REGEX "define HYPRE_USING_CUDA")
+      IF(_hypre_cuda_hit)
+        SET(_hypre_using_cuda TRUE)
+      ENDIF()
+    ENDIF()
+  ENDFOREACH()
+
+  IF(_hypre_using_cuda)
+    FIND_PACKAGE(CUDAToolkit)
+    IF(CUDAToolkit_FOUND)
+      SET(HAVE_HYPRE_CUDA TRUE)
+      MARK_AS_ADVANCED(HAVE_HYPRE_CUDA)
+      # Hypre's own CUDA-enabled build needs these linked in directly
+      SET(HYPRE_CUDA_LIBRARIES CUDA::cudart CUDA::cublas CUDA::cusparse CUDA::cusolver CUDA::curand)
+      MARK_AS_ADVANCED(HYPRE_CUDA_LIBRARIES)
+      MESSAGE(STATUS "Hypre was configured --with-cuda (HYPRE_USING_CUDA) and CMake found CUDA")
+    ELSE()
+      MESSAGE(WARNING "Hypre reports HYPRE_USING_CUDA but CMake could not "
+                      "find CUDA. Some GPU features of Hypre may not work.")
+    ENDIF()
+  ENDIF()
 ENDIF()
 
 IF(FETI4I_FOUND)
@@ -611,6 +778,11 @@ ENDIF()
 IF (CHOLMOD_FOUND AND SPQR_FOUND)
   SET(HAVE_CHOLMOD TRUE)
   MARK_AS_ADVANCED(HAVE_CHOLMOD)
+ENDIF()
+
+IF (CUDSS_FOUND)
+  SET(HAVE_CUDSS TRUE)
+  MARK_AS_ADVANCED(HAVE_CUDSS)
 ENDIF()
 
 # Check if Fortran compiler supports procedure pointer
@@ -673,6 +845,16 @@ ENDIF()
 #    SET(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
 # ENDIF("${isSystemDir}" STREQUAL "-1")
 
+IF (RELOCATE_PREFIX)
+  # Helper functions for relocating the installation prefix on runtime
+  IF(WIN32)
+    MESSAGE(STATUS "Using runtime relocation")
+    ADD_SUBDIRECTORY(contrib/pathtools)
+  ELSE()
+    MESSAGE(STATUS "Support for runtime relocation is currently Windows-only.")
+  ENDIF()
+ENDIF()
+
 ADD_SUBDIRECTORY(matc)
 
 
@@ -701,7 +883,7 @@ IF (WITH_UMFPACK)
     MESSAGE(STATUS "Using built-in UMFPACK")
     ADD_SUBDIRECTORY(umfpack)
   ENDIF()
-  SET(HAVE_UMFPACK ON)
+  SET(HAVE_UMFPACK TRUE)
   MARK_AS_ADVANCED(HAVE_UMFPACK)
 ELSE()
   MESSAGE(STATUS "Building without UMFPACK")
@@ -792,6 +974,12 @@ IF(CHOLMOD_FOUND AND SPQR_FOUND)
   MESSAGE(STATUS " SPQR headers:    " "${SPQR_INCLUDE_DIR}")
   MESSAGE(STATUS "------------------------------------------------")
   MARK_AS_ADVANCED(HAVE_CHOLMOD)
+ENDIF()
+IF(CUDSS_FOUND)
+  MESSAGE(STATUS " cuDSS library:   " "${CUDSS_LIBRARIES}")
+  MESSAGE(STATUS " cuDSS headers:   " "${CUDSS_INCLUDE_DIR}")
+  MESSAGE(STATUS "------------------------------------------------")
+  MARK_AS_ADVANCED(HAVE_CUDSS)
 ENDIF()
 IF(ARPACK_FOUND)
   MESSAGE(STATUS " ARPACK library:  " "${ARPACK_LIBRARIES}")

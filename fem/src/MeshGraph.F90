@@ -139,7 +139,7 @@ CONTAINS
             'Unable to allocate dual mesh!')
 
     ! Divide work by number of rows in the vertex graph
-    nthr = 1 
+    nthr = 1
     !$ nthr = omp_get_max_threads()
 
     ! Load balance the actual work done by threads (slow)
@@ -160,7 +160,7 @@ CONTAINS
     !$ TID = OMP_GET_THREAD_NUM()+1
 
     ! Ensure that the vertex to element lists are sorted
-    !$OMP DO 
+    !$OMP DO
     DO i=1,nvertex
       vli = vptr(i)
       vti = vptr(i+1)-1
@@ -422,7 +422,7 @@ CONTAINS
       DO ii=(nzheap/2), 1, -1
         i = ii
         ! CALL BinaryHeapHeapify(heap, nzheap, i)
-        DO 
+        DO
           ! Find index of the minimum element
           IF (2*i<=nzheap) THEN
             IF (heap(2*i) % i1 < heap(i) % i1) THEN
@@ -473,7 +473,7 @@ CONTAINS
         ! CALL BinaryHeapHeapify(heap, nzheap, 1)
         i = 1
 
-        DO 
+        DO
           ! Find the index of the minimum element
           ii = 2*i
           mind = i
@@ -589,12 +589,12 @@ CONTAINS
     INTEGER, PARAMETER :: VERTEX_PER_THREAD = 100
     LOGICAL :: consistent
 
-    ! Iterative parallel greedy algorithm (Alg 2.) from 
-    ! U. V. Catalyurek, J. Feo, A.H. Gebremedhin, M. Halappanavar, A. Pothen. 
+    ! Iterative parallel greedy algorithm (Alg 2.) from
+    ! U. V. Catalyurek, J. Feo, A.H. Gebremedhin, M. Halappanavar, A. Pothen.
     ! "Graph coloring algorithms for multi-core and massively multithreaded systems".
-    ! Parallel computing, 38, 2012, pp. 576--594. 
+    ! Parallel computing, 38, 2012, pp. 576--594.
 
-    ! Initialize number of colours, maximum degree of graph and number of 
+    ! Initialize number of colours, maximum degree of graph and number of
     ! uncolored vertices
     nc = 0
     dualmaxdeg = 0
@@ -631,7 +631,7 @@ CONTAINS
     TID=1
     !$ TID=OMP_GET_THREAD_NUM()+1
 
-    ! Greedy algorithm colours a given graph with at 
+    ! Greedy algorithm colours a given graph with at
     ! most max_{v\in V} deg(v)+1 colours
     ALLOCATE(fc(dualmaxdeg+1), rc((gn/nthr)+1), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('ElmerDualGraphColour', &
@@ -640,7 +640,7 @@ CONTAINS
     fc = 0
 
     ! Initialize colours and uncolored entries
-    !$OMP DO 
+    !$OMP DO
     DO v=1,gn
       colours(v)=0
       ! U <- V
@@ -668,7 +668,7 @@ CONTAINS
         ! c <- min\{i>0: fc[i]/=v \}
         DO i=1,dualmaxdeg+1
           IF (fc(i) /= v) THEN
-            !$OMP ATOMIC WRITE 
+            !$OMP ATOMIC WRITE
             colours(v) = i
             ! Maintain maximum colour
             nc = MAX(nc, i)
@@ -687,7 +687,7 @@ CONTAINS
         vti = Graph % ptr(v+1)-1
         vcol = colours(v)
 
-        ! Make sure that recolour array has enough storage for 
+        ! Make sure that recolour array has enough storage for
         ! the worst case (all elements need to be added)
         IF (SIZE(rc)<nrc+(vti-vli)+1) THEN
           ALLOCATE(rcnew(MAX(SIZE(rc)*2, nrc+(vti-vli)+1)), STAT=allocstat)
@@ -723,7 +723,7 @@ CONTAINS
       uncolored(ucptr(TID):ucptr(TID+1)-1)=rc(1:nrc)
       !$OMP BARRIER
 
-      ! Colour the remaining vertices sequentially if the 
+      ! Colour the remaining vertices sequentially if the
       ! size of the set of uncoloured vertices is small enough
       IF (nunc < nthr*VERTEX_PER_THREAD) THEN
         !$OMP SINGLE
@@ -743,7 +743,7 @@ CONTAINS
           ! c <- min\{i>0: fc[i]/=v \}
           DO i=1,dualmaxdeg+1
             IF (fc(i) /= v) THEN
-              ! Single thread, no collisions possible 
+              ! Single thread, no collisions possible
               colours(v) = i
               ! Maintain maximum colour
               nc = MAX(nc, i)
@@ -837,7 +837,7 @@ CONTAINS
     IF (astat /= 0) THEN
        CALL Fatal('ElmerBoundaryGraphColour','Unable to allocate boundary colouring')
     END IF
-    
+
     nbc = 0
     ! Loop over boundary mesh
     !$OMP PARALLEL DO &
@@ -845,7 +845,7 @@ CONTAINS
     !$OMP PRIVATE(Element, lcolour, rcolour) &
     !$OMP REDUCTION(max:nbc) &
     !$OMP DEFAULT(NONE)
-    DO elem=1,nbelem       
+    DO elem=1,nbelem
        Element => Mesh % Elements(nelem+elem)
 
        ! Try to find colour for boundary element based on left / right parent
@@ -859,7 +859,7 @@ CONTAINS
        END IF
 
        ! Sanity check for debug
-       IF (ASSOCIATED(Element % BoundaryInfo % Left) .AND. & 
+       IF (ASSOCIATED(Element % BoundaryInfo % Left) .AND. &
           ASSOCIATED(Element % BoundaryInfo % Right) .AND. &
             lcolour /= rcolour) THEN
          CALL Warn('ElmerBoundaryGraphColour','Inconsistent colours for boundary element: ' &
@@ -878,8 +878,8 @@ CONTAINS
 !   CALL MOVE_ALLOC(bcolours, BoundaryColours % colours)
     BoundaryColours % colours => bcolours
   END SUBROUTINE ElmerBoundaryGraphColour
-  
-  ! Given CRS indices, referenced indirectly from graph, 
+
+  ! Given CRS indices, referenced indirectly from graph,
   ! evenly load balance the work among the nthr threads
   SUBROUTINE ThreadLoadBalanceElementNeighbour(nthr, gn, gptr, gind, &
           rptr, blkleads)
@@ -963,8 +963,8 @@ CONTAINS
       RETURN
     END IF
 
-    ! Assuming even distribution of nodes / element, 
-    ! distribute rows for each thread to compute 
+    ! Assuming even distribution of nodes / element,
+    ! distribute rows for each thread to compute
     blkleads(1)=1
     thrwrk = gn / nthr
     rem = gn-nthr*thrwrk

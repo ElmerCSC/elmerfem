@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! *  This library is free software; you can redistribute it and/or
 ! *  modify it under the terms of the GNU Lesser General Public
 ! *  License as published by the Free Software Foundation; either
@@ -13,17 +13,17 @@
 ! *  but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! *  Lesser General Public License for more details.
-! * 
+! *
 ! *  You should have received a copy of the GNU Lesser General Public
-! *  License along with this library (in file ../LGPL-2.1); if not, write 
-! *  to the Free Software Foundation, Inc., 51 Franklin Street, 
+! *  License along with this library (in file ../LGPL-2.1); if not, write
+! *  to the Free Software Foundation, Inc., 51 Franklin Street,
 ! *  Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
 !
 !/******************************************************************************
 ! *
-! *  This module provides various solution techniques for eigenvalue problems. 
+! *  This module provides various solution techniques for eigenvalue problems.
 ! *  The module is based on the ARPACK example driver dndrv3 that has been modified
 ! *  to fit the needs of ElmerSolver.
 ! *
@@ -42,7 +42,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 21 Oct 2000
 ! *
@@ -52,23 +52,30 @@
 !----------------------------------------------------------------------------
 !> Module containing ARPACK routines for the solution of Eigenvalue problems.
 !----------------------------------------------------------------------------
-!> \ingroup ElmerLib 
+!> \ingroup ElmerLib
 !> \{
 
 MODULE EigenSolve
 
-   USE Messages
-   IMPLICIT NONE
+  USE Types
+  USE Messages
+  USE Lists
+  USE CRSMatrix
+  USE IterSolve, ONLY : IterSolver
+  USE DirectSolve, ONLY : DirectSolver
+  USE Multigrid, ONLY : MultigridSolve
+  USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
+  USE ParallelUtils, ONLY : ParallelReduction
+  IMPLICIT NONE
 
 CONTAINS
 
 
   SUBROUTINE EigenSystemSorting( Params, Neig, Perm, EigValues )
 
-    USE Types
-    USE GeneralUtils, ONLY : SortR 
-    USE Lists, ONLY : ListGetString
-    
+!    USE GeneralUtils, ONLY : SortR
+!    USE Lists, ONLY : ListGetString
+
     TYPE(ValueList_t), POINTER :: Params
     INTEGER :: Neig
     INTEGER :: Perm(:)
@@ -78,8 +85,8 @@ CONTAINS
     LOGICAL :: Stat
     CHARACTER(LEN=2) :: Which
     INTEGER :: i
-    
-    ! Initial ordering 
+
+    ! Initial ordering
     Perm = [ (i, i=1,NEIG) ]
 
     ! Choose how to sort the eigenvalues, the 1st one should be:
@@ -109,13 +116,13 @@ CONTAINS
       EigMeas = ABS( EigValues )
     END IF
 
-    ! Largest or smallest first 
+    ! Largest or smallest first
     IF( Which(1:1) == 'L' ) THEN
       EigMeas = -EigMeas
     END IF
 
     ! Sort eigenvalues by their measure
-    CALL SortR( NEIG, Perm, EigMeas )           
+    CALL SortR( NEIG, Perm, EigMeas )
     IF( MINVAL( Perm ) < 1 .OR. MAXVAL( Perm ) > NEIG ) THEN
       CALL Fatal('EigenSystemSorting','Reordering of EigenValues failed')
     END IF
@@ -124,34 +131,33 @@ CONTAINS
     EigValues = EigValues(Perm)
 
   END SUBROUTINE EigenSystemSorting
-  
 
-  
+
+
 !------------------------------------------------------------------------------
-!> Solution of Eigen value problems using ARPACK library. 
+!> Solution of eigenvalue problems using ARPACK library.
 !------------------------------------------------------------------------------
      SUBROUTINE ArpackEigenSolve( Solver,Matrix,N,NEIG,EigValues,EigVectors )
 !------------------------------------------------------------------------------
-      USE Multigrid
 
       IMPLICIT NONE
 
-      TYPE(Matrix_t), POINTER :: Matrix, A
       TYPE(Solver_t), TARGET :: Solver
+      TYPE(Matrix_t), POINTER :: Matrix
       INTEGER :: N, NEIG
-      INTEGER, ALLOCATABLE :: dperm(:)
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
 #ifdef USE_ARPACK
+      TYPE(Matrix_t), POINTER :: A
+
 !
 !     %--------------%
 !     | Local Arrays |
 !     %--------------%
 !
-      REAL(KIND=dp), TARGET, ALLOCATABLE :: WORKD(:), RESID(:),bb(:),xx(:)
+      REAL(KIND=dp), TARGET, ALLOCATABLE :: WORKD(:), RESID(:)
       REAL(KIND=dp), POINTER CONTIG :: x(:), b(:)
-      INTEGER :: IPARAM(11), IPNTR(14)
-      INTEGER, ALLOCATABLE :: Perm(:)
+      INTEGER :: IPARAM(11), IPNTR(14), Perm(NEIG)
       LOGICAL, ALLOCATABLE :: Choose(:)
       CHARACTER(:), ALLOCATABLE :: Method
       REAL(KIND=dp), ALLOCATABLE :: WORKL(:), D(:,:), WORKEV(:), V(:,:)
@@ -162,31 +168,26 @@ CONTAINS
 !     %---------------%
 !
       CHARACTER ::     BMAT*1, Which*2, DirectMethod*100
-      INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, IERR, iter, &
-                       NCONV, maxitr, ishfts, mode, istat, Dofs
-      LOGICAL   ::     First, Stat, Direct = .FALSE., &
-                       Iterative = .FALSE., NewSystem, Damped, Stability, &
-                       NormalizeToUnity
+      INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, p, IERR, iter, &
+                       maxitr, ishfts, mode, istat, Dofs
+      LOGICAL   ::     Stat, Iterative = .FALSE., NewSystem, Damped, Stability, ScaleSystem
 
       LOGICAL :: Factorize, FreeFactorize,FoundFactorize,FoundFreeFactorize
-      REAL(KIND=dp) :: SigmaR, SigmaI, TOL, r
-
-      COMPLEX(KIND=dp) :: s
+      REAL(KIND=dp) :: SigmaR, SigmaI, TOL
 !
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
       TYPE(ValueList_t), POINTER :: Params
 
       CHARACTER(*), PARAMETER :: Caller = 'EigenSolve'
 
-      
+
 !     %--------------------------------------%
-!     | Check if system is damped and if so, |
-!     | move to other subroutine             |
+!     | Check whether system is damped and   |
+!     | if so, move to another subroutine    |
 !     %--------------------------------------%
 
       Params => Solver % Values
-      Damped = ListGetLogical( Params, 'Eigen System Damped', stat )
-      IF ( .NOT. stat ) Damped = .FALSE.
+      Damped = ListGetLogical( Params, 'Eigen System Damped', stat, DefValue = .FALSE. )
 
       IF ( Damped ) THEN
          CALL ArpackDampedEigenSolve( Solver, Matrix, 2*N, 2*NEIG, &
@@ -194,50 +195,37 @@ CONTAINS
          RETURN
       END IF
 
-!     %----------------------------------------%
-!     | Check if stability analysis is defined |
-!     | and if so move to other subroutine     |
-!     %----------------------------------------%
+!     %---------------------------------------------%
+!     | Check whether stability analysis is defined |
+!     | and if so, move to another subroutine       |
+!     %---------------------------------------------%
 
-      Stability = ListGetLogical( Params, 'stability analysis', stat )
-      IF ( .NOT. stat ) Stability = .FALSE.
+      Stability = ListGetLogical( Params, 'stability analysis', stat, DefValue = .FALSE. )
 
       IF ( Stability ) THEN
          CALL ArpackStabEigenSolve( Solver, Matrix, N, NEIG, EigValues,EigVectors )
          RETURN
       END IF
 
-!     %-----------------------%
-!     | Executable Statements |
-!     %-----------------------%
-!
 !     %----------------------------------------------------%
 !     | The number N is the dimension of the matrix. A     |
 !     | generalized eigenvalue problem is solved (BMAT =   |
-!     | 'G'.) NEV is the number of eigenvalues to be       |
+!     | 'G'). NEV is the number of eigenvalues to be       |
 !     | approximated.  The user can modify NEV, NCV, WHICH |
 !     | to solve problems of different sizes, and to get   |
 !     | different parts of the spectrum.  However, The     |
 !     | following conditions must be satisfied:            |
-!     |                     N <= MAXN,                     | 
-!     |                   NEV <= MAXNEV,                   |
-!     |               NEV + 1 <= NCV <= MAXNCV             | 
+!     |               NEV + 1 <= NCV                       |
+!     |                   NCV <= N                         |
 !     %----------------------------------------------------%
 !
       NCV = ListGetInteger( Params, 'Eigen System Lanczos Vectors', stat )
       IF ( .NOT. stat ) NCV = 3*NEIG + 1
 
       IF ( NCV <=  NEIG ) THEN
-         CALL Fatal( Caller, & 
+         CALL Fatal( Caller, &
                'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
-
-      ALLOCATE(workd(3*n),resid(n), bb(n), xx(n), stat=istat )
-      IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
-
-      ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV,3), &
-                WORKEV(3*NCV), V(n,NCV), CHOOSE(NCV), STAT=istat )
-      IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
 
 !
 !     %--------------------------------------------------%
@@ -247,12 +235,13 @@ CONTAINS
 !     | the stopping criterion.  If TOL<=0, machine      |
 !     | precision is used.  The variable IDO is used for |
 !     | reverse communication and is initially set to 0. |
-!     | Setting INFO=0 indicates that a random vector is |
+!     | Setting KINFO=0 indicates that a random vector is|
 !     | generated in DSAUPD to start the Arnoldi         |
 !     | iteration.                                       |
 !     %--------------------------------------------------%
 !
 !
+      lWORKL = 3*NCV**2 + 6*NCV
 
       TOL = ListGetConstReal( Params, 'Eigen System Convergence Tolerance', stat )
       IF ( .NOT. stat ) THEN
@@ -261,7 +250,11 @@ CONTAINS
 
       IDO   = 0
       kinfo = 0
-      lWORKL = 3*NCV**2 + 6*NCV 
+
+      ALLOCATE( workd(3*n), resid(n), WORKL(lWORKL), D(NEIG+1,2), &
+                WORKEV(3*NCV), V(n,NCV), CHOOSE(NCV), STAT=istat )
+      IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
+
 !
 !     %---------------------------------------------------%
 !     | This program uses exact shifts with respect to    |
@@ -274,45 +267,63 @@ CONTAINS
 !     %---------------------------------------------------%
 !
       ishfts = 1
-      BMAT  = 'G'
       CALL ArpackSetWhich( Params, Matrix % Lumped, Mode, Which )
 
-      Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
-      IF ( .NOT. stat ) Maxitr = 300
-!
+      Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat, DefValue = 300 )
+
       IPARAM = 0
       IPARAM(1) = ishfts
-      IPARAM(3) = maxitr 
+      IPARAM(3) = maxitr
       IPARAM(7) = mode
+
+      BMAT  = 'G'
 
       SigmaR = 0.0d0
       SigmaI = 0.0d0
-      V = 0.0d0
+!      V = 0.0d0
 
 !     Compute LU-factors for (A-\sigma M) (if consistent mass matrix)
 !
       Factorize = ListGetLogical( Params, &
-            'Linear System Refactorize', FoundFactorize )
+          'Linear System Refactorize', FoundFactorize )
       CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
       FreeFactorize = ListGetLogical( Params, &
-                'Linear System Free Fctorization', FoundFreeFactorize )
+          'Linear System Free Fctorization', FoundFreeFactorize )
       CALL ListAddLogical( Params,  &
-                     'Linear System Free Factorization',.FALSE. )
+          'Linear System Free Factorization',.FALSE. )
 
-      IF ( .NOT. Matrix % Lumped ) THEN
+      ScaleSystem = .FALSE.
+      IF ( mode == 3 ) THEN
+        IF (ListGetLogical(Params, 'Linear System Skip Scaling', stat)) THEN
+          CALL Info(Caller, 'This time skipping scaling', Level=20)
+        ELSE
+          ScaleSystem = ListGetLogical(Params, 'Linear System Scaling', stat, DefValue = .TRUE.)
+          ! Row equilibration would not scale the mass matrix and would not preserve symmetry
+          IF (ListGetLogical(Params, 'Linear System Row Equilibration', stat)) THEN
+            CALL Fatal(Caller, 'Set Linear System Row Equilibration = False for the eigen solution')
+          END IF
+        END IF
+        ! The back scaling is applied to the solver's eigenvectors, so scale here only
+        ! when the matrix is the solver's own matrix. Otherwise the caller takes care of the scaling.
+        IF (.NOT. ASSOCIATED(Matrix, Solver % Matrix)) ScaleSystem = .FALSE.
+
         SigmaR = ListGetConstReal( Params,'Eigen System Shift', stat )
         IF ( SigmaR /= 0.0d0 ) THEN
           Matrix % Values = Matrix % Values - SigmaR * Matrix % MassValues
         END IF
+
+        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix, Shift = CMPLX(SigmaR, 0.0_dp, KIND=dp))
         
         Method = ListGetString( Params,'Linear System Solver', stat )         
+
         IF ( Method == 'direct' ) THEN
           DirectMethod = ListGetString( Params, &
               'Linear System Direct Method', stat )
-          
+
           SELECT CASE( DirectMethod )
-          CASE('umfpack', 'big umfpack', 'mumps', 'zmumps', 'superlu', 'pardiso', 'cholmod')
+          CASE('umfpack', 'big umfpack', 'mumps', 'mumpslocal', 'zmumps', 'superlu', 'pardiso', 'cholmod')
+            CONTINUE
           CASE DEFAULT
             Stat = CRS_ILUT(Matrix, 0.0d0)
           END SELECT
@@ -328,7 +339,7 @@ CONTAINS
       NewSystem = .TRUE.
 
       Iterative = ListGetString( Params, &
-               'Linear System Solver', stat ) == 'iterative'
+          'Linear System Solver', stat ) == 'iterative'
 
       stat = ListGetLogical( Params,  'No Precondition Recompute', stat  )
       IF ( Iterative .AND. Stat ) THEN
@@ -338,7 +349,7 @@ CONTAINS
       DO WHILE( ido /= 99 )
 
 !        %---------------------------------------------%
-!        | Repeatedly call the routine DSAUPD and take | 
+!        | Repeatedly call the routine DSAUPD and take |
 !        | actions indicated by parameter IDO until    |
 !        | either convergence is indicated or maxitr   |
 !        | has been exceeded.                          |
@@ -351,7 +362,7 @@ CONTAINS
             CALL DNAUPD ( ido, BMAT, n, Which, NEIG, TOL, &
               RESID, NCV, v, n, IPARAM, IPNTR, WORKD, WORKL, lWORKL, kinfo )
          END IF
- 
+
          IF (ido == -1 .OR. ido == 1) THEN
 
             IF(InfoActive(20)) THEN
@@ -362,23 +373,25 @@ CONTAINS
             iter = iter + 1
 
 !---------------------------------------------------------------------
-!             Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
-!                      ido =-1 inv(A-sigmaR*M)*M*x 
-!                      ido = 1 inv(A-sigmaR*M)*z
+!           Perform  y = OP*x, with OP depending on mode. For mode = 2
+!             OP*x = inv[M]*A*x  (mode = 2 is set when lumped mass)
+!           while for mode = 3
+!             OP*x = inv(A-sigmaR*M)*M*x if ido=-1
+!             OP*x = inv(A-sigmaR*M)*z, with z returned by D*AUPD, if ido = 1
 !---------------------------------------------------------------------
 
             IF ( Matrix % Lumped ) THEN
               CALL CRS_MatrixVectorMultiply( Matrix, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
-              DO i=0,n-1
+              DO i=0,n-1 ! DSAUPD in mode 2 requires the following overwriting:
                 WORKD( IPNTR(1)+i ) = WORKD( IPNTR(2)+i )
               END DO
               DO i=0,n-1
                 WORKD( IPNTR(2)+i ) = WORKD( IPNTR(1)+i ) / &
                     Matrix % MassValues( Matrix % Diag(i+1) )
               END DO
-            ELSE              
-             
-              Dofs = Solver % Variable % Dofs 
+            ELSE
+              ! Mode == 3:
+              Dofs = Solver % Variable % Dofs
               A => Matrix
               x => workd(ipntr(2):ipntr(2)+n-1)
 
@@ -387,21 +400,26 @@ CONTAINS
                 A % Values => A % MassValues
                 CALL CRS_MatrixVectorMultiply( A, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
                 A % Values => SaveValues
-                
+
                 DO i=0,n-1
                   WORKD( IPNTR(1)+i ) = WORKD( IPNTR(2)+i )
                 END DO
                 b => workd(ipntr(1):ipntr(1)+n-1)
               ELSE
-                b => workd(ipntr(3):ipntr(3)+n-1)                              
+                b => workd(ipntr(3):ipntr(3)+n-1)
               END IF
 
-              ! Some strategies (such as 'block') may depend on that these are set properly 
-              ! to reflect the linear problem under study.            
+              ! Some strategies (such as 'block') may depend on that these are set properly
+              ! to reflect the linear problem under study.
               SaveRhs => A % rhs
               A % rhs => b
 
-              SELECT CASE( Method ) 
+              ! x points to WORKD(IPNTR(2)), which is for output only, so it may be nullified:
+              IF (ListGetLogical(Params, 'Linear System Nullify Guess', Stat)) THEN
+                x = 0.0_dp
+              END IF
+
+              SELECT CASE( Method )
               CASE('multigrid')
                 CALL MultiGridSolve( A, x, b, &
                     DOFs, Solver, Solver % MultiGridLevel, NewSystem )
@@ -440,7 +458,7 @@ CONTAINS
                CALL CRS_MatrixVectorMultiply( Matrix, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
                Matrix % Values => SaveValues
             END IF
-         END IF 
+         END IF
 
          IF ( NewSystem .AND. ido /= 2 ) THEN
             IF ( Iterative ) THEN
@@ -468,28 +486,38 @@ CONTAINS
 !     | Either we have convergence, or there is |
 !     | an error.                               |
 !     %-----------------------------------------%
-      IF ( kinfo /= 0 ) THEN
+      IF ( kinfo /= 0 .AND. kinfo /=2 ) THEN
 !
 !        %--------------------------%
 !        | Error message, check the |
-!        | documentation in DNAUPD  |
+!        | documentation of ARPACK  |
 !        %--------------------------%
 !
-         WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( Caller, Message )
-!
-      ELSE 
+        SELECT CASE(kinfo)
+        CASE(1)
+          CALL Fatal( Caller, 'Maximum number of iterations reached.' )
+        CASE(3)
+          CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
+        CASE DEFAULT
+          IF ( Matrix % Symmetric ) THEN
+            WRITE( Message, * ) 'Error with DSAUPD, info = ',kinfo
+          ELSE
+            WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
+          END IF
+          CALL Fatal( Caller, Message )
+        END SELECT
+      ELSE
 !
 !        %-------------------------------------------%
 !        | No fatal errors occurred.                 |
 !        | Post-Process using DSEUPD.                |
 !        |                                           |
-!        | Computed eigenvalues may be extracted.    |  
+!        | Computed eigenvalues may be extracted.    |
 !        |                                           |
 !        | Eigenvectors may also be computed now if  |
-!        | desired.  (indicated by rvec = .true.)    | 
+!        | desired.  (indicated by rvec = .true.)    |
 !        %-------------------------------------------%
-!           
+!
          D = 0.0d0
          IF ( Matrix % Symmetric ) THEN
             CALL DSEUPD ( .TRUE., 'A', Choose, D, V, N, SigmaR,  &
@@ -501,7 +529,7 @@ CONTAINS
                Which, NEIG, TOL, RESID, NCV, V, N, &
                IPARAM, IPNTR, WORKD, WORKL, lWORKL, IERR )
          END IF
- 
+
 !        %----------------------------------------------%
 !        | Eigenvalues are returned in the First column |
 !        | of the two dimensional array D and the       |
@@ -513,58 +541,46 @@ CONTAINS
 !        | returned in V.                               |
 !        %----------------------------------------------%
 !
-         IF (IERR /= 0) THEN 
+         IF (IERR /= 0) THEN
 !
 !           %------------------------------------%
 !           | Error condition:                   |
-!           | Check the documentation of DNEUPD. |
+!           | Check the documentation of ARPACK. |
 !           %------------------------------------%
-! 
-            WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
-            CALL Fatal( Caller, Message )
+!
+           IF ( Matrix % Symmetric ) THEN
+             WRITE( Message, * ) ' Error with DSEUPD, info = ', IERR
+           ELSE
+             WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
+           END IF
+           CALL Fatal( Caller, Message )
          END IF
 !
 !        %------------------------------------------%
 !        | Print additional convergence information |
 !        %------------------------------------------%
 !
-         IF ( kinfo == 1 ) THEN
-            CALL Fatal( Caller, 'Maximum number of iterations reached.' )
-         ELSE IF ( kinfo == 3 ) THEN
-            CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
-         END IF      
+         CALL Info( Caller, ' ', Level=4 )
+         CALL Info( Caller, 'Eigen system solution complete: ', Level=4 )
+         CALL Info( Caller, ' ', Level=4 )
+         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
+         CALL Info( Caller, Message, Level=7 )
+         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)
+         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
+         CALL Info( Caller,'Number of update iterations taken: '//I2S(IPARAM(3)),Level=4)
+         CALL Info( Caller,'Computed '//I2S(NEIG)//' Eigen Values',Level=4)
 !
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          DO i=1,NEIG
            EigValues(i) = CMPLX( D(i,1), D(i,2),KIND=dp )
          END DO
-         
-         ALLOCATE( Perm(NEIG) )
+
          CALL EigenSystemSorting( Params, Neig, Perm, EigValues )
-         
-!
-!        Extract the values to Elmer structures:
-!        -----------------------------------------
-         CALL Info( Caller, ' ', Level=4 )
-         CALL Info( Caller, 'Eigen system solution complete: ', Level=4 )
-         CALL Info( Caller, ' ', Level=4 )
-         WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
-         CALL Info( Caller, Message, Level=7 )         
-         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)
-         CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
-         CALL Info( Caller,'Number of update iterations taken: '//I2S(IPARAM(3)),Level=4)
-         CALL Info( Caller,'Computed '//I2S(NEIG)//' Eigen Values',Level=4)
 
-         ! Restore matrix values, if modified when using shift:
-         ! ---------------------------------------------------
-         IF ( SigmaR /= 0.0d0 ) THEN
-           Matrix % Values = Matrix % Values + SigmaR * Matrix % MassValues
-         END IF
-
-         ! extract vectors:
+         ! Extract the eigenvectors to Elmer structures:
          ! ----------------
-         k = 1
+         CALL Info(Caller,'Copying Eigenvectors to solution',Level=12)
          DO i=1,NEIG
            p = Perm(i)
            WRITE( Message,'(I0,A,2ES15.6)') i,': ',EigValues(i)
@@ -579,8 +595,6 @@ CONTAINS
               END IF
            END DO
 
-           CALL Info(Caller,'Copying Eigenvectors to solution',Level=12)
-
            DO j=1,N
               IF ( D(p,2) /= 0.0d0 ) THEN
                  EigVectors(i,j) = CMPLX( V(j,k),V(j,k+1),KIND=dp )
@@ -592,15 +606,24 @@ CONTAINS
            ! Normalization moved to ScaleEigenVectors
 
          END DO
-                    
+
+         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenScaling = .TRUE. )
+
+         ! Restore matrix values, if modified when using shift:
+         ! ---------------------------------------------------
+         IF ( SigmaR /= 0.0d0 ) THEN
+           Matrix % Values = Matrix % Values + SigmaR * Matrix % MassValues
+         END IF
+
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
            CALL Info(Caller,'Computing eigen system residuals',Level=8)
+           CALL Info( Caller, '--------------------------------',Level=4 )
            CALL CheckResiduals( Matrix, Neig, EigValues, EigVectors )
          END IF
          CALL Info( Caller, '--------------------------------',Level=4 )
       END IF
 
-      DEALLOCATE( WORKL, D, WORKEV, V, CHOOSE, Perm )
+      DEALLOCATE( WORKD, RESID, WORKL, D, WORKEV, V, CHOOSE )
 
 #else
       CALL Fatal( Caller, 'Arpack Eigen System Solver not available!' )
@@ -612,11 +635,9 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> Scale both real and complex valued eigenvectors. 
+!> Scale both real and complex valued eigenvectors.
 !------------------------------------------------------------------------------
     SUBROUTINE ScaleEigenVectors( Matrix, EigVectors, NoEigen, NormalizeToUnity)
-
-      USE Multigrid
 
       IMPLICIT NONE
 
@@ -629,7 +650,7 @@ CONTAINS
       COMPLEX(KIND=dp) :: s, s1, mx
       CHARACTER(*), PARAMETER :: Caller = 'ScaleEigenVectors'
 
-      
+
       CALL Info(Caller,'Scaling eigen vectors',Level=10)
 
       ! Real case: Normalize eigenvector  (x) so that x^T(M x) = 1
@@ -637,7 +658,7 @@ CONTAINS
       ! (probably already done, but no harm in redoing!)
       ! Optionally normalize such that the maximum amplitude is set one.
       ! -----------------------------------------------------------------------------
-      
+
       n = Matrix % NumberOfRows
       IF ( Matrix % Complex ) n = n / 2
 
@@ -647,9 +668,9 @@ CONTAINS
           s = 0.0_dp
           IF( NormalizeToUnity ) THEN
             DO j=1,n
-              s1 = EigVectors(i,j) 
+              s1 = EigVectors(i,j)
               IF( ABS( s1 ) > ABS( s ) ) THEN
-                s = s1                
+                s = s1
               END IF
             END DO
             s = ParallelReduction(s,2)
@@ -667,13 +688,13 @@ CONTAINS
                   s = s + mx * CONJG( EigVectors(i,mj) ) * EigVectors(i,mk)
                 END DO
               END DO
-            END IF          
+            END IF
             s = CMPLX( ParallelReduction( REAL(s) ), ParallelReduction( AIMAG(s) ), KIND=dp )
             s = SQRT(s)
           END IF
-                        
+
           IF( ABS(s - 1) < EPSILON( r ) ) THEN
-            CALL Info(Caller,'Eigenmode already normalized!',Level=12)              
+            CALL Info(Caller,'Eigenmode already normalized!',Level=12)
           ELSE IF ( ABS(s) > 0 ) THEN
             s = 1.0_dp/s
             WRITE(Message,'(A,2ES12.3)') 'Normalizing Eigenvector with: ',REAL(s),AIMAG(s)
@@ -682,7 +703,7 @@ CONTAINS
           ELSE
             CALL Warn(Caller,'Eigenmode has zero amplitude!')
           END IF
-        ELSE          
+        ELSE
           r = 0.0_dp
           IF( NormalizeToUnity ) THEN
             r = MAXVAL(ABS(EigVectors(i,1:n)))
@@ -700,12 +721,12 @@ CONTAINS
                 END DO
               END DO
             END IF
-            r = ParallelReduction(r) 
-            r = SQRT( r ) 
+            r = ParallelReduction(r)
+            r = SQRT( r )
           END IF
-          
+
           IF( ABS(r - 1) < EPSILON( r ) ) THEN
-            CALL Info(Caller,'Eigenmode already normalized!',Level=12)              
+            CALL Info(Caller,'Eigenmode already normalized!',Level=12)
           ELSE IF ( ABS(r) > 0 ) THEN
             r = 1.0_dp/r
             WRITE(Message,'(A,ES12.3)') 'Normalizing Eigenvector with: ',r
@@ -715,20 +736,18 @@ CONTAINS
             CALL Warn(Caller,'Eigenmode has zero amplitude!')
           END IF
         END IF
-          
+
       END DO
 
     END SUBROUTINE ScaleEigenVectors
 !------------------------------------------------------------------------------
 
-    
+
 
 !------------------------------------------------------------------------------
 !> Expand complex valued eigenvector to a real that is actually the same vector ;-)
 !------------------------------------------------------------------------------
     SUBROUTINE ExpandEigenVectors( Matrix, EigVectors, NoEigen, dofs )
-
-      USE Types
 
       IMPLICIT NONE
 
@@ -744,20 +763,20 @@ CONTAINS
       CHARACTER(*), PARAMETER :: Caller = 'ExpandEigenVectors'
 
       IF ( .NOT. Matrix % COMPLEX ) RETURN
-    
+
       CALL Info(Caller,'Expanding eigen vectors',Level=10)
-      
+
       n = Matrix % NumberOfRows / dofs
       cdofs = dofs / 2
 
       ALLOCATE(EigTmp(SIZE(EigVectors(1,:))))
-      
+
       DO i = 1, NoEigen
 
         EigTmp = EigVectors(i,:)
 
         DO j = 1, n
-          DO k = 1, cdofs          
+          DO k = 1, cdofs
             s = EigTmp(cdofs*(j-1)+k)
             EigVectors(i,dofs*(j-1)+k) = REAL(s)
             EigVectors(i,dofs*(j-1)+k+cdofs) = AIMAG(s)
@@ -769,41 +788,88 @@ CONTAINS
 !------------------------------------------------------------------------------
 
 
-    
+
+!------------------------------------------------------------------------------
+!> Check the consistency of eigenpairs (lambda,x) of the eigenvalue problem
+!> A x = lambda M x, with real-valued matrices A and M. The relative residual
+!> ||A x - lambda M x||/||x|| depends on the choice units in obtaining A and M,
+!> so report also the normwise relative backward error
+!> err = ||A x - lambda M x|| / ( ||A|| + |lambda| ||M||) ||x|| ),
+!> which is independent of scaling. For nonsymmetric problems the eigenpairs
+!> may be complex, so both the real and imaginary parts are considered.
 !------------------------------------------------------------------------------
     SUBROUTINE CheckResiduals( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
       TYPE(Matrix_t), POINTER :: Matrix
-      INTEGER :: i,n,sz
+      INTEGER :: n
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
 
-      REAL(KIND=dp), ALLOCATABLE :: x(:), y(:)
+      REAL(KIND=dp), POINTER CONTIG :: svals(:)
+      REAL(KIND=dp), ALLOCATABLE :: xr(:), xi(:), Axr(:), Axi(:), Mxr(:), Mxi(:)
+      REAL(KIND=dp) :: NormA, NormM, NormX, NormR, lr, li
+      INTEGER :: i, sz
 
       sz = Matrix % NumberOfRows
-      ALLOCATE( x(sz), y(sz) )
-      DO i=1,n
-        Matrix % Values = Matrix % Values - REAL(Eigs(i)) * Matrix % MassValues
-        x = REAL( EigVectors(i,1:sz) )
-        CALL CRS_MatrixVectorMultiply( Matrix, x, y )
-        Matrix % Values = Matrix % Values + REAL(Eigs(i)) * Matrix % MassValues
 
-        WRITE( Message, * ) 'L^2 Norm of the residual: ', i, SQRT(SUM(y**2))
+      ! The Frobenius norm of the real-valued matrices:
+      NormA = SQRT(SUM(Matrix % Values**2))
+      NormM = SQRT(SUM(Matrix % MassValues**2))
+
+      WRITE( Message, '(A,2ES12.3)' ) 'Frobenius norms of A and M: ', NormA, NormM
+      CALL Info( 'CheckResiduals', Message, Level = 5 )
+
+      ALLOCATE( xr(sz), xi(sz), Axr(sz), Axi(sz), Mxr(sz), Mxi(sz) )
+
+      WRITE( Message, '(A9,3X,A17,3X,A14)' ) 'Eigenpair', '||Ax-L*Mx||/||x||', 'backward error'
+      CALL Info( 'CheckResiduals', Message, Level = 3 )
+
+      DO i=1,n
+        xr = REAL( EigVectors(i,1:sz) )
+        xi = AIMAG( EigVectors(i,1:sz) )
+        lr = REAL( Eigs(i) )
+        li = AIMAG( Eigs(i) )
+
+        CALL CRS_MatrixVectorMultiply( Matrix, xr, Axr )
+        svals => Matrix % Values
+        Matrix % Values => Matrix % MassValues
+        CALL CRS_MatrixVectorMultiply( Matrix, xr, Mxr )
+        Matrix % Values => svals
+
+        IF ( li /= 0.0_dp .OR. ANY( xi /= 0.0_dp ) ) THEN
+          CALL CRS_MatrixVectorMultiply( Matrix, xi, Axi )
+          svals => Matrix % Values
+          Matrix % Values => Matrix % MassValues
+          CALL CRS_MatrixVectorMultiply( Matrix, xi, Mxi )
+          Matrix % Values => svals
+        ELSE
+          Axi = 0.0_dp
+          Mxi = 0.0_dp
+        END IF
+
+        ! The real and imaginary parts of the residual A x - lambda M x:
+        Axr = Axr - lr * Mxr + li * Mxi
+        Axi = Axi - lr * Mxi - li * Mxr
+
+        NormX = SQRT( SUM(xr**2) + SUM(xi**2) )
+        NormR = SQRT( SUM(Axr**2) + SUM(Axi**2) )
+
+        WRITE( Message, '(I9,3X,ES17.6,3X,ES14.5)' ) i, NormR / NormX, &
+            NormR / ((NormA + ABS(Eigs(i)) * NormM) * NormX)
         CALL Info( 'CheckResiduals', Message, Level = 3 )
       END DO
-      DEALLOCATE( x,y )
+
+      DEALLOCATE( xr, xi, Axr, Axi, Mxr, Mxi )
 !------------------------------------------------------------------------------
 END SUBROUTINE CheckResiduals
 !------------------------------------------------------------------------------
 
 
 !------------------------------------------------------------------------------
-!> Solution of Eigen value problems using ARPACK library, stabilized version. 
+!> Solution of eigenvalue problems using ARPACK library, stabilized version.
 !------------------------------------------------------------------------------
      SUBROUTINE ArpackStabEigenSolve( Solver, &
           Matrix, N, NEIG, EigValues, EigVectors )
 !------------------------------------------------------------------------------
-      USE Multigrid
 
       IMPLICIT NONE
 
@@ -843,10 +909,10 @@ END SUBROUTINE CheckResiduals
 !
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
       TYPE(ValueList_t), POINTER :: Params
-      
+
       CHARACTER(*), PARAMETER :: Caller = 'StabEigenSolve'
 
-      
+
 !     %-----------------------%
 !     | Executable Statements |
 !     %-----------------------%
@@ -859,9 +925,9 @@ END SUBROUTINE CheckResiduals
 !     | to solve problems of different sizes, and to get   |
 !     | different parts of the spectrum.  However, The     |
 !     | following conditions must be satisfied:            |
-!     |                     N <= MAXN,                     | 
+!     |                     N <= MAXN,                     |
 !     |                   NEV <= MAXNEV,                   |
-!     |               NEV + 1 <= NCV <= MAXNCV             | 
+!     |               NEV + 1 <= NCV <= MAXNCV             |
 !     %----------------------------------------------------%
 !
       IF ( Matrix % Lumped ) THEN
@@ -926,7 +992,7 @@ END SUBROUTINE CheckResiduals
 
       IPARAM = 0
       IPARAM(1) = ishfts
-      IPARAM(3) = maxitr 
+      IPARAM(3) = maxitr
       IPARAM(7) = mode
 
       SigmaR = 0.0d0
@@ -947,7 +1013,7 @@ END SUBROUTINE CheckResiduals
          DirectMethod = ListGetString( Params,'Linear System Direct Method', stat )
 
          SELECT CASE( DirectMethod )
-         CASE('umfpack', 'big umfpack','mumps', 'zmumps', 'superlu', 'pardiso', 'cholmod' )
+         CASE('umfpack', 'big umfpack','mumps', 'mumpslocal', 'zmumps', 'superlu', 'pardiso', 'cholmod' )
          CASE DEFAULT
             Stat = CRS_ILUT(Matrix, 0.0d0)
          END SELECT
@@ -987,27 +1053,27 @@ END SUBROUTINE CheckResiduals
             Matrix % Values => Matrix % MassValues
             CALL CRS_MatrixVectorMultiply( Matrix, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
             Matrix % Values => SaveValues
-            
+
             DO i=0,n-1
                WORKD( IPNTR(1)+i ) = WORKD( IPNTR(2)+i )
             END DO
-            
+
             IF ( Direct ) THEN
               CALL DirectSolver( Matrix,WORKD(IPNTR(2)),WORKD(IPNTR(1)), Solver )
-            ELSE               
+            ELSE
                x => workd(ipntr(2):ipntr(2)+n-1)
                b => workd(ipntr(1):ipntr(1)+n-1)
-               
+
                IF ( Solver % MultiGridSolver ) THEN
                   CALL MultiGridSolve( Matrix, x, b, Solver % Variable % DOFs,  &
                        Solver, Solver % MultiGridLevel, NewSystem )
                ELSE
                   CALL IterSolver( Matrix, x, b, Solver )
                END IF
-               
+
             END IF
 
-         CASE( 2 )            
+         CASE( 2 )
             CALL CRS_MatrixVectorMultiply( Matrix, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
 
          END SELECT
@@ -1021,7 +1087,7 @@ END SUBROUTINE CheckResiduals
             NewSystem = .FALSE.
          END IF
 
-!-----------------------------------------------------------------------------------------      
+!-----------------------------------------------------------------------------------------
       END DO  ! ido == 99
 
       IF ( FoundFactorize ) THEN
@@ -1045,14 +1111,14 @@ END SUBROUTINE CheckResiduals
          WRITE( Message, * ) 'Error with DSAUPD, info = ',kinfo
          CALL Fatal( 'StabEigenSolve', Message )
 !
-      ELSE 
+      ELSE
          D = 0.0d0
          rvec = .TRUE.
 
          CALL DSEUPD ( rvec, 'A', Choose, D, V, N, SigmaR, &
               BMAT, n, Which, NEIG, TOL, RESID, NCV, V, N, &
               IPARAM, IPNTR, WORKD, WORKL, lWORKL, IERR )
-            
+
 !        %----------------------------------------------%
 !        | Eigenvalues are returned in the First column |
 !        | of the two dimensional array D and the       |
@@ -1077,7 +1143,7 @@ END SUBROUTINE CheckResiduals
             CALL Fatal( Caller, 'Maximum number of iterations reached.' )
          ELSE IF ( kinfo == 3 ) THEN
             CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
-         END IF      
+         END IF
 !
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
@@ -1123,7 +1189,7 @@ END SUBROUTINE CheckResiduals
                  EigVectors(i,j) = CMPLX( V(j,k),0.0d0,KIND=dp )
               END IF
            END DO
-           
+
            ! Normalization moved to ScaleEigenVectors
         END DO
 
@@ -1151,28 +1217,31 @@ END SUBROUTINE CheckResiduals
      SUBROUTINE ArpackEigenSolveComplex( Solver,Matrix,N,NEIG, &
                       EigValues, EigVectors )
 !------------------------------------------------------------------------------
-!> Solution of Eigen value problems using ARPACK library, complex valued version. 
+!> Solution of eigenvalue problems using ARPACK library, complex-valued version.
 !------------------------------------------------------------------------------
-      USE Multigrid
 
       IMPLICIT NONE
 
-      TYPE(Matrix_t), POINTER :: Matrix, A
+      TYPE(Matrix_t), POINTER :: Matrix
       TYPE(Solver_t), TARGET :: Solver
       INTEGER :: N, NEIG
       COMPLEX(KIND=dp) :: EigValues(:), EigVectors(:,:)
 
 #ifdef USE_ARPACK
+
+      TYPE(Matrix_t), POINTER :: A
 !
 !     %--------------%
 !     | Local Arrays |
 !     %--------------%
 !
-      COMPLEX(KIND=dp), ALLOCATABLE :: WORKD(:), RESID(:)
-      INTEGER :: IPARAM(11), IPNTR(14)
-      INTEGER, ALLOCATABLE :: Perm(:), dPerm(:)
+      INTEGER :: IPARAM(11), IPNTR(14), Perm(NEIG)
       LOGICAL, ALLOCATABLE :: Choose(:)
-      COMPLEX(KIND=dp), ALLOCATABLE :: WORKL(:), D(:), WORKEV(:), V(:,:)
+      COMPLEX(KIND=dp) :: D(NEIG)
+      COMPLEX(KIND=dp), ALLOCATABLE :: WORKD(:), RESID(:)
+      COMPLEX(KIND=dp), ALLOCATABLE :: WORKL(:), WORKEV(:), V(:,:)
+      REAL(KIND=dp), TARGET, ALLOCATABLE :: rwork(:), x(:), b(:)
+      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
 
 !
 !     %---------------%
@@ -1181,21 +1250,20 @@ END SUBROUTINE CheckResiduals
 !
       CHARACTER ::     BMAT*1, Which*2
       INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, IERR, iter, &
-                       NCONV, maxitr, ishfts, mode, istat, dofs
-      LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize,&
-                       Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize
+                       maxitr, mode, istat, dofs
+      LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize, ScaleSystem, &
+                       Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize, &
+                       StandardForm
 
       CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
-      COMPLEX(KIND=dp) :: Sigma = 0.0d0, s
-      REAL(KIND=dp), TARGET, ALLOCATABLE :: x(:), b(:), rwork(:)
+      COMPLEX(KIND=dp) :: Sigma
+
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL
-!
-      REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
 
       TYPE(ValueList_t), POINTER :: Params
 
       CHARACTER(*), PARAMETER :: Caller = 'EigenSolveComplex'
-    
+
 !
 !     %-----------------------%
 !     | Executable Statements |
@@ -1204,14 +1272,13 @@ END SUBROUTINE CheckResiduals
 !     %----------------------------------------------------%
 !     | The number N is the dimension of the matrix. A     |
 !     | generalized eigenvalue problem is solved (BMAT =   |
-!     | 'G'.) NEV is the number of eigenvalues to be       |
-!     | approximated.  The user can modify NEV, NCV, WHICH |
+!     | 'G'). NEV is the number of eigenvalues to be       |
+!     | approximated. The user can modify NEV, NCV, WHICH  |
 !     | to solve problems of different sizes, and to get   |
-!     | different parts of the spectrum.  However, The     |
+!     | different parts of the spectrum. However, the      |
 !     | following conditions must be satisfied:            |
-!     |                     N <= MAXN,                     | 
-!     |                   NEV <= MAXNEV,                   |
-!     |               NEV + 1 <= NCV <= MAXNCV             | 
+!     |               NEV + 1 <= NCV                       |
+!     |                   NCV <= N                         |
 !     %----------------------------------------------------%
 !
 
@@ -1223,99 +1290,128 @@ END SUBROUTINE CheckResiduals
       IF ( .NOT. stat ) NCV = 3*NEIG + 1
 
       IF ( NCV <=  NEIG ) THEN
-        CALL Fatal( 'EigenSolve', & 
+        CALL Fatal( 'EigenSolve', &
             'Number of Lanczos vectors must exceed the number of eigenvalues.' )
       END IF
 
-      ALLOCATE( workd(3*n), resid(n), dperm(n), x(2*n), b(2*n), rwork(n), STAT=istat)
-
-      IF ( istat /= 0 ) THEN
-         CALL Fatal(Caller, 'Memory allocation error.' )
-      END IF
-
-      ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV), &
-         WORKEV(3*NCV), V(n,NCV+1), CHOOSE(NCV), STAT=istat )
-
-      IF ( istat /= 0 ) THEN
-         CALL Fatal(Caller, 'Memory allocation error.' )
-      END IF
 !
 !     %--------------------------------------------------%
-!     | The work array WORKL is used in DSAUPD as        |
+!     | The work array WORKL is used in ZNAUPD as        |
 !     | workspace.  Its dimension LWORKL is set as       |
 !     | illustrated below.  The parameter TOL determines |
 !     | the stopping criterion.  If TOL<=0, machine      |
 !     | precision is used.  The variable IDO is used for |
 !     | reverse communication and is initially set to 0. |
-!     | Setting INFO=0 indicates that a random vector is |
-!     | generated in DSAUPD to start the Arnoldi         |
+!     | Setting KINFO=0 indicates that a random vector is|
+!     | generated in ZNAUPD to start the Arnoldi         |
 !     | iteration.                                       |
 !     %--------------------------------------------------%
 !
 !
+      lWORKL = 3*NCV**2 + 6*NCV
+
       TOL = ListGetConstReal( Params, 'Eigen System Convergence Tolerance', stat )
       IF ( .NOT. stat ) THEN
          TOL = 100 * ListGetConstReal( Params, 'Linear System Convergence Tolerance' )
       END IF
 
-      lWORKL = 3*NCV**2 + 6*NCV 
       IDO   = 0
       kinfo = 0
+
+      ALLOCATE( WORKD(3*N), RESID(N), x(2*N), b(2*N), &
+          WORKL(lWORKL), WORKEV(2*NCV), V(n,NCV), CHOOSE(NCV), &
+          rwork(NCV), STAT=istat )
+
+      IF ( istat /= 0 ) THEN
+         CALL Fatal(Caller, 'Memory allocation error.' )
+      END IF
+
 !
 !     %---------------------------------------------------%
 !     | This program uses exact shifts with respect to    |
 !     | the current Hessenberg matrix (IPARAM(1) = 1).    |
 !     | IPARAM(3) specifies the maximum number of Arnoldi |
-!     | iterations allowed.  Mode 2 of DSAUPD is used     |
-!     | (IPARAM(7) = 2).  All these options may be        |
+!     | iterations allowed. Mode 3 of ZNAUPD is used      |
+!     | by default. All these options may be              |
 !     | changed by the user. For details, see the         |
-!     | documentation in DSAUPD.                          |
+!     | documentation in ZNAUPD.                          |
 !     %---------------------------------------------------%
 !
-      ishfts = 1
-      BMAT  = 'G'
-      CALL ArpackSetWhich( Params, Matrix % Lumped, Mode, Which )
+      IF (Matrix % Lumped) THEN
+        CALL Warn(Caller, 'No implementation for a lumped matrix in Mode 2')
+      END IF
+
+      CALL ArpackSetWhich( Params, .FALSE., Mode, Which )
 
       Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
       IF ( .NOT. stat ) Maxitr = 300
 
       IPARAM = 0
-      IPARAM(1) = ishfts
-      IPARAM(3) = maxitr 
+      IPARAM(1) = 1
+      IPARAM(3) = maxitr
+
+      ! The generalized mode of ARPACK uses the M-inner product and so needs M to be
+      ! Hermitian positive semidefinite. If this cannot be guaranteed, use instead the
+      ! Euclidean inner product and apply ARPACK to the standard eigenvalue problem
+      ! for OP = (A-sigma*M)^{-1}*M. The eigenvalues are then recovered as
+      ! lambda = sigma + 1/theta, with theta an eigenvalue of OP.
+      StandardForm = ListGetLogical(Params, 'Eigen System Standard Form', stat)
+      IF (StandardForm) THEN
+        BMAT = 'I'
+        Mode = 1
+      ELSE
+        BMAT  = 'G'
+      END IF
+      CALL Info(Caller, 'The ARPACK routine znaupd will be called in mode '//I2S(mode), Level=12)
       IPARAM(7) = mode
 
-      SigmaR = 0
-      SigmaI = 0
-      V = 0
+      Sigma = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
 
 !     Compute LU-factors for (A-\sigma M) (if consistent mass matrix):
 !     ----------------------------------------------------------------
       Factorize = ListGetLogical( Params, &
-            'Linear System Refactorize', FoundFactorize )
+          'Linear System Refactorize', FoundFactorize )
       CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
       FreeFactorize = ListGetLogical( Params, &
-                'Linear System Refactorize', FoundFreeFactorize )
+          'Linear System Refactorize', FoundFreeFactorize )
 
       CALL ListAddLogical( Params,  &
-                     'Linear System Free Factorization',.FALSE. )
+          'Linear System Free Factorization',.FALSE. )
 
-      IF ( .NOT. Matrix % Lumped ) THEN
+      IF (ListGetLogical(Params, 'Linear System Skip Scaling', stat)) THEN
+        CALL Info(Caller, 'This time skipping scaling', Level=20)
+        ScaleSystem = .FALSE.
+      ELSE
+        ScaleSystem = ListGetLogical(Params, 'Linear System Scaling', stat, DefValue = .TRUE.)
+        ! Row equilibration wouldn't lead to a Hermitian matrix
+        IF (ListGetLogical(Params, 'Linear System Row Equilibration', stat)) THEN
+          CALL Fatal(Caller, 'Set Linear System Row Equilibration = False for the eigen solution')
+        END IF
+      END IF
+
+      IF ( Matrix % Lumped ) THEN
+        ! No implementation to call znaupd in Mode 2
+        CONTINUE
+      ELSE
+        ! Mode 3:
         SigmaR = ListGetConstReal( Params,'Eigen System Shift', stat )
         SigmaI = ListGetConstReal( Params,'Eigen System Shift Im', stat )
         Sigma = CMPLX(SigmaR,SigmaI, KIND=dp)
-        
-        IF ( Sigma /= 0._dp ) THEN
+
+        IF ( ABS(Sigma) > AEPS ) THEN
           Matrix % Values = Matrix % Values - Sigma * Matrix % MassValues
         END IF
 
-        Method = ListGetString( Params,'Linear System Solver', stat )         
+        IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix, Shift = Sigma)
+
+        Method = ListGetString( Params,'Linear System Solver', stat )
         IF ( Method == 'direct' ) THEN
           DirectMethod = ListGetString( Params, &
               'Linear System Direct Method', stat )
-          
+
           SELECT CASE( DirectMethod )
-          CASE('umfpack', 'big umfpack', 'mumps', 'zmumps', 'superlu', 'pardiso', 'cholmod')
+          CASE('umfpack', 'big umfpack', 'mumps', 'mumpslocal', 'zmumps', 'superlu', 'pardiso', 'cholmod')
           CASE DEFAULT
             Stat = CRS_ComplexILUT(Matrix, 0._dp)
           END SELECT
@@ -1344,7 +1440,7 @@ END SUBROUTINE CheckResiduals
 
       DO WHILE( ido /= 99 )
 !        %---------------------------------------------%
-!        | Repeatedly call the routine DSAUPD and take | 
+!        | Repeatedly call the routine ZNAUPD and take |
 !        | actions indicated by parameter IDO until    |
 !        | either convergence is indicated or maxitr   |
 !        | has been exceeded.                          |
@@ -1361,23 +1457,24 @@ END SUBROUTINE CheckResiduals
             END IF
             Iter = Iter + 1
 !---------------------------------------------------------------------
-!           Perform  y <--- OP*x = inv[M]*A*x   (lumped mass)
-!                    ido =-1 inv(A-sigmaR*M)*M*x 
-!                    ido = 1 inv(A-sigmaR*M)*z
+!           Perform  y = OP*x, with
+!                    OP*x = inv(A-sigma*M)*M*x for mode 3 and ido =-1
+!                    OP*x = inv(A-sigma*M)*z, with z returned by znauupd, for mode 3 and ido = 1:
+!                    OP*x = inv[M]*A*x for mode 2 (lumped mass), no impelementation yet
 !---------------------------------------------------------------------
 
-            ! Some strategies (such as 'block') may depend on that these are set properly 
-            ! to reflect the linear problem under study.            
+            ! Some strategies (such as 'block') may depend on that these are set properly
+            ! to reflect the linear problem under study.
             SaveRhs => A % rhs
             A % rhs => b
             Dofs = Solver % Variable % Dofs
 
-            IF ( ido == -1 ) THEN
+            IF ( ido == -1 .OR. StandardForm ) THEN
               SaveValues => A % Values
               A % Values => A % MassValues
               CALL CRS_ComplexMatrixVectorMultiply( A, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
               A % Values => SaveValues
-              
+
               DO i=0,n-1
                 b(2*i+1) = REAL(  WORKD( IPNTR(2)+i ) )
                 b(2*i+2) = AIMAG( WORKD( IPNTR(2)+i ) )
@@ -1389,12 +1486,16 @@ END SUBROUTINE CheckResiduals
               END DO
             END IF
 
-            DO i=0,n-1
-               x(2*i+1) = REAL(  WORKD( IPNTR(2)+i ) )
-               x(2*i+2) = AIMAG( WORKD( IPNTR(2)+i ) )
-            END DO
+            IF (ListGetLogical(Params, 'Linear System Nullify Guess', Stat)) THEN
+              x = CMPLX(0.0_dp, 0.0_dp, kind=dp)
+            ELSE
+              DO i=0,n-1
+                x(2*i+1) = REAL(  WORKD( IPNTR(2)+i ) )
+                x(2*i+2) = AIMAG( WORKD( IPNTR(2)+i ) )
+              END DO
+            END IF
 
-            SELECT CASE( Method ) 
+            SELECT CASE( Method )
             CASE('multigrid')
               CALL MultiGridSolve( A, x, b, &
                   DOFs, Solver, Solver % MultiGridLevel, NewSystem )
@@ -1428,7 +1529,7 @@ END SUBROUTINE CheckResiduals
             A % Values => A % MassValues
             CALL CRS_ComplexMatrixVectorMultiply(A, WORKD(IPNTR(1)), WORKD(IPNTR(2)) )
             A % Values => SaveValues
-         END IF 
+         END IF
 
          IF ( NewSystem .AND. ido /= 2 ) THEN
             IF ( Iterative ) THEN
@@ -1449,73 +1550,80 @@ END SUBROUTINE CheckResiduals
 !     | an error.                               |
 !     %-----------------------------------------%
 !
-      IF ( kinfo /= 0 ) THEN
+      IF ( kinfo /= 0 .AND. kinfo /= 2 ) THEN
 !
 !        %--------------------------%
 !        | Error message, check the |
-!        | documentation in DNAUPD  |
+!        | documentation in ZNAUPD  |
 !        %--------------------------%
-!
-         WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
-         CALL Fatal( Caller, Message )
-!
-      ELSE 
+        SELECT CASE(kinfo)
+        CASE(1)
+          CALL Fatal( Caller, 'Maximum number of iterations reached.' )
+        CASE(3)
+          CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
+        CASE DEFAULT
+          WRITE( Message, * ) 'Error with ZNAUPD, info = ',kinfo
+          CALL Fatal( Caller, Message )
+        END SELECT
+
+      ELSE
 !
 !        %-------------------------------------------%
 !        | No fatal errors occurred.                 |
-!        | Post-Process using DSEUPD.                |
+!        | Post-Process using ZNEUPD.                |
 !        |                                           |
-!        | Computed eigenvalues may be extracted.    |  
+!        | Computed eigenvalues may be extracted.    |
 !        |                                           |
 !        | Eigenvectors may also be computed now if  |
-!        | desired.  (indicated by rvec = .true.)    | 
+!        | desired.  (indicated by rvec = .true.)    |
 !        %-------------------------------------------%
-!           
+!
          D = 0.0d0
-         CALL ZNEUPD ( .TRUE., 'A', Choose, D, V, N, Sigma, WORKEV, BMAT, N, Which, NEIG, &
+         CALL ZNEUPD ( .TRUE., 'A', Choose, D, V(1:N,1:NEIG+1), N, Sigma, WORKEV, BMAT, N, Which, NEIG, &
            TOL, RESID, NCV, V, N, IPARAM, IPNTR, WORKD, WORKL, lWORKL, RWORK, IERR )
 
 !        %----------------------------------------------%
-!        | Eigenvalues are returned in the First column |
-!        | of the two dimensional array D and the       |
+!        | Eigenvalues are returned in the one-         |
+!        | dimensional array D and the                  |
 !        | corresponding eigenvectors are returned in   |
-!        | the First NEV columns of the two dimensional |
+!        | the first NEV columns of the two dimensional |
 !        | array V if requested.  Otherwise, an         |
 !        | orthogonal basis for the invariant subspace  |
 !        | corresponding to the eigenvalues in D is     |
 !        | returned in V.                               |
 !        %----------------------------------------------%
 !
-         IF (IERR /= 0) THEN 
+         IF (IERR /= 0) THEN
 !
 !           %------------------------------------%
 !           | Error condition:                   |
-!           | Check the documentation of DNEUPD. |
+!           | Check the documentation of ZNEUPD. |
 !           %------------------------------------%
-! 
-            WRITE( Message, * ) ' Error with DNEUPD, info = ', IERR
+!
+            WRITE( Message, * ) ' Error with ZNEUPD, info = ', IERR
             CALL Fatal( Caller, Message )
          END IF
+
 !
-!        %------------------------------------------%
-!        | Print additional convergence information |
-!        %------------------------------------------%
-!
-         IF ( kinfo == 1 ) THEN
-            CALL Fatal( Caller, 'Maximum number of iterations reached.' )
-         ELSE IF ( kinfo == 3 ) THEN
-            CALL Fatal( Caller, 'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
-         END IF      
-!
+         ! Transform the eigenvalues of OP to those of the original problem:
+         IF (StandardForm) THEN
+           DO i=1,NEIG
+             IF (ABS(D(i)) > TINY(1.0_dp)) THEN
+               D(i) = Sigma + 1.0_dp/D(i)
+             ELSE
+               D(i) = CMPLX(HUGE(1.0_dp), 0.0_dp, KIND=dp)
+             END IF
+           END DO
+         END IF
+
 !        Sort the eigenvalues to ascending order:
 !        ----------------------------------------
          DO i=1,NEIG
            EigValues(i) = D(i)
          END DO
 
-         ALLOCATE( Perm(NEIG) )
          CALL EigenSystemSorting( Params, Neig, Perm, EigValues )
-         
+
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
          CALL Info( Caller, ' ', Level=4 )
@@ -1523,24 +1631,17 @@ END SUBROUTINE CheckResiduals
          CALL Info( Caller, ' ', Level=4 )
          WRITE( Message,'(A,ES12.3)') 'Convergence criterion is: ', TOL
          CALL Info( Caller, Message, Level=7 )
-         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)                  
+         CALL Info( Caller,'Number of eigensystem iterations is: '//I2S(iter),Level=4)
          CALL Info( Caller,'Number of converged Ritz values is: '//I2S(IPARAM(5)),Level=4)
          CALL Info( Caller, ' ', Level=7 )
          CALL Info( Caller, 'Computed Eigen Values: ', Level=4 )
          CALL Info( Caller, '--------------------------------', Level=7 )
 
-         ! Restore matrix values, if modified when using shift:
-         ! ---------------------------------------------------
-         IF ( Sigma /= 0._dp ) THEN
-           Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
-         END IF
+         EigVectors = CMPLX(0.0_dp, 0.0_dp, KIND=dp)
 
-         EigVectors = -1.0_dp
-
-         k = 1
          DO i=1,NEIG
             p = Perm(i)
-            WRITE( Message, * ) i,EigValues(i)
+            WRITE( Message,'(I0,A,2ES15.6)') i,': ',EigValues(i)
             CALL Info( Caller, Message, Level=4 )
 
             DO j=1,N
@@ -1548,18 +1649,27 @@ END SUBROUTINE CheckResiduals
             END DO
          END DO
 
+         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenScaling = .TRUE. )
+
+         ! Restore matrix values, if modified when using shift:
+         ! ---------------------------------------------------
+         IF ( ABS(Sigma) > AEPS ) THEN
+           Matrix % Values = Matrix % Values + Sigma * Matrix % MassValues
+         END IF
+
          IF ( ListGetLogical( Params, 'Eigen System Compute Residuals', stat ) ) THEN
            CALL Info(Caller,'Computing eigen system residuals',Level=8)
+           CALL Info( Caller, '--------------------------------',Level=4 )
            CALL CheckResidualsComplex( Matrix, Neig, EigValues, EigVectors )
          END IF
          CALL Info( Caller, '--------------------------------',Level=4 )
 !
       END IF
 
-      DEALLOCATE( WORKL, D, WORKEV, V, CHOOSE, Perm )
-      
+      DEALLOCATE(WORKD, RESID, x, b, WORKL, WORKEV, V, CHOOSE, rwork)
+
       CALL Info(Caller,'Finished eigen system solution!',Level=8)
-      
+
 #else
       CALL Fatal( Caller, 'Arpack Eigen System Solver not available!' )
 #endif
@@ -1570,41 +1680,59 @@ END SUBROUTINE CheckResiduals
 
 
 !------------------------------------------------------------------------------
+!> Check the consistency of eigenpairs (lambda,x) of the eigenvalue problem
+!> A x = lambda M x. The relative residual ||A x - lambda M x||/||x|| depends
+!> on the choice units in obtaining A and M, so report also the normwise relative
+!> backward error err = ||A x - lambda M x|| / ( ||A|| + |lambda| ||M||) ||x|| ),
+!> which is independent of scaling.
+!------------------------------------------------------------------------------
     SUBROUTINE CheckResidualsComplex( Matrix, n, Eigs, EigVectors )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
       TYPE(Matrix_t), POINTER :: Matrix
-      INTEGER :: i,j,k,n,sz
+      INTEGER :: n
       COMPLEX(KIND=dp) :: Eigs(:), EigVectors(:,:)
 
-      REAL(KIND=dp), ALLOCATABLE, TARGET :: vals(:)
       REAL(KIND=dp), POINTER CONTIG :: svals(:)
-      COMPLEX(KIND=dp) :: c,m
-      COMPLEX(KIND=dp), ALLOCATABLE :: x(:), y(:)
+      COMPLEX(KIND=dp), ALLOCATABLE :: x(:), y(:), r(:)
+      REAL(KIND=dp) :: NormA, NormM, NormX, NormR
+      INTEGER :: i, sz
 
       sz = Matrix % NumberOfRows/2
-      ALLOCATE( x(sz), y(sz), vals(size(matrix % values)) ); vals=0
+
+      ! The Frobenius norm of the complex-valued matrices:
+      NormA = SQRT(SUM(Matrix % Values**2)/2)
+      NormM = SQRT(SUM(Matrix % MassValues**2)/2)
+
+      WRITE( Message, '(A,2ES12.3)' ) 'Frobenius norms of A and M: ', NormA, NormM
+      CALL Info( 'CheckResidualsComplex', Message, Level = 5 )
+
+      ALLOCATE( x(sz), y(sz), r(sz) )
+
+      WRITE( Message, '(A9,3X,A17,3X,A14)' ) 'Eigenpair', '||Ax-L*Mx||/||x||', 'backward error'
+      CALL Info( 'CheckResidualsComplex', Message, Level = 3 )
+
       DO i=1,n
-        DO j=1,sz
-          DO k=Matrix % Rows(2*j-1), Matrix % Rows(2*j)-1,2
-            c = CMPLX(Matrix % Values(k), -Matrix % Values(k+1),KIND=dp)
-            m = CMPLX(Matrix % MassValues(k), -Matrix% MassValues(k+1),KIND=dp)
-            c = c - eigs(i) * m
-            vals(k) = REAL(c)
-            vals(k+1) = -AIMAG(c)
-          END DO
-        END DO
-
         x = EigVectors(i,:)
-        svals => Matrix % Values
-        Matrix % Values => vals
-        CALL CRS_ComplexMatrixVectorMultiply( Matrix, x, y )
-        Matrix % Values => svals
+        y = eigs(i)*x
 
-        WRITE( Message, * ) 'L^2 Norm of the residual: ', i, SQRT(SUM(ABS(y)**2))
+        svals => Matrix % Values
+        Matrix % Values => Matrix % MassValues
+        CALL CRS_ComplexMatrixVectorMultiply(Matrix, y, r )
+
+        Matrix % Values => svals
+        CALL CRS_ComplexMatrixVectorMultiply(Matrix, x, y )
+
+        y(1:sz) = y(1:sz) - r(1:sz)
+
+        NormX = SQRT(REAL(SUM(CONJG(x)*x)))
+        NormR = SQRT(REAL(SUM(CONJG(y)*y)))
+
+        WRITE( Message, '(I9,3X,ES17.6,3X,ES14.5)' ) i, NormR / NormX, &
+            NormR / ((NormA + ABS(Eigs(i)) * NormM) * NormX)
         CALL Info( 'CheckResidualsComplex', Message, Level = 3 )
       END DO
-      DEALLOCATE( x,y )
+
+      DEALLOCATE(x,y,r)
 !------------------------------------------------------------------------------
 END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
@@ -1614,11 +1742,9 @@ END SUBROUTINE CheckResidualsComplex
      SUBROUTINE ArpackDampedEigenSolve( Solver, KMatrix, N, NEIG, EigValues, &
           EigVectors )
 !------------------------------------------------------------------------------
-!> Solution of Eigen value problems using ARPACK library, damped version. 
+!> Solution of eigenvalue problems using ARPACK library, damped version.
 !------------------------------------------------------------------------------
-      USE Multigrid
-      USE ElementUtils
-
+      USE ElementUtils, ONLY : FreeMatrix
       IMPLICIT NONE
 
       TYPE(Matrix_t), POINTER :: KMatrix
@@ -1652,10 +1778,10 @@ END SUBROUTINE CheckResidualsComplex
       LOGICAL   ::     First, Stat, NewSystem, UseI = .FALSE.
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL, DampedTOL, IScale
       TYPE(ValueList_t), POINTER :: Params
-      
+
       CHARACTER(*), PARAMETER :: Caller = 'DampedEigenSolve'
 
-      
+
 !     %-------------------------------------%
 !     | So far only iterative solver        |
 !     | and non-lumped matrixes are allowed |
@@ -1669,13 +1795,13 @@ END SUBROUTINE CheckResidualsComplex
       IF (  ListGetString( Params, 'Linear System Solver', Stat ) == 'direct' ) THEN
         CALL Error( Caller, 'Direct solver is not allowed' )
       END IF
-      
+
       IF ( Solver % MultiGridSolver ) THEN
         CALL Error( Caller, 'MultiGrid solver is not allowed' )
       END IF
-      
+
       Stat = ListGetLogical( Params,'No Precondition Recompute', Stat  )
-      
+
       IF ( Stat ) THEN
         CALL ListAddLogical( Params,'No Precondition Recompute', .FALSE. )
       END IF
@@ -1693,9 +1819,9 @@ END SUBROUTINE CheckResidualsComplex
 !     | to solve problems of different sizes, and to get   |
 !     | different parts of the spectrum.  However, The     |
 !     | following conditions must be satisfied:            |
-!     |                     N <= MAXN,                     | 
+!     |                     N <= MAXN,                     |
 !     |                   NEV <= MAXNEV,                   |
-!     |               NEV + 1 <= NCV <= MAXNCV             | 
+!     |               NEV + 1 <= NCV <= MAXNCV             |
 !     %----------------------------------------------------%
 
       NCV = 3 * NEIG + 1
@@ -1751,7 +1877,7 @@ END SUBROUTINE CheckResidualsComplex
 
       IDO   = 0
       kinfo = 0
-      lWORKL = 3*NCV**2 + 6*NCV 
+      lWORKL = 3*NCV**2 + 6*NCV
 !     %---------------------------------------------------%
 !     | This program uses exact shifts with respect to    |
 !     | the current Hessenberg matrix (IPARAM(1) = 1).    |
@@ -1761,30 +1887,30 @@ END SUBROUTINE CheckResidualsComplex
 !     | changed by the user. For details, see the         |
 !     | documentation in DSAUPD.                          |
 !     %---------------------------------------------------%
-      
+
       ishfts = 1
       BMAT  = 'G'
       Mode  = 3
-      
+
       SELECT CASE( ListGetString(Params, 'Eigen System Select',Stat) )
          CASE( 'smallest magnitude' )
          Which = 'LM'
-         
+
          CASE( 'largest magnitude')
          Which = 'SM'
-         
+
          CASE( 'smallest real part')
          Which = 'LR'
-         
+
          CASE( 'largest real part')
          Which = 'SR'
-         
+
          CASE( 'smallest imag part' )
          Which = 'LI'
 
          CASE( 'largest imag part' )
          Which = 'SI'
-         
+
          CASE DEFAULT
          Which = 'LM'
       END SELECT
@@ -1794,7 +1920,7 @@ END SUBROUTINE CheckResidualsComplex
 
       IPARAM = 0
       IPARAM(1) = ishfts
-      IPARAM(3) = maxitr 
+      IPARAM(3) = maxitr
       IPARAM(7) = mode
 
       SigmaR = 0.0d0
@@ -1855,7 +1981,7 @@ END SUBROUTINE CheckResidualsComplex
       DO WHILE( ido /= 99 )
 
 !        %---------------------------------------------%
-!        | Repeatedly call the routine DSAUPD and take | 
+!        | Repeatedly call the routine DSAUPD and take |
 !        | actions indicated by parameter IDO until    |
 !        | either convergence is indicated or maxitr   |
 !        | has been exceeded.                          |
@@ -1879,7 +2005,7 @@ END SUBROUTINE CheckResidualsComplex
                  b, x, DampedMaxIter, DampedTOL, UseI, IScale )
 
          CASE( 1 )
-            ! 
+            !
             ! ido =-1 inv(A)*z:
             !--------------------------
             IF(InfoActive(20)) THEN
@@ -1926,15 +2052,15 @@ END SUBROUTINE CheckResidualsComplex
 !
          WRITE( Message, * ) 'Error with DNAUPD, info = ',kinfo
          CALL Fatal( Caller, Message )
-      ELSE 
+      ELSE
 !        %-------------------------------------------%
 !        | No fatal errors occurred.                 |
 !        | Post-Process using DSEUPD.                |
 !        |                                           |
-!        | Computed eigenvalues may be extracted.    |  
+!        | Computed eigenvalues may be extracted.    |
 !        |                                           |
 !        | Eigenvectors may also be computed now if  |
-!        | desired.  (indicated by rvec = .true.)    | 
+!        | desired.  (indicated by rvec = .true.)    |
 !        %-------------------------------------------%
 
          D = 0.0d0
@@ -1952,7 +2078,7 @@ END SUBROUTINE CheckResidualsComplex
 !        | returned in V.                               |
 !        %----------------------------------------------%
 
-         IF ( IERR /= 0 ) THEN 
+         IF ( IERR /= 0 ) THEN
 !           %------------------------------------%
 !           | Error condition:                   |
 !           | Check the documentation of DNEUPD. |
@@ -1970,7 +2096,7 @@ END SUBROUTINE CheckResidualsComplex
          ELSE IF ( kinfo == 3 ) THEN
             CALL Fatal( Caller, &
                  'No shifts could be applied during implicit Arnoldi update, try increasing NCV.' )
-         END IF      
+         END IF
 
 !        Sort the eigenvalues to ascending order:
 !        ( and keep in mind the corresponding vector )
@@ -1994,7 +2120,7 @@ END SUBROUTINE CheckResidualsComplex
          ALLOCATE( Perm( NEIG ) )
          CALL EigenSystemSorting( Params, Neig, Perm, EigTemp )
 
-         
+
 !        Extract the values to ELMER structures:
 !        -----------------------------------------
          CALL Info( Caller, ' ', Level=4 )
@@ -2014,11 +2140,11 @@ END SUBROUTINE CheckResidualsComplex
 
 ! Take the first ones separately
 !------------------------------------------------------------------------------
-         EigValues(1) = EigTemp(1)         
-         
+         EigValues(1) = EigTemp(1)
+
          WRITE( Message, * ) 1,EigValues(1)
          CALL Info( Caller, Message, Level=4 )
-         
+
          p = Perm(1)
          k = kMap(p)
          IF( AIMAG( EigValues(1) ) == 0 ) THEN
@@ -2037,15 +2163,15 @@ END SUBROUTINE CheckResidualsComplex
          DO i = 2, NEIG/2
             IF ( AIMAG( EigValues(i-1) ) /= 0 .AND. &
                  ABS(AIMAG(EigTemp(l))) == ABS(AIMAG(EigValues(i-1)))) l=l+1
-            
+
             EigValues(i) = EigTemp(l)
             IF ( AIMAG( EigValues(i) ) < 0 ) THEN
                EigValues(i) = CONJG( EigValues(i) )
             END IF
-            
+
             WRITE( Message, * ) i,EigValues(i)
             CALL Info( Caller, Message, Level=4 )
-            
+
             p = Perm(l)
             k = kMap(p)
             IF( AIMAG( EigValues(i) ) == 0 ) THEN
@@ -2060,7 +2186,7 @@ END SUBROUTINE CheckResidualsComplex
 
             l = l + 1
          END DO
-               
+
          DO i = 1, NEIG/2
             s = 0.0d0
             DO j=1,N/2
@@ -2073,10 +2199,10 @@ END SUBROUTINE CheckResidualsComplex
          END DO
 
          CALL Warn(Caller,'Check that the scaling is not done twice if you call this!')
-         
+
          ! Standard scaling moved to ScaleEigenVectors
 
-         
+
          CALL Info( Caller, '--------------------------------',Level=4 )
       END IF
 
@@ -2099,7 +2225,6 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     SUBROUTINE EigenBiCG( n, KMatrix, MMatrix, BMatrix, x, b, Rounds, TOL, UseI, IScale )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
 
       TYPE(Matrix_t), POINTER :: KMatrix, MMatrix, BMatrix
       INTEGER :: Rounds
@@ -2134,7 +2259,7 @@ END SUBROUTINE CheckResidualsComplex
 
       DO i=1,Rounds
          rho = EigenMGdot( n, r, Ri )
-         
+
          beta = alpha * rho / ( oldrho * omega )
          P(1:n) = r(1:n) + beta * (P(1:n) - omega*V(1:n))
 !------------------------------------------------------------------------------
@@ -2152,11 +2277,11 @@ END SUBROUTINE CheckResidualsComplex
          CALL CRS_LUSolve( n/2, KMatrix, Tmp(1:n/2) )
          V(1:n/2) = -1*Tmp(1:n/2)
 
-         T1(1:n) = V(1:n)         
+         T1(1:n) = V(1:n)
          CALL EigenMGmv1( n/2, KMatrix, MMatrix, BMatrix, T1, V, UseI, IScale )
 !------------------------------------------------------------------------------
-         alpha = rho / EigenMGdot( n, Ri, V )         
-         S(1:n) = r(1:n) - alpha * V(1:n)         
+         alpha = rho / EigenMGdot( n, Ri, V )
+         S(1:n) = r(1:n) - alpha * V(1:n)
 !------------------------------------------------------------------------------
          Tmp(1:n/2) = S(1:n/2)
 
@@ -2175,7 +2300,7 @@ END SUBROUTINE CheckResidualsComplex
          T2(1:n) = T(1:n)
          CALL EigenMGmv1( n/2, KMatrix, MMatrix, BMatrix, T2, T, UseI, IScale )
 !------------------------------------------------------------------------------
-         omega = EigenMGdot( n,T,S ) / EigenMGdot( n,T,T )         
+         omega = EigenMGdot( n,T,S ) / EigenMGdot( n,T,T )
          oldrho = rho
          r(1:n) = S(1:n) - omega*T(1:n)
          x(1:n) = x(1:n) + alpha*T1(1:n) + omega*T2(1:n)
@@ -2205,10 +2330,9 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     FUNCTION EigenMGdot( n, x, y ) RESULT(s)
 !------------------------------------------------------------------------------
-      USE Types
       INTEGER :: n
       REAL(KIND=dp) :: s, x(:), y(:)
-      
+
       s = DOT_PRODUCT( x(1:n), y(1:n) )
 !------------------------------------------------------------------------------
     END FUNCTION EigenMGdot
@@ -2219,7 +2343,6 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     SUBROUTINE EigenMGmv1( n, KMatrix, MMatrix, BMatrix, x, b, UseI, IScale )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
 
       INTEGER :: n
       TYPE(Matrix_t), POINTER :: KMatrix, MMatrix, BMatrix
@@ -2228,7 +2351,7 @@ END SUBROUTINE CheckResidualsComplex
       LOGICAL :: UseI
 
       REAL(KIND=dp), ALLOCATABLE :: Tmp(:)
-       
+
       ALLOCATE(Tmp(n))
 
       Tmp = 0.0d0
@@ -2253,7 +2376,6 @@ END SUBROUTINE CheckResidualsComplex
 !------------------------------------------------------------------------------
     SUBROUTINE EigenMGmv2( n, MMatrix, x, b, UseI, IScale )
 !------------------------------------------------------------------------------
-      USE CRSMatrix
 
       INTEGER :: n
       REAL(KIND=dp) CONTIG :: x(:), b(:)
@@ -2276,8 +2398,7 @@ END SUBROUTINE CheckResidualsComplex
 !> Lumped (mode 2): natural ordering; shift-invert (mode 3): ordering inverts.
 !------------------------------------------------------------------------------
   SUBROUTINE ArpackSetWhich( Params, Lumped, Mode, Which )
-    USE Types
-    USE Lists, ONLY : ListGetString
+
     TYPE(ValueList_t), POINTER :: Params
     LOGICAL,          INTENT(IN)  :: Lumped
     INTEGER,          INTENT(OUT) :: Mode

@@ -36,6 +36,7 @@ End
 
 Solver 2
   Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"
   Variable = "Temperature"
   Variable Dofs = 1
   Linear System Solver = "Iterative"

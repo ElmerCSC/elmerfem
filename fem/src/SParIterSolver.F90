@@ -3,7 +3,7 @@
 ! *  Elmer, A Finite Element Software for Multiphysical Problems
 ! *
 ! *  Copyright 1st April 1995 - , CSC - IT Center for Science Ltd., Finland
-! * 
+! *
 ! * This library is free software; you can redistribute it and/or
 ! * modify it under the terms of the GNU Lesser General Public
 ! * License as published by the Free Software Foundation; either
@@ -13,10 +13,10 @@
 ! * but WITHOUT ANY WARRANTY; without even the implied warranty of
 ! * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
 ! * Lesser General Public License for more details.
-! * 
+! *
 ! * You should have received a copy of the GNU Lesser General Public
-! * License along with this library (in file ../LGPL-2.1); if not, write 
-! * to the Free Software Foundation, Inc., 51 Franklin Street, 
+! * License along with this library (in file ../LGPL-2.1); if not, write
+! * to the Free Software Foundation, Inc., 51 Franklin Street,
 ! * Fifth Floor, Boston, MA  02110-1301  USA
 ! *
 ! *****************************************************************************/
@@ -28,7 +28,7 @@
 ! *  Web:     http://www.csc.fi/elmer
 ! *  Address: CSC - IT Center for Science Ltd.
 ! *           Keilaranta 14
-! *           02101 Espoo, Finland 
+! *           02101 Espoo, Finland
 ! *
 ! *  Original Date: 2000
 ! *
@@ -96,36 +96,41 @@ CONTAINS
 
     pes = ParEnv % PEs
     ALLOCATE( SParMatrixDesc )
-    SourceMatrix % Solver % ParEnv = ParEnv
 
     IF ( .NOT. ASSOCIATED(ParEnv % active) ) THEN
       ALLOCATE(ParEnv % Active(Parenv % PEs))
       ParEnv % Active = .TRUE.
     END IF
 
-    IF (.NOT.ASSOCIATED(SourceMatrix % Solver % ParEnv % Active) ) &
-      ALLOCATE(SourceMatrix % Solver % ParEnv % Active(ParEnv % PEs))
-
-    SourceMatrix % Solver % ParEnv % Active = ParEnv % Active
-    ParEnv => SourceMatrix % Solver % ParEnv
-    SourceMatrix % Solver % ParEnv % IsNeighbour => Null()
+    ! The environment is built for this matrix and owned by it. Aim > ParEnv <
+    ! at it while ParEnvInit determines the active partitions and the
+    ! neighbours, see SetMatrixParEnv().
+    SParMatrixDesc % ParEnv = ParEnv
+    ALLOCATE(SParMatrixDesc % ParEnv % Active(ParEnv % PEs))
+    SParMatrixDesc % ParEnv % Active = ParEnv % Active
+    SParMatrixDesc % ParEnv % IsNeighbour => Null()
+    ParEnv => SParMatrixDesc % ParEnv
 
     IF( ParEnv % PEs /= pes ) THEN
       WRITE(Message,'(A,I0,A,I0)') '#np changed during simulation from ',pes,' to ',ParEnv % PEs
       CALL Fatal('ParInitMatrix',Message)
     END IF
-    
+
     CALL ParEnvInit(SParMatrixDesc, ParallelInfo, SourceMatrix,  SkipActiveCheck)
 
     SParMatrixDesc % Matrix => SourceMatrix
     SParMatrixDesc % DOFs = 1
     SParMatrixDesc % ParallelInfo => ParallelInfo
-    
+
     ParEnv % ActiveComm = SourceMatrix % Comm
-    
+
+    ! Mirror into the solver. Cannot use SetMatrixParEnv() yet as the caller
+    ! only now attaches this descriptor to > SourceMatrix % ParMatrix <.
+    CALL SetMatrixParEnv( SourceMatrix, SParMatrixDesc )
+
     SParMatrixDesc % SplittedMatrix => SplitMatrix( SourceMatrix, ParallelInfo )
 
-    
+
   END FUNCTION ParInitMatrix
 
 
@@ -214,7 +219,7 @@ CONTAINS
   !----------------------------------------------------------------------
 
     CALL Info('SplitMatrix','Allocating split stuff for '//I2S(ParEnv % PEs)//' partitions!',Level=12)
-    
+
     ALLOCATE( OwnIfMRows(ParEnv % PEs) )
     ALLOCATE( OwnIfMCols(ParEnv % PEs) )
     ALLOCATE( NbsIfMRows(ParEnv % PEs) )
@@ -224,18 +229,18 @@ CONTAINS
     ALLOCATE( OwnOldCols(ParEnv % PEs) )
     ALLOCATE( NbsOldCols(ParEnv % PEs) )
     OwnIfMRows(:) = 0; OwnIfMCols(:) = 0; NbsIfMRows(:) = 0; NbsIfMCols(:) = 0
-    
+
     j = 0
-    k = SIZE(ParallelInfo % NeighbourList) 
+    k = SIZE(ParallelInfo % NeighbourList)
     DO i=1,k
       IF(.NOT. ASSOCIATED( ParallelInfo % NeighbourList(i) % Neighbours ) ) THEN
         ALLOCATE(ParallelInfo % NeighbourList(i) % Neighbours(1))
-        ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe        
+        ParallelInfo % NeighbourList(i) % Neighbours(1) = ParEnv % MyPe
         j = j+1
       END IF
     END DO
     IF(j>0) CALL Info('SplitMatrix','Added mention to self in '//I2S(j)//' neighbours ouf of '//TRIM(I2S(k)))
-    
+
   !----------------------------------------------------------------------
   !
   ! Compute the memory allocations for split matrix blocks
@@ -254,7 +259,7 @@ CONTAINS
 !         --------------------------------------
           DO j = SourceMatrix % Rows(i), SourceMatrix % Rows(i+1) - 1
 
-             ColInd = SourceMatrix % Cols(j)                          
+             ColInd = SourceMatrix % Cols(j)
              IF ( ParallelInfo % NeighbourList(ColInd) % Neighbours(1) == &
                                 ParEnv % MyPE ) THEN
 
@@ -306,7 +311,7 @@ CONTAINS
               OwnIfMCols( CurrNbsL % Neighbours(1) + 1) = &
                    OwnIfMCols( CurrNbsL % Neighbours(1) + 1) + 1
               OwnOCOR( CurrNbsL % Neighbours(1) + 1) = 1
-              
+
            ELSE
 
               !----------------------------------------------------------
@@ -366,10 +371,10 @@ CONTAINS
   IF( ListGetString(CurrentModel % Solver % Values, &
       'Linear System Solver', Found ) == 'iterative' ) THEN
     Prec = ListGetString(CurrentModel % Solver % Values, &
-        'Linear System Preconditioning', Found ) 
+        'Linear System Preconditioning', Found )
     IF(Found) NeedILU = SEQL(Prec,'vanka')
   END IF
-  
+
   SplittedMatrix % InsideMatrix % Ordered = .FALSE.
   NULLIFY( SplittedMatrix % InsideMatrix % ILUValues )
 
@@ -387,7 +392,7 @@ CONTAINS
   ALLOCATE( RecvdIfMatrix(ParEnv % PEs) )
 
   NbsIfMatrix => SplittedMatrix  % NbsIfMatrix
- 
+
   SplittedMatrix % InsideMatrix % NumberOfRows = InsideMRows
 
   DO i = 1, ParEnv % PEs
@@ -452,7 +457,7 @@ CONTAINS
         ! Connection is local-local or local-if
         !
         !----------------------------------------------------------------
-        
+
         DO j = SourceMatrix % Rows(i), SourceMatrix % Rows(i+1) - 1
 
            ColInd = SourceMatrix % Cols(j)
@@ -479,8 +484,8 @@ CONTAINS
               !
               !----------------------------------------------------------
               currifi = ParallelInfo % NeighbourList(Colind) % Neighbours(1) + 1
-              
-              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &  
+
+              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &
                   ParallelInfo  % GlobalDOFs(ColInd)
               NbsIfMcols(currifi) = NbsIfMcols(currifi) + 1
               NbsOCOR(currifi) = 1
@@ -525,7 +530,7 @@ CONTAINS
               !
               !----------------------------------------------------------
               currifi = ParallelInfo % NeighbourList(ColInd) % Neighbours(1) + 1
-              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  & 
+              NbsIfMatrix(currifi) % Cols(NbsIfMcols(currifi)) =  &
                 ParallelInfo  % GlobalDOFs(ColInd)
               SplittedMatrix % GlueTable % Inds(j) = -(ParEnv % PEs + currifi)
               NbsOCOR(currifi) = 1
@@ -616,9 +621,14 @@ CONTAINS
   ! allocate stuff
   !
   !----------------------------------------------------------------------
-  sz = A % Rows(n+1)-1
-  ALLOCATE(A % Values(sz))
-
+  ! NOTE: > A % Values < is deliberately NOT allocated here. Nothing in the
+  ! split needs the values, only the structure, and the array is a full
+  ! nnz-sized double per partition. Solvers that consume the glued matrix
+  ! (SParInitSolve, SParIterSolver, SolveHutiter) get it from
+  ! ZeroSplittedMatrix(); solvers that gather the matrix themselves, AMGX and
+  ! Hypre, never touch it and now do not pay for it. The one place inside this
+  ! routine that does need it is the GotNewCol branch below, since
+  ! List_ToListMatrix() reads the values while converting.
 !-----------------------------------------------------------------------------
 
   SplittedMatrix % IfMatrix(:) % NumberOfRows = 0
@@ -719,9 +729,9 @@ CONTAINS
   ! connections might be known in advance...
   !
   !----------------------------------------------------------------------
-  sz = SIZE(A % Values)
+  sz = A % Rows(A % NumberOfRows+1)-1
 
-  ! Check whether we need to create List matrix and add new column entries. 
+  ! Check whether we need to create List matrix and add new column entries.
   GotNewCol = .FALSE.
   DO i=1,Parenv % PEs
     CurrIF => SplittedMatrix % IfMatrix(i)
@@ -735,12 +745,16 @@ CONTAINS
         IF( .NOT. CRS_CheckMatrixElement(A,RowInd,ColInd) ) THEN
           GotNewCol = .TRUE.
           GOTO 1
-        END IF        
-      END DO      
+        END IF
+      END DO
     END DO
   END DO
 
 1 IF(GotNewCol) THEN
+    IF( .NOT. ASSOCIATED(A % Values) ) THEN
+      ALLOCATE(A % Values(A % Rows(A % NumberOfRows+1)-1))
+      A % Values = 0._dp
+    END IF
     CALL List_toListMatrix(A)
     DO i=1,Parenv % PEs
       CurrIF => SplittedMatrix % IfMatrix(i)
@@ -758,18 +772,18 @@ CONTAINS
     END DO
     CALL List_toCRSMatrix(A)
   END IF
-    
+
   !----------------------------------------------------------------------
   !
   ! If need be, rebuild the inside part of GlueTable (place in the parallel
   ! 'insidematrix' where the 'partition' matrix entry is to be added).
   !
   !----------------------------------------------------------------------
-  IF(sz /= SIZE(A % Values)) THEN
+  IF(sz /= A % Rows(A % NumberOfRows+1)-1) THEN
     ALLOCATE(Perm(A % NumberOfRows))
     j = 0;
     DO i=1,SourceMatrix % NumberOfRows
-      IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN 
+      IF (ParallelInfo % NeighbourList(i) % Neighbours(1)==ParEnv % MyPE) THEN
         j=j+1
         Perm(j)=i
       END IF
@@ -779,7 +793,7 @@ CONTAINS
       RowInd = Perm(i)
       K = SourceMatrix % Rows(RowInd)
       DO j=A % Rows(i),A % Rows(i+1)-1
-        ColInd = Perm(A % Cols(j)) 
+        ColInd = Perm(A % Cols(j))
         DO WHILE(K<SourceMatrix % Rows(RowInd+1))
           IF(SourceMatrix % Cols(K)>=ColInd) THEN
             IF(SourceMatrix % Cols(K)==ColInd) &
@@ -796,7 +810,7 @@ CONTAINS
 
   ! Allocate more insidematrix stuff
   ! ---------------------------------
-  sz = SIZE(A % Values)
+  sz = A % Rows(A % NumberOfRows+1)-1
   NULLIFY( A % PrecValues )
   IF ( NeedPrec ) ALLOCATE(A % PrecValues(sz))
 
@@ -849,6 +863,37 @@ END FUNCTION SplitMatrix
 
 
 !----------------------------------------------------------------------
+!> SplitMatrix() deliberately does not allocate > InsideMatrix % Values <, see
+!> the note there. This allocates it on first use and is cheap enough to call
+!> unconditionally: solvers that gather the matrix themselves (AMGX, Hypre)
+!> never reach it and never pay for the array.
+!>
+!> Do NOT be tempted to add a "not allocated" assertion to the parallel
+!> matrix-vector products on the strength of this. An unassociated
+!> > Values < is a legitimate state there: IterSolver() releases the array for
+!> the duration of the iteration whenever the product asserts
+!> MatvecReadsNoValues, as SParCMatrixVector does, and works off the block
+!> view (BRows/BCols/CValues) instead. Such an assertion fails
+!> HelmholtzFEM_np2/4 and VectorHelmholtzWaveguidePar_np2/4.
+!----------------------------------------------------------------------
+SUBROUTINE EnsureInsideMatrixValues( SplittedMatrix )
+!----------------------------------------------------------------------
+  IMPLICIT NONE
+  TYPE (SplittedMatrixT), POINTER :: SplittedMatrix
+!----------------------------------------------------------------------
+  TYPE(Matrix_t), POINTER :: Am
+!----------------------------------------------------------------------
+  Am => SplittedMatrix % InsideMatrix
+  IF( .NOT. ASSOCIATED( Am % Values ) ) THEN
+    ALLOCATE( Am % Values( Am % Rows(Am % NumberOfRows+1)-1 ) )
+    Am % Values = 0._dp
+  END IF
+!----------------------------------------------------------------------
+END SUBROUTINE EnsureInsideMatrixValues
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
 !> Zero the splitted matrix (for new non-linear iteration)
 !----------------------------------------------------------------------
 SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
@@ -869,6 +914,8 @@ SUBROUTINE ZeroSplittedMatrix( SplittedMatrix )
   NeedMass = ASSOCIATED(SplittedMatrix % InsideMatrix % MassValues)
   NeedDamp = ASSOCIATED(SplittedMatrix % InsideMatrix % DampValues)
   NeedPrec = ASSOCIATED(SplittedMatrix % InsideMatrix % PrecValues)
+
+  CALL EnsureInsideMatrixValues( SplittedMatrix )
 
   SplittedMatrix % InsideMatrix % Values = 0._dp
   IF ( NeedMass ) SplittedMatrix % InsideMatrix % MassValues = 0._dp
@@ -915,11 +962,12 @@ END SUBROUTINE ZeroSplittedMatrix
   SUBROUTINE SParMatVecCommSetup( SplittedMatrix )
     TYPE(SplittedMatrixT), POINTER :: SplittedMatrix
 
-    INTEGER :: i, j, k, ni, nj, nneigh, ierr
+    INTEGER :: i, j, k, l, first, ni, nj, nneigh, ierr
     TYPE(BasicMatrix_t), POINTER :: IfM
+    TYPE(MVPackT), POINTER :: P
     INTEGER, ALLOCATABLE :: reqs(:)
 
-    nneigh = ParEnv % NumOfNeighbours
+    nneigh = ParEnvNeighbourCount( ParEnv )
     ALLOCATE( SplittedMatrix % MVNeigh(nneigh) )
     ALLOCATE( SplittedMatrix % MVSendSize(nneigh) )
     ALLOCATE( SplittedMatrix % MVRecvSize(nneigh) )
@@ -931,7 +979,6 @@ END SUBROUTINE ZeroSplittedMatrix
       IF ( ParEnv % IsNeighbour(i) ) THEN
         j = j + 1
         SplittedMatrix % MVNeigh(j) = i - 1
-        IF ( j == nneigh ) EXIT
       END IF
     END DO
 
@@ -967,7 +1014,43 @@ END SUBROUTINE ZeroSplittedMatrix
       ALLOCATE( SplittedMatrix % MVRecvBuf(i) % rbuf( MAX(1, SplittedMatrix % MVRecvSize(i)) ) )
     END DO
     ALLOCATE( SplittedMatrix % MVRequests(nneigh) )
+    ALLOCATE( SplittedMatrix % MVSendRequests(nneigh) )
     SplittedMatrix % MVRequests = MPI_REQUEST_NULL
+    SplittedMatrix % MVSendRequests = MPI_REQUEST_NULL
+
+    ! Work out the gather that fills each send buffer. The loop nesting must
+    ! stay the one that counted MVSendSize above: the receiving side picks the
+    ! values apart by position through VecIndices % RevInd, so the order the
+    ! slots are filled in is part of the protocol. Each interface block yields
+    ! at most one segment and there is one block per neighbour, so nneigh
+    ! segments is always enough. More than one arises from nodes that are
+    ! shared by three or more partitions.
+    ALLOCATE( SplittedMatrix % MVPack(nneigh) )
+    DO nj = 1, nneigh
+      P => SplittedMatrix % MVPack(nj)
+      ALLOCATE( P % SegIf(nneigh), P % SegStart(nneigh+1), &
+                P % Row( MAX(1, SplittedMatrix % MVSendSize(nj)) ) )
+      j = SplittedMatrix % MVNeigh(nj)
+      l = 0
+      P % nseg = 0
+      DO ni = 1, nneigh
+        i = SplittedMatrix % MVNeigh(ni) + 1
+        IfM => SplittedMatrix % IfMatrix(i)
+        first = l + 1
+        DO k = 1, IfM % NumberOfRows
+          IF ( IfM % RowOwner(k) == j ) THEN
+            l = l + 1
+            P % Row(l) = k
+          END IF
+        END DO
+        IF ( l >= first ) THEN
+          P % nseg = P % nseg + 1
+          P % SegIf( P % nseg ) = i
+          P % SegStart( P % nseg ) = first
+        END IF
+      END DO
+      P % SegStart( P % nseg + 1 ) = l + 1
+    END DO
   END SUBROUTINE SParMatVecCommSetup
 !----------------------------------------------------------------------
 
@@ -982,12 +1065,12 @@ END SUBROUTINE ZeroSplittedMatrix
     REAL(KIND=dp) :: hypre_dppara(10), r
     INTEGER :: hypre_intpara(20)
 
-    CHARACTER(:), ALLOCATABLE, TARGET :: PrecMethod, IterativeMethod    
+    CHARACTER(:), ALLOCATABLE, TARGET :: PrecMethod, IterativeMethod
     CHARACTER(:), POINTER :: Method
     INTEGER :: hypre_sol, hypre_pre, i, j, k
     LOGICAL :: BPC, Found
-    CHARACTER(*), PARAMETER :: Caller = 'HypreParameters' 
-       
+    CHARACTER(*), PARAMETER :: Caller = 'HypreParameters'
+
     CALL Info(Caller,'Setting parameters for Hypre solvers',Level=12)
 
     hypremethod = 0
@@ -1001,7 +1084,7 @@ END SUBROUTINE ZeroSplittedMatrix
     !---------------------------------------
     !              No  Prec
     ! none         0    x   -
-    ! BoomerAMG    1    x   x 
+    ! BoomerAMG    1    x   x
     ! AMS          2    x   x
     ! ILU          3    x   x
     ! Parasails    4    x   -
@@ -1012,23 +1095,23 @@ END SUBROUTINE ZeroSplittedMatrix
     ! FlexGMRes    9    -   x
     ! LGMRes       10   -   x
     ! COGMRes      11   -   x
-    !---------------------------------------    
+    !---------------------------------------
 
     ! 1st round set the method
     ! 2nd round set the preconditioner!
-    ! Many hypre methods can be both preconditioners and solvers. 
+    ! Many hypre methods can be both preconditioners and solvers.
     DO i=0,1
       j = 0
-      
-      IF(i==0) THEN        
+
+      IF(i==0) THEN
         hypre_sol = ListGetInteger( Params,'Linear System Method Hypre Index',Found )
-        IF(Found ) CYCLE                    
-        IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )      
+        IF(Found ) CYCLE
+        IterativeMethod = ListGetString( Params,'Linear System Iterative Method' )
         Method => IterativeMethod
       ELSE
         hypre_pre = ListGetInteger( Params,'Linear System Preconditioning Hypre Index',Found )
 
-        IF(Found ) CYCLE                    
+        IF(Found ) CYCLE
         PrecMethod = ListGetString(Params,'Linear System Preconditioning',Found)
 
         IF(.NOT. Found) THEN
@@ -1037,7 +1120,7 @@ END SUBROUTINE ZeroSplittedMatrix
         END IF
         Method => PrecMethod
       END IF
-      
+
       IF( Method == 'none' ) THEN
         j = 0
       ELSE IF( Method == 'boomeramg' ) THEN
@@ -1068,7 +1151,7 @@ END SUBROUTINE ZeroSplittedMatrix
       ELSE
         CALL Fatal(Caller,'Invalid method for Hypre: '//TRIM(Method))
       END IF
-      
+
       IF(i==0) THEN
         CALL Info(Caller,'Using HYPRE iterative method: '//TRIM(IterativeMethod),Level=7)
         hypre_sol = j
@@ -1077,7 +1160,7 @@ END SUBROUTINE ZeroSplittedMatrix
         hypre_pre = j
       END IF
     END DO
-    
+
     ! Some methods (Krylov methods) can not act as preconditioners!
     IF( ANY( hypre_pre == [6,7,8,9,10,11] ) ) THEN
       CALL Fatal(Caller,'Invalid preconditioner for Hypre: '//TRIM(PrecMethod))
@@ -1088,17 +1171,17 @@ END SUBROUTINE ZeroSplittedMatrix
       CALL Fatal(Caller,'Invalid solver for Hypre: '//TRIM(IterativeMethod))
     END IF
 
-    ! We map the preconditioner + solver to one figure. 
+    ! We map the preconditioner + solver to one figure.
     hypremethod = 100 * hypre_sol + hypre_pre
     CALL Info(Caller,'Hypre method index: '//I2S(hypremethod),Level=6)
-    
+
     DO i=0,1
       IF(i==0) THEN
         j = hypre_pre
       ELSE
         j = hypre_sol
       END IF
-      
+
       SELECT CASE(j)
       CASE(1) ! BoomerAMG
         hypre_intpara(1) = ListGetInteger( Params,&
@@ -1125,7 +1208,7 @@ END SUBROUTINE ZeroSplittedMatrix
         BPC = ListGetLogical( Params, 'Block Preconditioner', Found )
 
         hypre_intpara(8) = ListGetInteger( Params, 'BoomerAMG Num Functions', Found )
-        k = CurrentModel % Solver % Variable % DOFs            
+        k = CurrentModel % Solver % Variable % DOFs
         IF (.NOT.Found)  THEN
           IF (BPC) THEN
             hypre_intpara(8) = 1
@@ -1142,16 +1225,16 @@ END SUBROUTINE ZeroSplittedMatrix
             'BoomerAMG Strong Threshold', Found, DefValue = 0.25_dp)
 
       CASE(2) ! AMS
-        ! The numbering follows the old convention. 
+        ! The numbering follows the old convention.
         hypre_intpara(1) = ListGetInteger( Params,&
             'AMS Max Iterations', Found, DefValue = 1 )
 
         hypre_dppara(1) = ListGetCReal( Params,&
-            'AMS Tolerance', Found, DefValue = 1.0e-6_dp )
-        
+            'AMS Tolerance', Found, DefValue = 1.0d-6 )
+
         hypre_intpara(2) = ListGetInteger( Params,&
             'AMS Cycle Type', Found, DefValue = 1)  ! 1-14
-       
+
         hypre_intpara(3) = ListGetInteger( Params,&
             'AMS Relax Type', Found, DefValue = 2 )
         hypre_intpara(4) = ListGetInteger( Params,&
@@ -1165,10 +1248,10 @@ END SUBROUTINE ZeroSplittedMatrix
             'AMS Alpha Threshold', Found, DefValue = 0.25_dp )
         hypre_dppara(5) = ListGetCReal( Params,&
             'AMS Beta Threshold', Found, DefValue = 0.25_dp )
-        
+
         IF( ListGetLogical( Params,&
             'AMS Singular Matrix', Found ) ) hypre_intpara(5) = 1
-                
+
       CASE(3) ! ILU
         hypre_intpara(1) = ListGetInteger( Params,&
             'ILU Max Iterations', Found, DefValue = 1 )
@@ -1184,7 +1267,7 @@ END SUBROUTINE ZeroSplittedMatrix
 
         hypre_intpara(5) = ListGetInteger( Params,&
             'ILU Trisolve Direct', Found, DefValue = 0 )
-        
+
         hypre_dppara(1) = ListGetCReal( Params,&
             'ILU Tolerance', Found, DefValue = 0.0_dp)
 
@@ -1192,8 +1275,8 @@ END SUBROUTINE ZeroSplittedMatrix
             'ILU Drop Threshold', Found, DefValue = 0.0_dp)
 
         hypre_dppara(3) = ListGetCReal( Params,&
-            'ILU NSH Drop Threshold', Found, DefValue = 0.0_dp)     
-        
+            'ILU NSH Drop Threshold', Found, DefValue = 0.0_dp)
+
       CASE(4) ! Parasails
         hypre_intpara(1) = ListGetInteger( Params,&
             'ParaSails Symmetry', Found, DefValue = 0 )
@@ -1212,12 +1295,12 @@ END SUBROUTINE ZeroSplittedMatrix
             'FSAI Max Steps', Found, DefValue = 5 )
         hypre_intpara(2) = ListGetInteger( Params,&
             'FSAI Max Step Size', Found, DefValue = 3 )
-        
-        hypre_dppara(1) = ListGetCReal( Params,&
-            'FSAI Kap Tolerance', Found, DefValue = 1.0e-3_dp )
-        
 
-      CASE(6) ! PCG 
+        hypre_dppara(1) = ListGetCReal( Params,&
+            'FSAI Kap Tolerance', Found, DefValue = 1.0d-3 )
+
+
+      CASE(6) ! PCG
         IF( ListGetLogical(Params,'PCG Two Norm',Found ) ) THEN
           hypre_intpara(11) = 1
         END IF
@@ -1227,20 +1310,20 @@ END SUBROUTINE ZeroSplittedMatrix
 
       CASE(7) ! BiCGStab
 
-      CASE(8) ! GMRes        
+      CASE(8) ! GMRes
 
       CASE(9) ! FlexGMRes
-        
+
       CASE(10) ! LGMRes
         hypre_intpara(11) = ListGetInteger( Params,&
             'HYPRE LGmRes Aug Dim', Found, DefValue = 2 )
-        
+
       CASE(11) ! COGGMRes
         hypre_intpara(11) = ListGetInteger( Params,&
             'HYPRE COGMRes Unroll', Found, DefValue = 0 )
         hypre_intpara(12) = ListGetInteger( Params,&
             'HYPRE COGMRes CGS', Found, DefValue = 0 )
-        
+
       END SELECT
 
       ! These are used by many
@@ -1251,12 +1334,17 @@ END SUBROUTINE ZeroSplittedMatrix
 
       IF(j>7) THEN
         hypre_intpara(10) = ListGetInteger( Params,&
-            'HYPRE GmRes Dimension', Found, DefValue = 100 )        
+            'HYPRE GmRes Dimension', Found, DefValue = 100 )
       END IF
-      
+
     END DO
-      
-  
+
+    ! Toggle between the row by row HYPRE_IJMatrixAddToValues assembly (one Hypre
+    ! call per row) and the bulk assembly (one call for the whole local block).
+    ! Bulk assembly is default, use row-by-row if bulk is too large and overflows.
+    IF ( ListGetLogical( Params, 'Hypre Assemble Row By Row', Found ) ) hypre_intpara(20) = 1
+
+
   END SUBROUTINE SetHypreParameters
 
 
@@ -1288,12 +1376,16 @@ END SUBROUTINE ZeroSplittedMatrix
 !----------------------------------------------------------------------
 
     GlobalData     => SourceMatrix % ParMatrix
-    ParEnv         => SourceMatrix % Solver % ParEnv
-    ParEnv % ActiveComm = SourceMatrix % Comm
+    CALL SetMatrixParEnv( SourceMatrix )
     SplittedMatrix => Globaldata % SplittedMatrix
 
     GlobalData % DOFs  = 1
     GlobalData % ParallelInfo => ParallelInfo
+
+    ! Not inside the IF below on purpose: Multigrid and ParStokes call in with
+    ! > UpdateMatrix < false, and the matrix-vector products that follow read
+    ! these values either way.
+    CALL EnsureInsideMatrixValues( SplittedMatrix )
 
     IF ( UpdateMatrix ) THEN
       NeedMass = ASSOCIATED(SplittedMatrix % InsideMatrix % MassValues)
@@ -1330,7 +1422,7 @@ END SUBROUTINE ZeroSplittedMatrix
           OrderList(i) % NbsGrows = CurrIf % GRows
           CALL SortI(n, OrderList(i) % NbsGRows, OrderList(i) % NbsGorder)
         END IF
-                
+
         CurrIf => SplittedMatrix % IfMatrix(i)
         n = CurrIf % NumberOfRows
         IF ( n > 0 )THEN
@@ -1345,7 +1437,7 @@ END SUBROUTINE ZeroSplittedMatrix
 
       GT => SplittedMatrix % GlueTable
       DO i = 1, SourceMatrix % NumberOfRows
-       
+
          GRow = ParallelInfo % GlobalDOFs(i)
          DO j = SourceMatrix % Rows(i),SourceMatrix % Rows(i+1) - 1
 
@@ -1412,7 +1504,7 @@ END SUBROUTINE ZeroSplittedMatrix
 
                ifind = -ParEnv % PEs + ABS(GT % Inds(j))
                CurrIf => SplittedMatrix % NbsIfMatrix(ifind)
-                  
+
                RowInd = -1
                IF ( CurrIf % NumberOfRows > 0 ) THEN
                   RowInd = SearchIAItem( CurrIf % NumberOfRows, OrderList(ifind) % NbsGRows, &
@@ -1453,7 +1545,7 @@ END SUBROUTINE ZeroSplittedMatrix
          ALLOCATE( SplittedMatrix % InsideMatrix % RHS(  &
            SplittedMatrix % InsideMatrix % NumberOfRows ) )
          SPlittedMatrix % InsideMatrix % RHS = 0
-  
+
          ALLOCATE( SplittedMatrix % TmpXVec( SplittedMatrix %  &
                     InsideMatrix % NumberOfRows ) )
          SplittedMatrix % TmpXVec = 0
@@ -1471,7 +1563,7 @@ END SUBROUTINE ZeroSplittedMatrix
     END IF
 
     CALL SParUpdateRHS( SourceMatrix, RHSVec, ParallelInfo )
- 
+
     !
     ! Initialize temporary XVec and RVec for iterator. The
     ! originals contain also the items on interfaces.
@@ -1526,11 +1618,11 @@ END SUBROUTINE ZeroSplittedMatrix
     ParallelInfo => SourceMatrix % ParMatrix % ParallelInfo
     IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec)) &
          ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec( &
-	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
+          SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpXVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpXVec
     IF (.NOT. ASSOCIATED(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec)) &
          ALLOCATE(SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec( &
-	 SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
+          SourceMatrix % ParMatrix % SplittedMatrix % InsideMatrix % NumberOfRows))
     TmpRVec => SourceMatrix % ParMatrix % SplittedMatrix % TmpRVec
 
     j = 0
@@ -1576,7 +1668,7 @@ END SUBROUTINE ZeroSplittedMatrix
       ALLOCATE( SourceMatrix % Rhs(SourceMatrix % NumberOfRows) )
       SourceMatrix % Rhs = 0.0_dp
     END IF
-           
+
     j = 0
     DO i = 1, SourceMatrix % NumberOfRows
        IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
@@ -1633,7 +1725,7 @@ END SUBROUTINE ZeroSplittedMatrix
        END IF
      END DO
 
-     CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, RVec, DOFs ) 
+     CALL ExchangeResult( SourceMatrix, SplittedMatrix, ParallelInfo, RVec, DOFs )
 #endif
      !
      ! Clean the work space:
@@ -1676,10 +1768,10 @@ END SUBROUTINE ZeroSplittedMatrix
        ALLOCATE(isNeighbour(ParEnv % PEs))
        nneigh = MeshNeighbours(Mesh,isNeighbour)
      ELSE
-       nneigh = ParEnv % NumOfNeighbours
+       nneigh = ParEnvNeighbourCount( ParEnv )
        isNeighbour => ParEnv % IsNeighbour
      ENDIF
- 
+
      DO min_id=0,Parenv % PEs-1
        IF ( ParEnv % Active(min_id+1) ) EXIT
      END DO
@@ -1716,7 +1808,7 @@ END SUBROUTINE ZeroSplittedMatrix
      END DO
 
 
-     ! Compute the number of dofs owned                                         
+     ! Compute the number of dofs owned
      IF (PRESENT(nOwn)) nOwn = gind - gindp
 
      ! next pe in line needs it's base:
@@ -1806,7 +1898,7 @@ END SUBROUTINE ZeroSplittedMatrix
            CALL MPI_BSEND( buf_g(1:ssz,k),ssz,MPI_INTEGER,i-1,804,ELMER_COMM_WORLD,ierr )
          END IF
        END IF
-     END DO 
+     END DO
 
      DEALLOCATE( buf_a, buf_g, neigh, sz )
 
@@ -1842,10 +1934,10 @@ END SUBROUTINE ZeroSplittedMatrix
 !--------------------------------------------------------------------
 !> Call the parallel iterative solver
 !--------------------------------------------------------------------
-SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
-            RHSVec, Solver, SParMatrixDesc )
+RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
+    RHSVec, Solver, SParMatrixDesc )
 
-  USE, INTRINSIC :: iso_c_binding                
+  USE, INTRINSIC :: iso_c_binding
 
   TYPE (ParallelInfo_t) :: ParallelInfo
   TYPE (Matrix_t) :: SourceMatrix
@@ -1878,18 +1970,20 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   LOGICAL :: NeedMass, NeedDamp, NeedPrec, NeedILU, Found
   LOGICAL :: NewSetup, UpdateTolerance
   INTEGER :: verbosity
-  
+
   INTEGER :: nrows, ncols, nnz
   TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(LEN=MAX_NAME_LEN) :: PermonOptionsFile
+  CHARACTER(KIND=C_CHAR), ALLOCATABLE, TARGET :: PermonOptionsFileC(:)
+  INTEGER :: OptLen
   INTEGER,ALLOCATABLE::revdoflist(:)
-  INTEGER::inside   
-  CHARACTER(*), PARAMETER :: Caller = 'SParIterSolver' 
+  INTEGER::inside
+  CHARACTER(*), PARAMETER :: Caller = 'SParIterSolver'
 
   !******************************************************************
   SaveGlobalData => GlobalData
   GlobalData     => SParMatrixDesc
-  ParEnv         => SourceMatrix % Solver % ParEnv
-  ParEnv % ActiveComm = SourceMatrix % Comm
+  CALL SetMatrixParEnv( SourceMatrix, SParMatrixDesc )
   SplittedMatrix => SParMatrixDesc % SplittedMatrix
 
   Rows => SourceMatrix % Rows
@@ -1905,13 +1999,26 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
   IF (ListGetLogical(Params,'Linear System Use HYPRE', Found )) THEN
 #ifdef HAVE_HYPRE
     CALL SolveHypre(SourceMatrix,XVec,RHSVec,Solver,&
-        ParallelInfo,SplittedMatrix)    
+        ParallelInfo,SplittedMatrix)
+    GlobalData => SaveGlobalData
     RETURN
 #else
     CALL Fatal(Caller,'This version has been compiled without HYPRE!')
 #endif
   END IF
 
+
+  IF (ListGetLogical(Params,'Linear System Use Permon', Found )) THEN
+#ifdef HAVE_PERMON
+    CALL INFO(Caller,'Using permon from sparitersolver',Level=5)
+    CALL SolvePermon(SourceMatrix,XVec,RHSVec,Solver,&
+        ParallelInfo,SplittedMatrix)
+    GlobalData => SaveGlobalData
+    RETURN
+#else
+    CALL Fatal(Caller,'This version has been compiled without Permon!')
+#endif
+  END IF
 
   NeedILU = .FALSE.
   DO i=1,ParEnv % PEs
@@ -1951,7 +2058,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
       OrderList(i) % NbsGrows = CurrIf % GRows
       CALL SortI(n, OrderList(i) % NbsGRows, OrderList(i) % NbsGorder)
     END IF
-                
+
     CurrIf => SplittedMatrix % IfMatrix(i)
     n = CurrIf % NumberOfRows
     IF ( n > 0 )THEN
@@ -1964,7 +2071,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
     END IF
   END DO
 
-  
+
   GT => SplittedMatrix % GlueTable
   DO i = 1, SourceMatrix % NumberOfRows
      GRow = ParallelInfo % GlobalDOFs(i)
@@ -1972,7 +2079,7 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
      DO j = SourceMatrix % Rows(i),SourceMatrix % Rows(i+1) - 1
 
         GCol = ParallelInfo % GlobalDOFs(SourceMatrix % Cols(j))
-        
+
         IF ( GT % Inds(j) > 0 ) THEN
            SplittedMatrix % InsideMatrix % Values( GT % Inds(j) ) = &
                 SplittedMatrix % InsideMatrix % Values( &
@@ -2079,11 +2186,11 @@ SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
       ParallelInfo, RHSVec, XVec, Solver, Errinfo )
 
   GlobalData => SaveGlobalData
-  
+
 
 CONTAINS
-  
-  
+
+
 !*********************************************************************
 END SUBROUTINE SParIterSolver
 !*********************************************************************
@@ -2092,7 +2199,7 @@ END SUBROUTINE SParIterSolver
 
 SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix )
 
-  USE, INTRINSIC :: iso_c_binding                
+  USE, INTRINSIC :: iso_c_binding
 
   TYPE (Matrix_t) :: Matrix
   REAL(KIND=dp), DIMENSION(:) :: XVec, RHSVec
@@ -2101,12 +2208,12 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   TYPE (SplittedMatrixT), POINTER, OPTIONAL :: SplittedMatrix
 
 
-  CHARACTER(*), PARAMETER :: Caller = 'HypreSolver' 
+  CHARACTER(*), PARAMETER :: Caller = 'HypreSolver'
 
 #ifndef HAVE_HYPRE
   CALL Fatal(Caller,'Serial Hypre requested but the library is not linked in!')
 #else
-    
+
   ! Local variables
   LOGICAL :: Parallel
   INTEGER :: i, j, k, l, n
@@ -2128,10 +2235,10 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   TYPE(Matrix_t), POINTER :: GM, PiM
   INTEGER:: nnd,ind(2), precond
   REAL(KIND=dp), POINTER :: PrecVals(:)
-  REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)  
+  REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)
   INTEGER, ALLOCATABLE :: nodeowner(:),nodeperm(:),bperm(:), bowner(:)
 
-  
+
   INTERFACE
     !! create HYPRE matrix and setup solver/preconditioner
     SUBROUTINE SolveHYPRE1( n, Rows, Cols, Vals, Precond, PrecVals, GDOFs, &
@@ -2165,12 +2272,12 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
       INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       INTEGER(KIND=c_int) :: verbosity
     END SUBROUTINE SolveHYPRE4
-    
+
     SUBROUTINE CreateHypreAMS(nrows,rows,cols,vals,n,grows,gcols,gvals, pirows, picols, pivals, &
         perm, invperm, globaldofs, owner, Bperm,nodeowner,xvec, rhsvec, pe, ILUn, rounds, &
-        TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm ) & 
+        TOL, xx_d, yy_d, zz_d, hypremethod, hypre_intpara, hypre_dppara,verbosity,hyprecontainer,fcomm ) &
         BIND(C,name="createhypreams")
-      
+
       USE, INTRINSIC :: iso_c_binding
       INTEGER(KIND=c_int) :: nrows, n, Rows(*), Cols(*), Perm(*), INVPerm(*), &
           Grows(*), gcols(*), PE, Owner(*), Rounds, ILUn, hypremethod, fcomm, pirows(*), picols(*), &
@@ -2187,34 +2294,34 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
       INTEGER(KIND=C_INTPTR_T) :: hypreContainer
       INTEGER(KIND=c_int) :: verbosity, fcomm
     END SUBROUTINE UpdateHypre
-    
+
   END INTERFACE
 
-  
+
   CALL Info(Caller,'Solving linear system using HYPRE library',Level=6)
 
   Rows => Matrix % Rows
   Cols => Matrix % Cols
   Vals => Matrix % Values
   Params => Solver % Values
-  
+
   CALL SetHypreParameters(Params, hypremethod, ilun, hypre_dppara, hypre_intpara )
 
   TOL = ListGetCReal( Params,'Linear System Convergence Tolerance', Found )
   IF ( .NOT. Found ) TOL = 1.0d-6
-  
+
   Rounds = ListGetInteger( Params,'Linear System Max Iterations', Found )
-  IF ( .NOT. Found ) Rounds = 1000  
-  
+  IF ( .NOT. Found ) Rounds = 1000
+
   ! Hypre wants to have a continuous ascending numbering across
   ! partitions, try creating such a beast:
   ! ------------------------------------------------------------
-  Parallel = PRESENT(ParallelInfo) 
+  Parallel = PRESENT(ParallelInfo)
   IF( Parallel ) THEN
     n = SIZE(ParallelInfo % GlobalDOFs)
     ALLOCATE( Owner(n), Aperm(n) )
     CALL ContinuousNumbering(ParallelInfo,Matrix % Perm,APerm,Owner)
-    ! Newer hypre libraries require zero based indexing    
+    ! Newer hypre libraries require zero based indexing
     Aperm = Aperm-1
   ELSE
     n = Matrix % NumberOfRows
@@ -2227,14 +2334,14 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
 
   CALL SParIterActiveBarrier()
 
-  
+
   !------------------------------------------------------------
   verbosity = ListGetInteger( CurrentModel % Simulation,'Max Output Level',Found )
   IF( .NOT. Found ) verbosity = 10
 
-  NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found ) 
+  NewSetup = ListGetLogical( Params, 'Linear System Refactorize',Found )
   IF(.NOT.Found) NewSetup = .TRUE.
-  
+
   IF (ListGetLogical(Params, 'HYPRE Block Diagonal', Found)) THEN
     bilu = Solver % Variable % Dofs
   ELSE
@@ -2243,7 +2350,7 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
 
   ! AMS requites additional information and is therefore treated separately.
   DoAMS = ( ( MODULO(hypremethod,100) == 2 ) .OR. (hypremethod/100 == 2) )
-  
+
   IF (NewSetup) THEN
     IF (Matrix % Hypre /= 0) THEN
       CALL Info(Caller,'Destroy old Hypre solver structures',Level=10)
@@ -2269,14 +2376,14 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
 !       CALL Fatal(Caller,'More unknowns that edges, current Hypre AMS can not be used!')
       END IF
 
-      CALL PrepareHypreAMS() 
-      nnd = Solver % Mesh % NumberOfNodes      
+      CALL PrepareHypreAMS()
+      nnd = Solver % Mesh % NumberOfNodes
       CALL CreateHYPREAMS( Matrix % NumberOfRows, Rows, Cols, Vals, &
           nnd,GM % Rows,GM % Cols,GM % Values,PiM % Rows, PiM % Cols, PiM % Values, &
            Aperm,Aperm,Aperm,Owner, Bperm,NodeOwner,Xvec,RHSvec,ParEnv % myPE, ILUn, Rounds,TOL,  &
             xx_d,yy_d,zz_d,hypremethod,hypre_intpara, hypre_dppara,verbosity, &
              Matrix % Hypre, Matrix % Comm)
-      CALL CleanHypreAMS() 
+      CALL CleanHypreAMS()
     END IF
     CALL SolveHYPRE1( Matrix % NumberOfRows, Rows, Cols, Vals, Precond, &
         PrecVals, Aperm, Owner,  ILUn, BILU, hypremethod, hypre_intpara, hypre_dppara,&
@@ -2297,14 +2404,14 @@ SUBROUTINE SolveHypre(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix
   ! NOTE: this is only correct if the matrix has not changed,
   ! otherwise we should use the SolveHYPRE3 function, which is
   ! not implemented, yet. This function will not update the matrix
-  ! in the solver and thus solve an old system if A has changed. 
+  ! in the solver and thus solve an old system if A has changed.
   !-----------------------------------------------------------------------
   CALL Info(Caller,'Solving previously created Hypre setup',Level=10)
   CALL SolveHYPRE2( Matrix % NumberOfRows, Aperm, Owner, Xvec, RHSvec, &
       Rounds, TOL, verbosity, Matrix % Hypre, Matrix % Comm )
 
-  IF(Parallel) CALL ExchangeHypreResults()    
-  
+  IF(Parallel) CALL ExchangeHypreResults()
+
   CALL SParIterActiveBarrier()
   DEALLOCATE( Owner, Aperm )
 
@@ -2318,7 +2425,7 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
 
     Mesh => Solver % Mesh
-    
+
     nnd = Mesh % NumberOfNodes
     ALLOCATE( NodeOwner(nnd), NodePerm(nnd), Bperm(nnd))
 
@@ -2343,7 +2450,7 @@ BLOCK
 
     Nvar => VariableGet( Solver % Mesh % Variables, 'ams nodal var' )
     IF(.NOT. ASSOCIATED(NVar)) CALL Fatal(Caller,'Variable "ams nodal var" does not exist!')
-    
+
     PiM => Null()
     CALL NodalToNedelecInterpolation_GlobalMatrix(Mesh, Nvar, Solver % Variable, PiM, &
              cdim=CurrentModel % Dimension, UseNodalPermArg=.FALSE. )
@@ -2358,22 +2465,22 @@ END BLOCK
   END SUBROUTINE PrepareHypreAMS
 
 
-  SUBROUTINE CleanHypreAMS() 
-    
+  SUBROUTINE CleanHypreAMS()
+
     IF(.NOT. ASSOCIATED(GM) .OR. .NOT. ASSOCIATED(PiM)) THEN
       CALL Fatal(Caller,'Matrices "GM" and "PiM" should be allocated!')
     END IF
-    
-    DEALLOCATE(GM % Rows) 
-    DEALLOCATE(GM % Cols) 
-    DEALLOCATE(GM % Diag) 
-    DEALLOCATE(GM % Values) 
+
+    DEALLOCATE(GM % Rows)
+    DEALLOCATE(GM % Cols)
+    DEALLOCATE(GM % Diag)
+    DEALLOCATE(GM % Values)
     DEALLOCATE(GM)
 
-    DEALLOCATE(PiM % Rows) 
-    DEALLOCATE(PiM % Cols) 
-    DEALLOCATE(PiM % Diag) 
-    DEALLOCATE(PiM % Values) 
+    DEALLOCATE(PiM % Rows)
+    DEALLOCATE(PiM % Cols)
+    DEALLOCATE(PiM % Diag)
+    DEALLOCATE(PiM % Values)
     DEALLOCATE(PiM)
 
   END SUBROUTINE CleanHypreAMS
@@ -2381,7 +2488,7 @@ END BLOCK
 
   SUBROUTINE ExchangeHypreResults()
     INTEGER :: nbind
-    
+
     ALLOCATE( VecEPerNB( ParEnv % PEs ) )
     VecEPerNB = 0
     DO i = 1, Matrix % NumberOfRows
@@ -2408,7 +2515,7 @@ END BLOCK
 
 
 #endif
-  
+
 END SUBROUTINE SolveHypre
 
 
@@ -2417,7 +2524,7 @@ END SUBROUTINE SolveHypre
 !-------------------------------------------------------------------------
 !
 !-------------------------------------------------------------------------
-SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
+RECURSIVE SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
     RHSVec, XVec, Solver, ErrInfo )
 
   USE IterSolve
@@ -2432,6 +2539,7 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
   ! Local variables
 
   LOGICAL :: stat, EdgeBasis = .FALSE.
+  LOGICAL :: GotIt
   INTEGER :: i, j, k, l, nbind, dof
   INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
   REAL(KIND=dp) :: dpar(HUTI_DPAR_DFLTSIZE)
@@ -2465,23 +2573,10 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
   DEALLOCATE(r)
 
   !----------------------------------------------------------------------
-  !
   ! Initialize temporary xvec for iterator. The original XVec contains
   ! also the items on interfaces. Initialize also global pointer.
-  !
   !----------------------------------------------------------------------
 
-!  EdgeBasis = .NOT.ListGetLogicalAnyBC( CurrentModel, 'Stride Projector' )
-!  EdgeBasis = EdgeBasis.AND.ListGetLogical( Solver % Values, 'Edge Basis', stat )
-!  IF ( EdgeBasis ) THEN
-!    IF( ASSOCIATED( SplittedMatrix % InsideMatrix % Eperm) ) &
-!      DEALLOCATE( SplittedMatrix % InsideMatrix % EPerm )
-!
-!    ALLOCATE( SplittedMatrix % InsideMatrix % EPerm(SplittedMatrix % InsideMatrix % NumberOfRows) )
-!    SplittedMatrix % InsideMatrix % EPerm = 0
-!  END IF
- 
- 
   ALLOCATE( TmpXVec(SplittedMatrix % InsideMatrix % NumberOfRows) )
   j = 0
   SplittedMatrix % InsideMatrix % ExtraDOFs=0
@@ -2514,18 +2609,16 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
  !----------------------------------------------------------------------
  ! Set up the preconditioner
  !----------------------------------------------------------------------
- IF (SplittedMatrix % InsideMatrix % NumberOFRows>0) THEN
-!  IF (SplittedMatrix % InsideMatrix % Diag(1)==0) THEN
-     DO i = 1, SplittedMatrix % InsideMatrix % NumberOfRows
-       DO j = SplittedMatrix % InsideMatrix % Rows(i), &
-            SplittedMatrix % InsideMatrix % Rows(i+1) - 1
-          IF ( SplittedMatrix % InsideMatrix % Cols(j) == i ) THEN
-             SplittedMatrix % InsideMatrix % Diag(i) = j
-             EXIT
-          END IF
-        END DO
+  IF (SplittedMatrix % InsideMatrix % NumberOFRows>0) THEN
+    DO i = 1, SplittedMatrix % InsideMatrix % NumberOfRows
+      DO j = SplittedMatrix % InsideMatrix % Rows(i), &
+          SplittedMatrix % InsideMatrix % Rows(i+1) - 1
+        IF ( SplittedMatrix % InsideMatrix % Cols(j) == i ) THEN
+          SplittedMatrix % InsideMatrix % Diag(i) = j
+          EXIT
+        END IF
       END DO
-!   END IF
+    END DO
   END IF
 
 #if 0
@@ -2570,13 +2663,35 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
   END IF
 
   IF ( .NOT. SourceMatrix % COMPLEX ) THEN
-     CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
-        TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
+    IF( ListGetLogical( Solver % Values,'Linear System Skip Mask', GotIt ) ) THEN
+      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
+          TmpRHSVec, Solver, DotF=AddrFunc(MaskedSParDotProd), NormF=AddrFunc(MaskedSParNorm), &
           matVecF=AddrFunc(SParMatrixVector) )
+    ELSE
+      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
+          TmpRHSVec, Solver, DotF=AddrFunc(SParDotProd), NormF=AddrFunc(SParNorm), &
+          matVecF=AddrFunc(SParMatrixVector) )
+    END IF
   ELSE
+     ! Same keyword as the local block view built inside IterSolver, so the two
+     ! halves of the product are always in the same form.
+     IF ( ListGetLogical( Solver % Values,'Linear System Block CRS', GotIt, &
+         DefValue = .TRUE. ) ) CALL SParCBuildIfBlocks( SplittedMatrix )
+
+     ! SParCMatrixVector takes the local half against the block view and the
+     ! interface half against the interface blocks' own arrays, so it never
+     ! reads InsideMatrix % Values. Verified by poisoning that array across the
+     ! iteration at np4 and getting bit-identical norms, not by reading the
+     ! code. That lets IterSolver release it here as it does in serial.
+     ! Both complex inner products go in: IterSolver picks the unconjugated one
+     ! for CG and the Hermitian one for everything else, since it is the place
+     ! that parses the method keyword. Passing only SParCDotProd left parallel
+     ! complex CG running the Hermitian product on a complex symmetric operator,
+     ! which diverges.
      CALL IterSolver( SplittedMatrix % InsideMatrix, TmpXVec, &
-       TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
-         MatVecF=AddrFunc(SParCMatrixVector) )
+         TmpRHSVec, Solver, DotF=AddrFunc(SParCDotProd), NormF=AddrFunc(SParCNorm), &
+         MatVecF=AddrFunc(SParCMatrixVector), MatvecReadsNoValues = .TRUE., &
+         DotFU=AddrFunc(SParCDotProdU) )
   END IF
 
   IF (ASSOCIATED(CM)) THEN
@@ -2628,6 +2743,167 @@ SUBROUTINE SolveHutiter( SourceMatrix, SplittedMatrix, ParallelInfo, &
 END SUBROUTINE SolveHutiter
 !----------------------------------------------------------------------
 
+SUBROUTINE SolvePermon(Matrix, XVec, RHSVec, Solver, ParallelInfo, SplittedMatrix )
+
+  USE, INTRINSIC :: iso_c_binding  
+  USE PermonInterface
+
+  TYPE (Matrix_t) :: Matrix
+  REAL(KIND=dp), TARGET, DIMENSION(:) :: XVec, RHSVec
+  TYPE (Solver_t) :: Solver
+  TYPE (ParallelInfo_t), OPTIONAL :: ParallelInfo
+  TYPE (SplittedMatrixT), POINTER, OPTIONAL :: SplittedMatrix
+
+
+  CHARACTER(*), PARAMETER :: Caller = 'PermonSolver' 
+
+#ifndef HAVE_PERMON
+  CALL Fatal(Caller,'Permon requested but the library is not linked in!')
+#else
+    
+  ! Local variables
+  LOGICAL :: Parallel
+  INTEGER :: i, j, k, l, n
+  REAL(KIND=dp) :: TOL, hypre_dppara(10) = 0
+  INTEGER :: ILUn, BILU, Rounds, buf(2), src, status(MPI_STATUS_SIZE), ssz,nob, &
+      hypremethod,  hypre_intpara(20) = 0
+  INTEGER, DIMENSION(:), ALLOCATABLE :: VecEPerNB
+
+  INTEGER, ALLOCATABLE, TARGET :: Owner(:), Aperm(:)
+  REAL(KIND=dp), TARGET :: DummyPrecVals(1)
+  REAL(KIND=dp), POINTER :: Vals(:), c(:), cser(:)
+  INTEGER, POINTER :: Rows(:), Cols(:)
+
+  LOGICAL :: Found, NewSetup, UpdateTolerance, DoAMS
+  INTEGER :: verbosity, myverb
+  INTEGER :: nrows, ncols, nnz
+  TYPE(ValueList_t), POINTER :: Params
+  CHARACTER(LEN=MAX_STRING_LEN) :: PermonOptionsFile
+  CHARACTER(KIND=C_CHAR), ALLOCATABLE, TARGET :: PermonOptionsFileC(:)
+  INTEGER :: OptLen
+
+  TYPE(Matrix_t), POINTER :: GM, PiM, Aser
+  INTEGER:: nnd,ind(2), precond
+  REAL(KIND=dp), POINTER :: PrecVals(:)
+  REAL(KIND=dp), ALLOCATABLE :: xx_d(:),yy_d(:),zz_d(:)  
+  INTEGER, ALLOCATABLE :: nodeowner(:),nodeperm(:),bperm(:), bowner(:)
+  INTEGER :: bound
+  INTEGER :: ndim
+
+
+  CALL Info(Caller,'Solving linear system using Permon library',Level=6)
+
+  Rows => Matrix % Rows
+  Cols => Matrix % Cols
+  Vals => Matrix % Values
+  Params => Solver % Values
+
+  ! HUTI_NDIM expands to ipar(3) (macro in huti_fdefs.h).  In this
+  ! routine `ipar` is not available, so compute the dimensionality
+  ! from the Solver object instead (number of DOFs times nodes).
+  ndim = Solver % Variable % DOFs * Solver % Mesh % NumberOfNodes
+  
+  PermonOptionsFile = ListGetString( Params,'Permon Options File', Found )
+  IF (.NOT. Found .OR. LEN_TRIM(PermonOptionsFile) == 0) PermonOptionsFile = 'permonrc'
+
+  OptLen = LEN_TRIM(PermonOptionsFile)
+  ALLOCATE(PermonOptionsFileC(OptLen+1))
+  DO i = 1, OptLen
+    PermonOptionsFileC(i) = CHAR(ICHAR(PermonOptionsFile(i:i)), KIND=C_CHAR)
+  END DO
+  PermonOptionsFileC(OptLen+1) = C_NULL_CHAR
+  CALL permon_set_options_file(C_LOC(PermonOptionsFileC(1)), INT(Matrix % Comm, KIND=C_INT))
+  CALL Info(Caller,'Loaded PERMON options from file: '//TRIM(PermonOptionsFile),Level=5)
+  DEALLOCATE(PermonOptionsFileC)
+
+  TOL = ListGetCReal( Params,'Linear System Convergence Tolerance', Found )
+  IF ( .NOT. Found ) TOL = 1.0d-6
+  
+  Rounds = ListGetInteger( Params,'Linear System Max Iterations', Found )
+  IF ( .NOT. Found ) Rounds = 1000  
+  
+  ! Permon wants to have a continuous ascending numbering across
+  ! partitions, try creating such a beast:
+  ! ------------------------------------------------------------
+  Parallel = PRESENT(ParallelInfo)
+
+  ! Log the Parallel flag so users can verify at runtime whether
+  ! the optional ParallelInfo argument was passed.
+  IF (Parallel) THEN
+    CALL Info(Caller,'Parallel = TRUE (ParallelInfo present)',Level=5)
+  ELSE
+    CALL Info(Caller,'Parallel = FALSE (ParallelInfo absent)',Level=5)
+  END IF
+
+  IF( Parallel ) THEN
+    CALL Info(Caller,'USING PARALLEL PERMON',Level=5)
+    n = SIZE(ParallelInfo % GlobalDOFs)
+    ALLOCATE( Owner(n), Aperm(n) )
+    CALL ContinuousNumbering(ParallelInfo,Matrix % Perm,APerm,Owner)
+    ! Permon/Petsc indexes from 0
+    Aperm = Aperm-1
+  ELSE
+    CALL Info(Caller,'USING SERIAL PERMON',Level=1)
+    n = Matrix % NumberOfRows
+    ALLOCATE( Owner(n), Aperm(n) )
+    DO i=1,n
+      Aperm(i) = i-1
+    END DO
+    Owner = 1
+  END IF
+
+  IF (ASSOCIATED(Solver % Variable % LowerLimit)) THEN
+    bound = 0
+    cser => Solver % Variable % LowerLimit
+  ELSE IF (ASSOCIATED(Solver % Variable % UpperLimit)) THEN
+    bound = 1
+    cser => Solver % Variable % UpperLimit
+  ELSE
+    CALL Fatal('itermethod_mprgp','No limits found')
+  END IF
+
+  ! The serial matrix and limiter have different size than the parallel ones.
+  ! TODO: For future development, this **might** be causing issues in some cases
+  ! (see how scaling is done for native fortran MPRGP).
+  Aser => Solver % Matrix
+  IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
+    cser(1:ndim) = cser(1:ndim) / (Aser % DiagScaling * Aser % RhsScaling) 
+  END IF
+  IF( ParEnv % PEs == 1) THEN
+    c => cser
+  ELSE
+    ALLOCATE(c(ndim))
+    DO i=1, Aser % NumberOfRows
+      ! Matrix % Perm(i) gives the local DOF index for the i-th mesh node. 
+      ! This is because ContinuousNumbering was used
+      j = Aser % Perm(i) 
+      IF (j > 0) THEN
+         c(j) = cser(j) 
+      END IF
+    END DO
+  END IF
+
+  CALL SParIterActiveBarrier()
+    ! Pass the live Fortran arrays to the C binding.
+    CALL permon_solve( C_LOC(Rows(1)), C_LOC(Cols(1)),C_LOC(Vals(1)), &
+      INT(Matrix % NumberOfRows, KIND=C_INT), &
+      C_LOC(RHSVec(1)), C_LOC(c(1)), C_LOC(XVec(1)), &
+      INT(bound, KIND=C_INT), &
+      C_LOC(Aperm(1)), C_LOC(Owner(1)), INT(Matrix % Comm, KIND=C_INT) )   
+
+    IF( ASSOCIATED(Aser % DiagScaling ) ) THEN
+      cser(1:ndim) = cser(1:ndim) * (Aser % DiagScaling * Aser % RhsScaling) 
+    END IF
+    IF( ParEnv % PEs > 1) DEALLOCATE(c)
+
+  CALL SParIterActiveBarrier()
+  DEALLOCATE( Owner, Aperm )
+
+  CALL Info(Caller,'Finished solving linear system with PERMON',Level=12)
+
+#endif
+  
+END SUBROUTINE SolvePermon
 
 
 !---------------------------------------------------------------------
@@ -2643,12 +2919,40 @@ END SUBROUTINE SolveHutiter
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
 
-  INTEGER :: i, j, k, l, n, ni, nj, nneigh, ColInd, ierr
+  ! ipar is a vestige of the HUTI callback signature and is not read; the
+  ! matrix comes from GlobalData.
+  CALL SParMatrixVectorVals( u, v, .FALSE. )
+
+END SUBROUTINE SParMatrixVector
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+!> The parallel product, against either the stiffness or the mass coefficients.
+!>
+!> UseMass selects which sibling array the coefficients come from. It used to be
+!> expressed by the caller writing MassValues over Values -- a deep copy for
+!> each interface block and a pointer swap for the inside matrix -- and putting
+!> it all back afterwards. Selecting here costs nothing and leaves the matrix
+!> alone, which also means A % Values is never pointer-assigned to a sibling and
+!> so is always owned by the matrix.
+!----------------------------------------------------------------------
+SUBROUTINE SParMatrixVectorVals( u,v,UseMass )
+!----------------------------------------------------------------------
+
+  IMPLICIT NONE
+
+  REAL(KIND=dp), DIMENSION(*) :: u, v
+  LOGICAL :: UseMass
+  REAL(KIND=dp), POINTER :: IfVals(:)
+
+  INTEGER :: i, j, k, l, n, ni, nj, iseg, nneigh, ColInd, ierr
   TYPE(IfVecT),       POINTER :: IfV
   TYPE(IfLColsT),     POINTER :: IfL
-  TYPE(BasicMatrix_t),POINTER :: CurrIf, IfM
+  TYPE(BasicMatrix_t),POINTER :: CurrIf
   TYPE(Matrix_t),     POINTER :: InsideMatrix
   TYPE(SplittedMatrixT), POINTER :: SP
+  TYPE(MVPackT),      POINTER :: P
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
   SP           => GlobalData % SplittedMatrix
@@ -2658,6 +2962,7 @@ END SUBROUTINE SolveHutiter
   ! Post non-blocking receives into persistent buffers
   DO ni = 1, nneigh
     SP % MVRequests(ni) = MPI_REQUEST_NULL
+    SP % MVSendRequests(ni) = MPI_REQUEST_NULL
     IF ( SP % MVRecvSize(ni) > 0 ) THEN
       CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
           MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
@@ -2665,11 +2970,9 @@ END SUBROUTINE SolveHutiter
     END IF
   END DO
 
-  !$OMP PARALLEL DO
-  DO i = 1, n
-    v(i) = 0.0_dp
-  END DO
-  !$OMP END PARALLEL DO
+  ! v is not zeroed here: the interface contributions are accumulated into the
+  ! IfVec arrays, and the local product below defines v in full before anything
+  ! is added to it.
 
   ! Compute interface contributions into IfVec arrays
   DO ni = 1, nneigh
@@ -2678,6 +2981,11 @@ END SUBROUTINE SolveHutiter
     IF ( CurrIf % NumberOfRows == 0 ) CYCLE
     IfV    => SP % IfVecs(i)
     IfL    => SP % IfLCols(i)
+    IF ( UseMass ) THEN
+      IfVals => CurrIf % MassValues
+    ELSE
+      IfVals => CurrIf % Values
+    END IF
 
     !$OMP PARALLEL PRIVATE(ColInd,j,k)
     !$OMP DO
@@ -2691,7 +2999,7 @@ END SUBROUTINE SolveHutiter
         DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
           ColInd = IfL % IfVec(k)
           IF ( ColInd > 0 ) &
-            IfV % IfVec(j) = IfV % IfVec(j) + CurrIf % Values(k) * u(ColInd)
+            IfV % IfVec(j) = IfV % IfVec(j) + IfVals(k) * u(ColInd)
         END DO
       END IF
     END DO
@@ -2699,36 +3007,40 @@ END SUBROUTINE SolveHutiter
     !$OMP END PARALLEL
   END DO
 
-  ! Pack persistent send buffers and dispatch
-  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
+  ! Pack persistent send buffers along the precomputed gather and dispatch.
+  ! The buffers are ours until the waitall at the end of the routine, so the
+  ! sends go straight out of them rather than through the attached buffer.
   DO nj = 1, nneigh
     IF ( SP % MVSendSize(nj) > 0 ) THEN
-      l = 0
-      DO ni = 1, nneigh
-        i   = SP % MVNeigh(ni) + 1
-        IfV => SP % IfVecs(i)
-        IfM => SP % IfMatrix(i)
-        j   =  SP % MVNeigh(nj)
-        DO k = 1, IfM % NumberOfRows
-          IF ( IfM % RowOwner(k) == j ) THEN
-            l = l + 1
-            SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
-          END IF
+      P => SP % MVPack(nj)
+      DO iseg = 1, P % nseg
+        IfV => SP % IfVecs( P % SegIf(iseg) )
+        DO l = P % SegStart(iseg), P % SegStart(iseg+1) - 1
+          SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec( P % Row(l) )
         END DO
       END DO
-      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
-          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+      CALL MPI_ISEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, &
+          SP % MVSendRequests(nj), ierr )
     END IF
   END DO
 
-  ! Local SpMV (overlaps with MPI)
-  CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
+  ! Local SpMV (overlaps with MPI). This defines v, it does not add to it.
+  IF ( UseMass ) THEN
+    CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v, &
+        UseValues = InsideMatrix % MassValues )
+  ELSE
+    CALL CRS_MatrixVectorMultiply( InsideMatrix, u, v )
+  END IF
 
   ! Wait for receives and accumulate into v
   CALL Recv_LocIf_Wait( SP, n, v, nneigh, SP % MVNeigh, &
        SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
 
-END SUBROUTINE SParMatrixVector
+  ! Release the send buffers for the next product
+  CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
+
+END SUBROUTINE SParMatrixVectorVals
 !----------------------------------------------------------------------
 
 
@@ -2746,12 +3058,33 @@ END SUBROUTINE SParMatrixVector
   INTEGER, DIMENSION(*) :: ipar
   REAL(KIND=dp), DIMENSION(*) :: u, v
 
-  INTEGER :: i, j, k, l, n, ni, nj, ColInd, nneigh, ierr
+  ! ipar is not read; see SParMatrixVector.
+  CALL SParABSMatrixVectorVals( u, v, .FALSE. )
+
+END SUBROUTINE SParABSMatrixVector
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+!> The parallel absolute-value product, against stiffness or mass
+!> coefficients; see SParMatrixVectorVals.
+!----------------------------------------------------------------------
+SUBROUTINE SParABSMatrixVectorVals( u,v,UseMass )
+!----------------------------------------------------------------------
+
+  IMPLICIT NONE
+
+  REAL(KIND=dp), DIMENSION(*) :: u, v
+  LOGICAL :: UseMass
+  REAL(KIND=dp), POINTER :: IfVals(:)
+
+  INTEGER :: i, j, k, l, n, ni, nj, iseg, ColInd, nneigh, ierr
   TYPE(IfVecT),        POINTER :: IfV
   TYPE(IfLColsT),      POINTER :: IfL
-  TYPE(BasicMatrix_t), POINTER :: CurrIf, IfM
+  TYPE(BasicMatrix_t), POINTER :: CurrIf
   TYPE(Matrix_t),      POINTER :: InsideMatrix
   TYPE(SplittedMatrixT), POINTER :: SP
+  TYPE(MVPackT),       POINTER :: P
 
   REAL(KIND=dp) :: rsum
   REAL(KIND=dp), POINTER CONTIG :: Vals(:), Abs_Vals(:)
@@ -2764,6 +3097,7 @@ END SUBROUTINE SParMatrixVector
 
   DO ni = 1, nneigh
     SP % MVRequests(ni) = MPI_REQUEST_NULL
+    SP % MVSendRequests(ni) = MPI_REQUEST_NULL
     IF ( SP % MVRecvSize(ni) > 0 ) THEN
       CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
           MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
@@ -2779,6 +3113,11 @@ END SUBROUTINE SParMatrixVector
     i = SP % MVNeigh(ni) + 1; CurrIf => SP % IfMatrix(i)
     IF ( CurrIf % NumberOfRows == 0 ) CYCLE
     IfV => SP % IfVecs(i); IfL => SP % IfLCols(i)
+    IF ( UseMass ) THEN
+      IfVals => CurrIf % MassValues
+    ELSE
+      IfVals => CurrIf % Values
+    END IF
     !$OMP PARALLEL PRIVATE(ColInd,j,k)
     !$OMP DO
     DO j = 1, CurrIf % NumberOfRows; IfV % IfVec(j) = 0.0_dp; END DO
@@ -2788,7 +3127,7 @@ END SUBROUTINE SParMatrixVector
       IF ( CurrIf % RowOwner(j) /= ParEnv % MyPE ) THEN
         DO k = CurrIf % Rows(j), CurrIf % Rows(j+1) - 1
           ColInd = IfL % IfVec(k)
-          IF ( ColInd > 0 ) IfV % IfVec(j) = IfV % IfVec(j) + ABS(CurrIf % Values(k)) * u(ColInd)
+          IF ( ColInd > 0 ) IfV % IfVec(j) = IfV % IfVec(j) + ABS(IfVals(k)) * u(ColInd)
         END DO
       END IF
     END DO
@@ -2796,30 +3135,31 @@ END SUBROUTINE SParMatrixVector
     !$OMP END PARALLEL
   END DO
 
-  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
   DO nj = 1, nneigh
     IF ( SP % MVSendSize(nj) > 0 ) THEN
-      l = 0
-      DO ni = 1, nneigh
-        i = SP % MVNeigh(ni) + 1; IfV => SP % IfVecs(i); IfM => SP % IfMatrix(i)
-        j = SP % MVNeigh(nj)
-        DO k = 1, IfM % NumberOfRows
-          IF ( IfM % RowOwner(k) == j ) THEN
-            l = l + 1; SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
-          END IF
+      P => SP % MVPack(nj)
+      DO iseg = 1, P % nseg
+        IfV => SP % IfVecs( P % SegIf(iseg) )
+        DO l = P % SegStart(iseg), P % SegStart(iseg+1) - 1
+          SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec( P % Row(l) )
         END DO
       END DO
-      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
-          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+      CALL MPI_ISEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, &
+          SP % MVSendRequests(nj), ierr )
     END IF
   END DO
 
   Rows => InsideMatrix % Rows
   Cols => InsideMatrix % Cols
-  Vals => InsideMatrix % Values
+  IF ( UseMass ) THEN
+    Vals => InsideMatrix % MassValues
+  ELSE
+    Vals => InsideMatrix % Values
+  END IF
 
   IF ( C_ASSOCIATED(GlobalMatrix % MatvecSubr) ) THEN
-    ALLOCATE(Abs_Vals(SIZE(InsideMatrix % Values)))
+    ALLOCATE(Abs_Vals(SIZE(Vals)))
     Abs_Vals = ABS(Vals)
     CALL MatVecSubrExt(GlobalMatrix % MatVecSubr, &
         GlobalMatrix % SpMV, n,Rows,Cols,Abs_Vals,u,v,0)
@@ -2839,8 +3179,94 @@ END SUBROUTINE SParMatrixVector
   CALL Recv_LocIf_Wait( SP, n, v, nneigh, SP % MVNeigh, &
        SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
 
+  ! Release the send buffers for the next product
+  CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
+
 !----------------------------------------------------------------------
-END SUBROUTINE SParABSMatrixVector
+END SUBROUTINE SParABSMatrixVectorVals
+!----------------------------------------------------------------------
+
+
+!----------------------------------------------------------------------
+!> Build a block view of the complex interface matrices, the counterpart of
+!> CRS_BuildBlockCRS for the off-diagonal blocks that SParCMatrixVector walks.
+!>
+!> Two things are folded in that the scalar walk has to test for on every
+!> entry: rows owned by this rank contribute nothing, and entries whose local
+!> column index is not positive are skipped. Dropping both here leaves an inner
+!> product with no branch in it, and leaves every row defined, so the separate
+!> pass that zeroed IfVec is no longer needed either.
+!>
+!> The structure is built once; the values are refreshed on every call, since
+!> the interface values are rezeroed and reglued for each solve.
+!----------------------------------------------------------------------
+SUBROUTINE SParCBuildIfBlocks( SP )
+
+  IMPLICIT NONE
+  TYPE(SplittedMatrixT), POINTER :: SP
+
+  TYPE(BasicMatrix_t), POINTER :: CurrIf
+  TYPE(IfLColsT), POINTER :: IfL
+  INTEGER :: i, j, k, kb, nb
+
+  DO i = 1, ParEnv % PEs
+    CurrIf => SP % IfMatrix(i)
+    IF ( CurrIf % NumberOfRows == 0 ) CYCLE
+    IfL => SP % IfLCols(i)
+    nb = CurrIf % NumberOfRows / 2
+
+    IF ( .NOT. ALLOCATED( CurrIf % BRows ) ) THEN
+      ALLOCATE( CurrIf % BRows(nb+1) )
+      kb = 1
+      DO j = 1, nb
+        CurrIf % BRows(j) = kb
+        IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+          DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+            IF ( IfL % IfVec(k) > 0 ) kb = kb + 1
+          END DO
+        END IF
+      END DO
+      CurrIf % BRows(nb+1) = kb
+      ALLOCATE( CurrIf % BCols(kb-1), CurrIf % CValues(kb-1) )
+
+      kb = 1
+      DO j = 1, nb
+        IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+          DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+            IF ( IfL % IfVec(k) > 0 ) THEN
+              CurrIf % BCols(kb) = ( IfL % IfVec(k) + 1 ) / 2
+              kb = kb + 1
+            END IF
+          END DO
+        END IF
+      END DO
+    END IF
+
+    kb = 1
+    DO j = 1, nb
+      IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+        DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+          IF ( IfL % IfVec(k) > 0 ) THEN
+            CurrIf % CValues(kb) = CMPLX( CurrIf % Values(k), &
+                -CurrIf % Values(k+1), KIND=dp )
+            kb = kb + 1
+          END IF
+        END DO
+      END IF
+    END DO
+
+    ! Both filters are structural, so the refresh above must visit exactly the
+    ! entries the structure was built from. If it ever does not, the values are
+    ! silently misaligned with the columns, which is worth a Fatal rather than
+    ! a wrong answer.
+    IF ( kb-1 /= SIZE(CurrIf % CValues) ) THEN
+      CALL Fatal('SParCBuildIfBlocks','Interface block structure no longer matches: '// &
+          I2S(kb-1)//' entries against '//I2S(SIZE(CurrIf % CValues)))
+    END IF
+  END DO
+
+!----------------------------------------------------------------------
+END SUBROUTINE SParCBuildIfBlocks
 !----------------------------------------------------------------------
 
 
@@ -2854,19 +3280,23 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
   IMPLICIT NONE
 
   INTEGER, DIMENSION(*) :: ipar
-  COMPLEX(KIND=dp), DIMENSION(*) :: u, v
+  COMPLEX(KIND=dp), DIMENSION(*) :: u
+  COMPLEX(KIND=dp), DIMENSION(*), TARGET :: v
 
-  INTEGER :: i, j, k, l, n, ni, nj, ci, ColInd, nneigh, ierr
+  INTEGER :: i, j, k, l, n, ni, nj, iseg, ColInd, nneigh, ierr
   TYPE(IfVecT),        POINTER :: IfV
   TYPE(IfLColsT),      POINTER :: IfL
-  TYPE(BasicMatrix_t), POINTER :: CurrIf, IfM
+  TYPE(BasicMatrix_t), POINTER :: CurrIf
   TYPE(Matrix_t),      POINTER :: InsideMatrix
   TYPE(SplittedMatrixT), POINTER :: SP
-  INTEGER, POINTER :: RevInd(:)
+  TYPE(MVPackT),       POINTER :: P
 
-  COMPLEX(KIND=dp) :: A, rsum
-  REAL(KIND=dp), POINTER :: Vals(:)
-  INTEGER, POINTER :: Cols(:), Rows(:)
+  COMPLEX(KIND=dp) :: A
+
+  ! A real view of the complex result vector. The received interface data is
+  ! real and interleaved, and RevInd indexes the 2n real layout directly, so
+  ! through this view the receive and scatter is the same as in the real case.
+  REAL(KIND=dp), POINTER CONTIG :: vr(:)
 
   InsideMatrix => GlobalData % SplittedMatrix % InsideMatrix
   SP           => GlobalData % SplittedMatrix
@@ -2875,6 +3305,7 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
 
   DO ni = 1, nneigh
     SP % MVRequests(ni) = MPI_REQUEST_NULL
+    SP % MVSendRequests(ni) = MPI_REQUEST_NULL
     IF ( SP % MVRecvSize(ni) > 0 ) THEN
       CALL MPI_IRECV( SP % MVRecvBuf(ni) % rbuf, SP % MVRecvSize(ni), &
           MPI_DOUBLE_PRECISION, SP % MVNeigh(ni), 6001, &
@@ -2882,83 +3313,91 @@ SUBROUTINE SParCMatrixVector( u, v, ipar )
     END IF
   END DO
 
-  !$OMP PARALLEL DO
-  DO i = 1, n; v(i) = (0.0_dp, 0.0_dp); END DO
-  !$OMP END PARALLEL DO
+  ! v is not zeroed here: the interface contributions are accumulated into the
+  ! IfVec arrays, and the local product below defines v in full before anything
+  ! is added to it.
 
+  ! Compute interface contributions into IfVec arrays. Only the odd rows of the
+  ! interface block are traversed, the even ones carry no information of their
+  ! own, and one complex row of the product fills the pair IfVec(2j-1),IfVec(2j).
   DO ni = 1, nneigh
     i = SP % MVNeigh(ni) + 1; CurrIf => SP % IfMatrix(i)
     IF ( CurrIf % NumberOfRows == 0 ) CYCLE
     IfV => SP % IfVecs(i); IfL => SP % IfLCols(i)
-    DO j = 1, CurrIf % NumberOfRows; IfV % IfVec(j) = 0.0_dp; END DO
-    DO j = 1, CurrIf % NumberOfRows / 2
-      IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
-        DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
-          IF ( IfL % IfVec(k) > 0 ) THEN
-            ColInd = (IfL % IfVec(k)+1) / 2
-            A = CMPLX( CurrIf % Values(k), -CurrIf % Values(k+1), KIND=dp ) * u(ColInd)
-            IfV % IfVec(2*j-1) = IfV % IfVec(2*j-1) + REAL(A, KIND=dp)
-            IfV % IfVec(2*j  ) = IfV % IfVec(2*j  ) + AIMAG(A)
-          END IF
-        END DO
-      END IF
-    END DO
-  END DO
 
-  CALL CheckBuffer( 8*SUM(SP % MVSendSize) + nneigh*MPI_BSEND_OVERHEAD + 8 )
-  DO nj = 1, nneigh
-    IF ( SP % MVSendSize(nj) > 0 ) THEN
-      l = 0
-      DO ni = 1, nneigh
-        i = SP % MVNeigh(ni) + 1; IfV => SP % IfVecs(i); IfM => SP % IfMatrix(i)
-        j = SP % MVNeigh(nj)
-        DO k = 1, IfM % NumberOfRows
-          IF ( IfM % RowOwner(k) == j ) THEN
-            l = l + 1; SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec(k)
-          END IF
+    IF ( ALLOCATED( CurrIf % BRows ) ) THEN
+      ! Every block row is assigned here, the empty ones to zero, so IfVec needs
+      ! no separate clearing pass. The row and column tests the scalar walk
+      ! below makes were folded into the structure by SParCBuildIfBlocks.
+      !$OMP PARALLEL DO PRIVATE(j,k,A)
+      DO j = 1, CurrIf % NumberOfRows / 2
+        A = CMPLX( 0.0_dp, 0.0_dp, KIND=dp )
+        DO k = CurrIf % BRows(j), CurrIf % BRows(j+1)-1
+          A = A + CurrIf % CValues(k) * u( CurrIf % BCols(k) )
         END DO
+        IfV % IfVec(2*j-1) = REAL(A, KIND=dp)
+        IfV % IfVec(2*j  ) = AIMAG(A)
       END DO
-      CALL MPI_BSEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
-          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, ierr )
+      !$OMP END PARALLEL DO
+    ELSE
+      !$OMP PARALLEL PRIVATE(ColInd,j,k,A)
+      !$OMP DO
+      DO j = 1, CurrIf % NumberOfRows
+        IfV % IfVec(j) = 0.0_dp
+      END DO
+      !$OMP END DO
+      !$OMP DO
+      DO j = 1, CurrIf % NumberOfRows / 2
+        IF ( CurrIf % RowOwner(2*j-1) /= ParEnv % MyPE ) THEN
+          DO k = CurrIf % Rows(2*j-1), CurrIf % Rows(2*j)-1, 2
+            IF ( IfL % IfVec(k) > 0 ) THEN
+              ColInd = (IfL % IfVec(k)+1) / 2
+              A = CMPLX( CurrIf % Values(k), -CurrIf % Values(k+1), KIND=dp ) * u(ColInd)
+              IfV % IfVec(2*j-1) = IfV % IfVec(2*j-1) + REAL(A, KIND=dp)
+              IfV % IfVec(2*j  ) = IfV % IfVec(2*j  ) + AIMAG(A)
+            END IF
+          END DO
+        END IF
+      END DO
+      !$OMP END DO
+      !$OMP END PARALLEL
     END IF
   END DO
 
-  Rows => InsideMatrix % Rows
-  Cols => InsideMatrix % Cols
-  Vals => InsideMatrix % Values
-
-  !$OMP PARALLEL DO PRIVATE(j,A,rsum)
-  DO i = 1, n
-    rsum = (0.0_dp, 0.0_dp)
-    DO j = Rows(2*i-1), Rows(2*i)-1, 2
-      A = CMPLX( Vals(j), -Vals(j+1), KIND=dp )
-      rsum = rsum + A * u(Cols(j+1)/2)
-    END DO
-    v(i) = v(i) + rsum
+  DO nj = 1, nneigh
+    IF ( SP % MVSendSize(nj) > 0 ) THEN
+      P => SP % MVPack(nj)
+      DO iseg = 1, P % nseg
+        IfV => SP % IfVecs( P % SegIf(iseg) )
+        DO l = P % SegStart(iseg), P % SegStart(iseg+1) - 1
+          SP % MVSendBuf(nj) % rbuf(l) = IfV % IfVec( P % Row(l) )
+        END DO
+      END DO
+      CALL MPI_ISEND( SP % MVSendBuf(nj) % rbuf, SP % MVSendSize(nj), &
+          MPI_DOUBLE_PRECISION, SP % MVNeigh(nj), 6001, ELMER_COMM_WORLD, &
+          SP % MVSendRequests(nj), ierr )
+    END IF
   END DO
-  !$OMP END PARALLEL DO
 
-  ! MPI_REQUEST_NULL entries are completed immediately per MPI standard
-  CALL MPI_Waitall( nneigh, SP % MVRequests, MPI_STATUSES_IGNORE, ierr )
+  ! Local SpMV (overlaps with MPI). This defines v, it does not add to it.
+  ! Where a block view of the local matrix has been built, take the product
+  ! against that instead: one contiguous COMPLEX per block rather than two
+  ! reals strided out of the fourfold redundant real form. The interface blocks
+  ! above are on a block view of their own, built by SParCBuildIfBlocks; only a
+  ! block that never got one falls back to the strided walk.
+  IF ( ASSOCIATED( InsideMatrix % BCols ) ) THEN
+    CALL CRS_BlockComplexMatrixVectorMultiply( InsideMatrix, u, v )
+  ELSE
+    CALL CRS_ComplexMatrixVectorMultiply( InsideMatrix, u, v )
+  END IF
 
-  ! Scatter received real-interleaved data into complex v:
-  ! RevInd(k) is 1-based into a 2n real array; odd = real part, even = imag part
-  DO ni = 1, nneigh
-    IF ( SP % MVRecvSize(ni) <= 0 ) CYCLE
-    i = SP % MVNeigh(ni) + 1
-    RevInd => SP % VecIndices(i) % RevInd
-    DO k = 1, SP % MVRecvSize(ni)
-      l = RevInd(k)
-      IF ( l > 0 ) THEN
-        ci = (l + 1) / 2
-        IF ( MOD(l, 2) == 1 ) THEN
-          v(ci) = v(ci) + SP % MVRecvBuf(ni) % rbuf(k)
-        ELSE
-          v(ci) = v(ci) + CMPLX(0.0_dp, SP % MVRecvBuf(ni) % rbuf(k), KIND=dp)
-        END IF
-      END IF
-    END DO
-  END DO
+  ! Wait for receives and accumulate into v through its real view
+  CALL C_F_POINTER( C_LOC(v(1)), vr, [2*n] )
+  CALL Recv_LocIf_Wait( SP, 2*n, vr, nneigh, SP % MVNeigh, &
+       SP % MVRecvSize, SP % MVRequests, SP % MVRecvBuf )
+
+  ! Release the send buffers for the next product
+  CALL MPI_Waitall( nneigh, SP % MVSendRequests, MPI_STATUSES_IGNORE, ierr )
 
 !*********************************************************************
 END SUBROUTINE SParCMatrixVector
@@ -3010,7 +3449,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
       CYCLE
       !CALL Fatal('CountNeighbourConns','Neighbours not associated: '//I2S(i))
     END IF
-    
+
     !    IF ( ParallelInfo % GInterface(i) ) THEN
         IF ( ParallelInfo % NeighbourList(i) % Neighbours(1) == ParEnv % MyPE ) THEN
            DO j = 1, SIZE( ParallelInfo % NeighbourList(i) % Neighbours )
@@ -3025,7 +3464,7 @@ SUBROUTINE CountNeighbourConns( SourceMatrix, SplittedMatrix, ParallelInfo )
         END IF
 !    END IF
   END DO
-  
+
   !----------------------------------------------------------------------
   !
   ! Allocate some buffers for communication
@@ -3115,7 +3554,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
      RETURN
 
   END IF
-        
+
   !----------------------------------------------------------------------
   !
   ! First we have to compute the storage allocations
@@ -3186,7 +3625,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
         i1 = i1 + 1
 
      ELSE IF ( Ind /= -1 ) THEN
-              
+
         DMat % Rows(Row)  = Col
         DMat % GRows(Row) = SMat1 % GRows(i1)
         DMat % RowOwner(Row) = SMat1 % RowOwner(i1)
@@ -3209,7 +3648,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
               j1 = j1 + 1
               CYCLE
             ELSE IF (j2 >= SMat2 % Rows(Ind+1) ) THEN
-              
+
               DMat % Cols(col) = SMat1 % Cols(j1)
               Col = Col + 1
               j1 = j1 + 1
@@ -3238,7 +3677,7 @@ SUBROUTINE CombineCRSMatIndices ( SMat1, SMat2, DMat )
             END IF
           END IF
           IF ( SMat1 % Cols(j1) == SMat2 % Cols(j2) ) THEN
-            
+
             DMat % Cols(col) = SMat1 % Cols(j1)
             Col = Col + 1
             j1 = j1 + 1
@@ -3294,7 +3733,7 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
   INTEGER :: i, j, k, l, RowInd, Rows, ColInd, ColIndA, lstart, lstop
   TYPE (BasicMatrix_t), DIMENSION(:), ALLOCATABLE :: RecvdIfMatrix
 
-  LOGICAL :: Found, NeedMass, NeedDamp, NeedPrec, NeedILU
+  LOGICAL :: Found, NeedMass, NeedDamp, NeedPrec, NeedILU, Cplx
 
   !*******************************************************************
 
@@ -3320,8 +3759,19 @@ SUBROUTINE GlueFinalize( SourceMatrix, SplittedMatrix, ParallelInfo )
   ALLOCATE( RecvdIfMatrix(ParEnv % PEs) )
   RecvdIfMatrix(:) % NumberOfRows = 0
 
+  ! Half of a complex interface block is derivable from the other half, so
+  ! offer the exchange the chance to send odd rows only. This is a hint and not
+  ! an assertion: ExchangeIfValues checks the form of each block itself and
+  ! falls back to the whole one per neighbour. The keyword exists to measure
+  ! against, the saving being once per solve rather than per iteration.
+  Cplx = SourceMatrix % COMPLEX
+  IF ( Cplx .AND. ASSOCIATED(SourceMatrix % Solver) ) THEN
+    Cplx = ListGetLogical( SourceMatrix % Solver % Values, &
+        'Linear System Halve Interface Exchange', Found, DefValue = .TRUE. )
+  END IF
+
   CALL ExchangeIfValues(SplittedMatrix % NbsIfMatrix, &
-     RecvdIfMatrix, NeedMass, NeedDamp, NeedPrec, NeedILU )
+     RecvdIfMatrix, NeedMass, NeedDamp, NeedPrec, NeedILU, Cplx )
 
   !----------------------------------------------------------------------
   !
@@ -3482,7 +3932,7 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
 
   INTEGER :: NewRow, NewCol,old_nv,nc
   INTEGER :: p,i,j,k,l,RowInd,ColInd,GCol
-  
+
   !*********************************************************************
   !
   ! Compression of the matrix is done in place and lengths are
@@ -3542,7 +3992,7 @@ SUBROUTINE ClearInsideC( SourceMatrix, InsideMatrix, &
            NewRow = NewRow + 1
         END IF
         old_nv = NewCol
-           
+
      END DO
      RecvdIfMatrix(p) % Rows(NewRow) = NewCol
      RecvdIfMatrix(p) % NumberOfRows  = NewRow - 1

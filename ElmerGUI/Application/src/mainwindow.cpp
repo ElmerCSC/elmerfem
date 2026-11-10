@@ -48,6 +48,7 @@
 #include <QStringList>
 #include <QSystemTrayIcon>
 #include <QTimeLine>
+#include <QtGlobal>  /* for QT_VERSION_CHECK with Qt4 or Qt5 */
 #include <QtGui>
 
 #include <fstream>
@@ -73,6 +74,28 @@ VtkPost *vtkp;
 using namespace std;
 
 #undef MPICH2
+
+#if defined(_WIN32)
+static QString ElmerGUI_BinDir()
+{
+  // Helper function to get the directory with the Elmer binaries.
+  static QString bindir;
+
+  if (! bindir.isEmpty())
+    return bindir;
+
+  QByteArray elmer_home = qgetenv("ELMER_HOME");
+  if (! elmer_home.isEmpty())
+  {
+    // ELMER_HOME is the path to the root where Elmer is installed
+    bindir = QString(elmer_home) + "/bin";
+    return bindir;
+  }
+
+  bindir = QCoreApplication::applicationDirPath();
+  return bindir;
+}
+#endif
 
 // Construct main window...
 //-----------------------------------------------------------------------------
@@ -154,12 +177,40 @@ MainWindow::MainWindow() {
   meshingThread = new MeshingThread(this);
   meshutils = new Meshutils;
   solverLogWindow = new SolverLogWindow(this);
+
   solver = new QProcess(this);
   post = new QProcess(this);
   paraview = new QProcess(this);
   compiler = new QProcess(this);
   meshSplitter = new QProcess(this);
   meshUnifier = new QProcess(this);
+
+#if defined(_WIN32)
+  // Windows does not have an RPATH mechanism.
+  // Assume that all Elmer binaries are installed at the same prefix as
+  // ElmerGUI and prepend the directory with the Elmer binaries to the PATH
+  // environment variable of the child processes.
+  // NOTE: DLLs in the working directory might still take precedence in the
+  // load order.
+  QString bindir = ElmerGUI_BinDir();
+  QProcessEnvironment processEnv = QProcessEnvironment::systemEnvironment();
+  QString pathStr = processEnv.value("PATH");
+  if (pathStr.isEmpty())
+    // This should never be empty. But be on the save side.
+    pathStr = ElmerGUI_BinDir();
+  else
+    pathStr.prepend(ElmerGUI_BinDir() + QDir::listSeparator());
+  processEnv.insert("PATH", pathStr);
+
+  solver->setProcessEnvironment(processEnv);
+  post->setProcessEnvironment(processEnv);
+  paraview->setProcessEnvironment(processEnv);
+  compiler->setProcessEnvironment(processEnv);
+  meshSplitter->setProcessEnvironment(processEnv);
+  meshUnifier->setProcessEnvironment(processEnv);
+#endif
+
+
   generalSetup = new GeneralSetup(this);
   summaryEditor = new SummaryEditor(this);
   sifGenerator = new SifGenerator;
@@ -1426,16 +1477,11 @@ void MainWindow::newProjectSlot() {
     for (int i = 0; i < dlg.ui.listWidget_selectedSolvers->count(); i++) {
       message = "Load " + extraDirPath + "/" +
                 dlg.ui.listWidget_selectedSolvers->item(i)->text() + "... ";
-#if WITH_QT5 || WITH_QT6
-      cout << string(message.toLatin1());
-      cout.flush();
-#else
-      cout << string(message.toAscii());
-      cout.flush();
-#endif
+      std::cout << message.toLocal8Bit().data();
+      std::cout.flush();
       edfEditor->appendFrom(extraDirPath + "/" +
                             dlg.ui.listWidget_selectedSolvers->item(i)->text());
-      cout << " done" << endl;
+      std::cout << " done" << std::endl;
     }
 
     if (bStartMeshing)
@@ -1457,23 +1503,15 @@ void MainWindow::parseCmdLine() {
     QFileInfo fileInfo(fileName);
 
     if (!fileInfo.exists()) {
-#if WITH_QT5 || WITH_QT6
-      cout << "Input file \"" << fileName.toLatin1().data()
-           << "\" does not exist" << endl;
-#else
-      cout << "Input file \"" << fileName.toAscii().data()
-           << "\" does not exist" << endl;
-#endif
+      std::cout << "Input file \"" << fileName.toLocal8Bit().data()
+                << "\" does not exist" << std::endl;
       QApplication::closeAllWindows();
       exit(0);
     }
 
     if (fileName.left(1) != "-") {
-#if WITH_QT5 || WITH_QT6
-      cout << "Reading input file " << fileName.toLatin1().data() << endl;
-#else
-      cout << "Reading input file " << fileName.toAscii().data() << endl;
-#endif
+      std::cout << "Reading input file " << fileName.toLocal8Bit().data()
+                << std::endl;
       readInputFile(fileName);
       remeshSlot();
     }
@@ -1539,11 +1577,7 @@ void MainWindow::readInputFile(QString fileName) {
   QString baseName = fi.baseName();
   QString fileSuffix = fi.suffix();
   QString baseFileName = absolutePath + "/" + baseName;
-#if WITH_QT5 || WITH_QT6
-  sprintf(cs, "%s", baseFileName.toLatin1().data());
-#else
-  sprintf(cs, "%s", baseFileName.toAscii().data());
-#endif
+  sprintf(cs, "%s", baseFileName.toLocal8Bit().data());
 
   fileSuffix = fileSuffix.toLower();
   activeGenerator = GEN_UNKNOWN;
@@ -1659,13 +1693,8 @@ void MainWindow::readInputFile(QString fileName) {
     activeGenerator = GEN_ELMERGRID;
     cout << "Selected elmergrid" << endl;
 
-#if WITH_QT5 || WITH_QT6
     int errstat = elmergridAPI->loadElmerMeshStructure(
-        (const char *)(fileName.toLatin1()));
-#else
-    int errstat = elmergridAPI->loadElmerMeshStructure(
-        (const char *)(fileName.toAscii()));
-#endif
+        fileName.toLocal8Bit().data());
 
     if (errstat)
       logMessage("loadElmerMeshStructure failed!");
@@ -1784,11 +1813,7 @@ void MainWindow::loadElmerMesh(QString dirName) {
 
   glWidget->newMesh();
 
-#if WITH_QT5 || WITH_QT6
-  bool success = glWidget->getMesh()->load(dirName.toLatin1().data());
-#else
-  bool success = glWidget->getMesh()->load(dirName.toAscii().data());
-#endif
+  bool success = glWidget->getMesh()->load(dirName.toLocal8Bit().data());
 
   if (!success) {
     glWidget->getMesh()->clear();
@@ -1930,7 +1955,7 @@ bool MainWindow::saveProject(QString projectDirName) {
   // System copy command:
   QString cmd("cp -f " + pathName + "/" + baseName + ".* " + projectDirName);
 
-  if (system(cmd.toLatin1().data()))
+  if (system(cmd.toLocal8Bit().data()))
     logMessage("Geometry input file(s) not copied");
 
   QDomElement geomInput(projectDoc.createElement("geometryinputfile"));
@@ -2747,11 +2772,7 @@ void MainWindow::saveElmerMesh(QString dirName) {
 
   // Save mesh files:
   //------------------
-#if WITH_QT5 || WITH_QT6
-  glWidget->getMesh()->save(dirName.toLatin1().data());
-#else
-  glWidget->getMesh()->save(dirName.toAscii().data());
-#endif
+  glWidget->getMesh()->save(dirName.toLocal8Bit().data());
 
   // Save solver input file:
   //-------------------------
@@ -2773,12 +2794,10 @@ void MainWindow::saveElmerMesh(QString dirName) {
   file.open(QIODevice::WriteOnly);
   QTextStream startinfo(&file);
 
-#if WITH_QT6
-  startinfo << sifName.toLatin1() << Qt::endl << "1" << Qt::endl;
-#elif WITH_QT5
-  startinfo << sifName.toLatin1() << endl << "1" << endl;
+#if QT_VERSION >= QT_VERSION_CHECK(5,14,0)
+  startinfo << sifName.toLocal8Bit() << Qt::endl << "1" << Qt::endl;
 #else
-  startinfo << sifName.toAscii() << endl << "1" << endl;
+  startinfo << sifName.toLocal8Bit() << std::endl << "1" << std::endl;
 #endif
 
   file.close();
@@ -2852,11 +2871,7 @@ void MainWindow::grabFrameSlot() {
   QImage image(glWidget->grabFrameBuffer(withAlpha));
 #endif
 
-#if WITH_QT5 || WITH_QT6
-  bool success(image.save(pictureFileName, suffix.toLatin1(), imageQuality));
-#else
-  bool success(image.save(pictureFileName, suffix.toAscii(), imageQuality));
-#endif
+  bool success(image.save(pictureFileName, suffix.toLocal8Bit(), imageQuality));
 
   if (!success)
     logMessage("Failed writing picture file");
@@ -5106,7 +5121,11 @@ void MainWindow::showVtkPostSlot() {
 
     logMessage("Executing: " + unifyingCommand);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    meshUnifier->startCommand(unifyingCommand);
+#else
     meshUnifier->start(unifyingCommand);
+#endif
 
     if (!meshUnifier->waitForStarted()) {
       solverLogWindow->getTextEdit()->append(
@@ -5292,13 +5311,8 @@ void MainWindow::remeshSlot() {
     glWidget->newMesh();
     mesh_t *mesh = glWidget->getMesh();
 
-#if WITH_QT5 || WITH_QT6
     elmergridAPI->createElmerMeshStructure(
-        mesh, meshControl->elmerGridControlString.toLatin1());
-#else
-    elmergridAPI->createElmerMeshStructure(
-        mesh, meshControl->elmerGridControlString.toAscii());
-#endif
+        mesh, meshControl->elmerGridControlString.toLocal8Bit());
 
     if (mesh->getSurfaces() == 0)
       meshutils->findSurfaceElements(mesh);
@@ -5361,13 +5375,8 @@ void MainWindow::remeshSlot() {
     nglib::Ng_Init();
 
     char backgroundmesh[1024];
-#if WITH_QT5 || WITH_QT6
     sprintf(backgroundmesh, "%s",
-            meshControl->nglibBackgroundmesh.toLatin1().data());
-#else
-    sprintf(backgroundmesh, "%s",
-            meshControl->nglibBackgroundmesh.toAscii().data());
-#endif
+            meshControl->nglibBackgroundmesh.toLocal8Bit().data());
 
     mp.maxh = meshControl->nglibMaxH.toDouble();
     mp.fineness = meshControl->nglibFineness.toDouble();
@@ -5389,17 +5398,9 @@ void MainWindow::remeshSlot() {
         // STL: regenerate structures for nglib:
         //--------------------------------------
         // check if input file is in ascii or binary format
-#if WITH_QT5 || WITH_QT6
-        int stlbinary = checkStlForAscii(stlFileName.toLatin1().data());
-#else
-        int stlbinary = checkStlForAscii(stlFileName.toAscii().data());
-#endif
+        int stlbinary = checkStlForAscii(stlFileName.toLocal8Bit().data());
 
-#if WITH_QT5 || WITH_QT6
-        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLatin1().data(), stlbinary);
-#else
-        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toAscii().data(), stlbinary);
-#endif
+        nggeom = nglib::Ng_STL_LoadGeometry(stlFileName.toLocal8Bit().data(), stlbinary);
 
         if (!nggeom) {
           logMessage("Ng_STL_LoadGeometry failed");
@@ -5446,11 +5447,7 @@ void MainWindow::remeshSlot() {
 
         ngmesh = nglib::Ng_NewMesh();
 
-#if WITH_QT5 || WITH_QT6
-        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLatin1().data());
-#else
-        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toAscii().data());
-#endif
+        nggeom2d = nglib::Ng_LoadGeometry_2D(in2dFileName.toLocal8Bit().data());
 
         if (!nggeom2d) {
           logMessage("Ng_LoadGeometry_2D failed");
@@ -6638,7 +6635,11 @@ void MainWindow::runsolverSlot() {
 
       logMessage("Executing: " + partitioningCommand);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+      meshSplitter->startCommand(partitioningCommand);
+#else
       meshSplitter->start(partitioningCommand);
+#endif
 
       if (!meshSplitter->waitForStarted()) {
         logMessage("Unable to start ElmerGrid for mesh partitioning - aborted");
@@ -6696,7 +6697,7 @@ void MainWindow::meshSplitterFinishedSlot(int exitCode) {
   int nofProcessors = ui.nofProcessorsSpinBox->value();
 
   QString parallelExec = ui.parallelExecLineEdit->text().trimmed();
-#ifdef WIN32
+#if defined (_WIN32)
   parallelExec = "\"" + parallelExec + "\"";
 #endif
 
@@ -6707,7 +6708,11 @@ void MainWindow::meshSplitterFinishedSlot(int exitCode) {
 
   logMessage("Executing: " + parallelCmd);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+  solver->startCommand(parallelCmd);
+#else
   solver->start(parallelCmd);
+#endif
   killsolverAct->setEnabled(true);
 
   if (!solver->waitForStarted()) {
@@ -7075,7 +7080,11 @@ void MainWindow::resultsSlot() {
 
     logMessage("Executing: " + unifyingCommand);
 
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    meshUnifier->startCommand(unifyingCommand);
+#else
     meshUnifier->start(unifyingCommand);
+#endif
 
     if (!meshUnifier->waitForStarted()) {
       solverLogWindow->getTextEdit()->append(
@@ -7212,19 +7221,14 @@ void MainWindow::compileSolverSlot() {
     return;
   }
 
+#ifdef _WIN32
+  QString compilerWrapper = ElmerGUI_BinDir() + "/elmerf90.exe";
   QStringList args;
-#ifdef WIN32
-  args << "/C";
-  args << "" + QString(qgetenv("ELMER_HOME")) + "\\bin\\elmerf90.bat";
-  QString dllFileName;
-  dllFileName = fileName.left(fileName.lastIndexOf(".")) + ".dll";
   args << "-o";
-  args << dllFileName;
-#endif
+  args << fileName.left(fileName.lastIndexOf(".")) + ".dll";
   args << fileName;
 
-#ifdef WIN32
-  compiler->start("cmd.exe", args);
+  compiler->start(compilerWrapper, args);
 #else
   logMessage("Run->compiler is currently not implemented on this platform");
   return;
@@ -7268,10 +7272,11 @@ void MainWindow::compilerStderrSlot() {
 
 // Signal (int) emitted by compiler when finished:
 //-----------------------------------------------------------------------------
-void MainWindow::compilerFinishedSlot(int) {
-  logMessage("Ready");
-  solverLogWindow->statusBar()->showMessage("Ready");
-  solverLogWindow->getTextEdit()->append("Ready");
+void MainWindow::compilerFinishedSlot(int exitCode) {
+  QString msg = QString("Compilation finished with exit code %1").arg(exitCode);
+  logMessage(msg);
+  solverLogWindow->statusBar()->showMessage(msg);
+  solverLogWindow->getTextEdit()->append(msg);
 }
 
 //*****************************************************************************
@@ -7283,8 +7288,8 @@ void MainWindow::compilerFinishedSlot(int) {
 // About dialog...
 //-----------------------------------------------------------------------------
 
-void MainWindow::showaboutSlot() {
 
+void MainWindow::showaboutSlot() {
   QMessageBox msgBox(this);
   msgBox.setTextFormat(Qt::RichText);
   QIcon icon(windowIcon());
@@ -7294,9 +7299,8 @@ void MainWindow::showaboutSlot() {
       tr("<P>ElmerGUI is a preprocessor for two and "
          "three dimensional modeling with Elmer "
          "finite element software. The program "
-         "uses elmergrid, nglib, and optionally tetlib, "
+         "uses ElmerGrid, NgLib, and optionally TetLib, "
          "as finite element mesh generators:<BR>"
-         "<A HREF='https://www.csc.fi/elmer/'>https://www.csc.fi/elmer/</A><BR>"
          "<A HREF='https://ngsolve.org/'>https://ngsolve.org/</A><BR>"
          "<A HREF='https://www.berlios.de/software/tetgen/'>https://www.berlios.de/software/tetgen/</A></P>"
          "<P>ElmerGUI uses the Qt Cross-Platform "
@@ -7308,24 +7312,20 @@ void MainWindow::showaboutSlot() {
          "(VTK):<BR>"
          "<A HREF='https://vtk.org/'>https://vtk.org/</A></P>"
 #endif
-
 #ifdef EG_PARAVIEW
          "<P>This version of ElmerGUI has been linked "
          "against ParaView visualization software.<BR>"
          "<A HREF='https://www.paraview.org/'>https://www.paraview.org</A></P>"
 #endif
-
 #ifdef EG_OCC
          "<P>This version of ElmerGUI has been compiled with "
          "the OpenCascade solids modeling library:<BR>"
-         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</P>"
+         "<A HREF='https://www.opencascade.org/'>https://www.opencascade.org/</A></P>"
 #endif
-
 #ifdef EG_QWT
          "<P>This version of ElmerGUI is based in part on the work of the Qwt project.<BR>"
          "<A HREF='http://qwt.sf.net'>http://qwt.sf.net</A></P>"
 #endif
-
 #ifdef MPICH2
          "<P>The parallel solver of this package has been linked "
          "against the MPICH2 library v. 1.0.7 from Argonne "
@@ -7341,10 +7341,20 @@ void MainWindow::showaboutSlot() {
          "from the git repository<BR>"
          "<A HREF='https://github.com/ElmerCSC/elmerfem/'>https://github.com/ElmerCSC/elmerfem/</A></P>"
          "<P>Written by Mikko Lyly, Saeki Takayuki, Juha Ruokolainen, "
-         "Peter Råback and Sampo Sillanpaa 2008-2023</P>"
+         "Peter Råback and Sampo Sillanpaa 2008-2026</P>"
          "<P>Compiled on " __DATE__ "</P>"));
+
+  // Make all embedded hyperlinks (in both the main text and the
+  // informative text) clickable and openable in the default browser.
+  for (QLabel *lbl : msgBox.findChildren<QLabel *>()) {
+    lbl->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    lbl->setOpenExternalLinks(true);
+  }
+
   msgBox.exec();
 }
+
+
 
 void MainWindow::getStartedSlot() {
   QMessageBox msgBox(this);
@@ -7357,28 +7367,29 @@ void MainWindow::getStartedSlot() {
 	"GetStartedElmer.pdf contains instructions for Windows users, "
 	"along with useful information for Linux users."
 	"</P>"
-	"<A HREF='//www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf'>GetStartedElmer.pdf</A>"
+	"<A HREF='https://www.nic.funet.fi/index/elmer/doc/GetStartedElmer.pdf'>GetStartedElmer.pdf</A>"
 	"<P>"
 	"Download the full set of Elmer documentation from:"
 	"</P>"
-	"<A HREF='//www.nic.funet.fi/index/elmer/doc/'>//www.nic.funet.fi/index/elmer/doc/</A>"
+	"<A HREF='https://www.nic.funet.fi/index/elmer/doc/'>www.nic.funet.fi/index/elmer/doc/</A>"
 	"<P>"
 	"Be sure to review ElmerSolverManual.pdf and ElmerModelsManual.pdf<BR><BR>"
 	"Youtube has videos about Elmer and Elmer Webinars"
 	"</P>"
-	"<A HREF='//www.youtube.com/@elmerfem'>Elmer Youtube Webinars and videos</A>"
+	"<A HREF='https://www.youtube.com/@elmerfem'>Elmer Youtube Webinars and videos</A>"
 	"<P>"
 	"The Elmer users forum can be found at:"
 	"</P>"
-	"<A HREF='//http://www.elmerfem.org/forum/'>//http://www.elmerfem.org/forum/</A>"
+	"<A HREF='https://www.elmerfem.org/forum/'>www.elmerfem.org/forum/</A>"
 	"<P>"
 	"After having reviewed some of the above documents, and "
 	"trying out a few of the tutorials, feel free to post questions on "
 	"the forum.  To help get answers in a timely fashion, be sure to "
 	"post a minimal working example, including a sif file and "
-	"geometry file.  ElmerGUI project folders can be archived into zip "
-	"files or gz files.  The forum allows up to 3 attachments per "
-	"post and up to 1 Megabyte per post.<BR><BR>"
+	"geometry file. <BR><BR>"
+	//ElmerGUI project folders can be archived into zip "
+	//"files or gz files.  The forum allows up to 3 attachments per "
+	//"post and up to 1 Megabyte per post.<BR><BR>"
 	"Context Sensitive Help<BR><BR>"
 	"Some of the ElmerGUI menu items have context sensitive help text.  "
 	"Look for the button labeled 'Whatis'.  Clicking on the 'Whatis' button "
@@ -7392,6 +7403,14 @@ void MainWindow::getStartedSlot() {
 	"entry box, press 'shift F1'.  If help text is available, then it will be displayed."
 	"</P>"
   ));
+
+  // Make the embedded hyperlinks clickable and openable in the default browser.
+  QLabel *label = msgBox.findChild<QLabel *>("qt_msgbox_label");
+  if (label) {
+    label->setTextInteractionFlags(Qt::TextBrowserInteraction);
+    label->setOpenExternalLinks(true);
+  }
+
   msgBox.exec();
 }
 
@@ -7405,13 +7424,9 @@ void MainWindow::getStartedSlot() {
 // Log message...
 //-----------------------------------------------------------------------------
 void MainWindow::logMessage(QString message) {
-#if WITH_QT5 || WITH_QT6
-  cout << string(message.toLatin1()) << endl;
-#else
-  cout << string(message.toAscii()) << endl;
-#endif
+  std::cout << message.toLocal8Bit().data() << std::endl;
   statusBar()->showMessage(message, 0);
-  cout.flush();
+  std::cout.flush();
 }
 
 // Synchronize menu to GL glwidget state variables:
@@ -7535,12 +7550,8 @@ void MainWindow::loadDefinitions() {
 
   // Load general definitions file:
   //--------------------------------
-#if WITH_QT5 || WITH_QT6
-  cout << "Load " << string(generalDefs.toLatin1()) << "... ";
-#else
-  cout << "Load " << string(generalDefs.toAscii()) << "... ";
-#endif
-  cout.flush();
+  std::cout << "Load " << generalDefs.toLocal8Bit().data() << "... ";
+  std::cout.flush();
   updateSplash("Loading general definitions...");
 
   QFile file(generalDefs);
@@ -7618,12 +7629,8 @@ void MainWindow::loadDefinitions() {
 
     if ((fileSuffix == "xml") && (fileName != generalDefs)) {
 
-#if WITH_QT5 || WITH_QT6
-      cout << "Load " << string(fileName.toLatin1()) << "... ";
-#else
-      cout << "Load " << string(fileName.toAscii()) << "... ";
-#endif
-      cout.flush();
+      std::cout << "Load " << fileName.toLocal8Bit().data() << "... ";
+      std::cout.flush();
 
       updateSplash("Loading " + fileName + "...");
 
@@ -8069,17 +8076,12 @@ bool MainWindow::loadExtraSolver(QString solverName) {
 
                 message =
                     "Load " + extraDirPath + "/" + fileNameList.at(i) + "... ";
-#if WITH_QT5 || WITH_QT6
-                cout << string(message.toLatin1());
-                cout.flush();
-#else
-                cout << string(message.toAscii());
-                cout.flush();
-#endif
+                std::cout << message.toLocal8Bit().data();
+                std::cout.flush();
 
                 edfEditor->appendFrom(extraDirPath + "/" + fileNameList.at(i));
 
-                cout << "done" << endl;
+                std::cout << "done" << std::endl;
 
                 return true;
               }
