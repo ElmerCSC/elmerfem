@@ -190,8 +190,8 @@ CONTAINS
 
        ! The global numbering of the matrix rows depends on the discretization.
        !--------------------------------------------------------------------
-       IF( ListGetLogical( Solver % Values,'CutFEM', Found ) ) THEN
-         CALL MatrixParallelInfoCutFEM( Solver, Matrix, Perm, DOFs )
+       IF( ListGetLogical( Solver % Values,'SplitFEM', Found ) ) THEN
+         CALL MatrixParallelInfoSplitFEM( Solver, Matrix, Perm, DOFs )
        ELSE IF ( Matrix % DGMatrix ) THEN
          CALL MatrixParallelInfoDG( Solver, Matrix, Perm, DOFs )
        ELSE
@@ -258,10 +258,10 @@ CONTAINS
 
 
 !-------------------------------------------------------------------------------
-!> Global numbering of matrix rows for a CutFEM mesh, where the degrees of
+!> Global numbering of matrix rows for a SplitFEM mesh, where the degrees of
 !> freedom live on the mesh nodes and edges.
 !-------------------------------------------------------------------------------
-    SUBROUTINE MatrixParallelInfoCutFEM( Solver, Matrix, Perm, DOFs )
+    SUBROUTINE MatrixParallelInfoSplitFEM( Solver, Matrix, Perm, DOFs )
 !-------------------------------------------------------------------------------
       TYPE(Solver_t), TARGET :: Solver
       TYPE(Matrix_t), POINTER :: Matrix
@@ -274,7 +274,7 @@ CONTAINS
 
       Mesh => Solver % Mesh
 
-      CALL Info('MatrixParallelInfoCutFEM','Creating ParallelInfo assuming CutFEM mesh!',Level=12)
+      CALL Info('MatrixParallelInfoSplitFEM','Creating ParallelInfo assuming SplitFEM mesh!',Level=12)
 
       MeshPI => Mesh % ParallelInfo
       MatrixPI => Matrix % ParallelInfo
@@ -326,11 +326,11 @@ CONTAINS
         END DO
       END BLOCK
 
-      CALL Info('MatrixParallelInfoCutFEM','Done ParallelInfo assuming CutFEM mesh!',Level=12)
+      CALL Info('MatrixParallelInfoSplitFEM','Done ParallelInfo assuming SplitFEM mesh!',Level=12)
 
 
 !-------------------------------------------------------------------------------
-    END SUBROUTINE MatrixParallelInfoCutFEM
+    END SUBROUTINE MatrixParallelInfoSplitFEM
 !-------------------------------------------------------------------------------
 
 
@@ -514,7 +514,7 @@ CONTAINS
 
 !-------------------------------------------------------------------------------
 !> Global numbering of matrix rows for the default discretization, i.e. neither
-!> CutFEM nor Discontinuous Galerkin. Covers nodal, edge, face and bubble
+!> SplitFEM nor Discontinuous Galerkin. Covers nodal, edge, face and bubble
 !> degrees of freedom, and the extra rows of a collection matrix.
 !-------------------------------------------------------------------------------
     SUBROUTINE MatrixParallelInfoDefault( Solver, Matrix, Perm, DOFs )
@@ -532,7 +532,7 @@ CONTAINS
       LOGICAL :: Found
 
       Mesh => Solver % Mesh
-      ! Default parallel numbering, not CutFEM or Discontinuous Galerkin!
+      ! Default parallel numbering, not SplitFEM or Discontinuous Galerkin!
       !--------------------------------------------------------------------
 
       n = Matrix % NumberOfRows

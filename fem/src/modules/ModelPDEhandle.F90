@@ -132,8 +132,7 @@ SUBROUTINE AdvDiffSolver( Model,Solver,dt,TransientSimulation )
 
   CALL DefaultFinish()
   
-  IF( Solver % SplitFEM 
-    .OR. ListGetLogical( GetSolverParams(),'Integ Test',Found) ) THEN
+  IF( Solver % SplitFEM .OR. ListGetLogical( GetSolverParams(),'Integ Test',Found) ) THEN
     CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total area',TotArea )
     CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total len',TotLen )
     CALL ListAddConstReal(CurrentModel % Simulation,'res: integ total src',TotSrc )

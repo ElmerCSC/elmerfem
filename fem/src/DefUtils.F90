@@ -6392,18 +6392,19 @@ CONTAINS
      CALL Info('DefUtils::DefaultDirichletBCs', &
             'Setting Dirichlet boundary conditions', Level=10)
 
+     SaveElement => GetCurrentElement()
 
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled:
      ! ----------------------------------------------------------------------
      IF (.NOT. NodalBCsWithBraces) THEN
+
        DO DOF=1,x % DOFs
          name = TRIM(x % name)
          IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
 
          IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
 
-         SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
 
@@ -6448,9 +6449,9 @@ CONTAINS
              CYCLE
            END IF
          END DO
-
-         SaveElement => SetCurrentElement(SaveElement)
+         
        END DO
+
      END IF
 
      IF (NodalBCsWithBraces) THEN
@@ -6480,7 +6481,6 @@ CONTAINS
 !           print *, '====== DOF is ', DOF
 !           print *, 'operating name ', name
 
-           SaveElement => GetCurrentElement()
            DO i=1,Solver % Mesh % NumberOfBoundaryElements
              Element => GetBoundaryElement(i)
 
@@ -6512,7 +6512,6 @@ CONTAINS
                A % Dvalues(l) = Work(j)
              END DO
            END DO
-           SaveElement => SetCurrentElement(SaveElement)
          END DO
        END DO
 
@@ -6537,7 +6536,6 @@ CONTAINS
          CALL Info('DefUtils::DefaultDirichletBCs', &
              'p-element condition setup: '//name, Level=15)
 
-         SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            BC => GetBC()
@@ -6695,10 +6693,12 @@ CONTAINS
            END SELECT
          END DO
 
-         SaveElement => SetCurrentElement(SaveElement)
        END DO
      END IF
 
+
+
+     
      ! BLOCK
      !------------------------------------
      DO DOF=1,x % DOFs
@@ -6711,7 +6711,6 @@ CONTAINS
 
        CALL Info('SetDefaultDirichlet','Release edge dofs from intersecting BCs',Level=15)
 
-       SaveElement => GetCurrentElement()
        DO i=1,Solver % Mesh % NumberOfBoundaryElements
          Element => GetBoundaryElement(i)
 
@@ -6762,7 +6761,6 @@ CONTAINS
            END DO
          END SELECT
        END DO
-       SaveElement => SetCurrentElement(SaveElement)
      END DO
 
 
@@ -6787,7 +6785,6 @@ CONTAINS
 
         CALL Info('SetDefaultDirichlet','Setting edge and face dofs',Level=15)
 
-        SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
 
@@ -7140,9 +7137,15 @@ CONTAINS
              END SELECT
            END IF
          END DO
-         SaveElement => SetCurrentElement(SaveElement)
      END DO
 
+     ! This is just a hack to maintain the original current element.
+     IF(ASSOCIATED(SaveElement)) THEN
+       SaveElement => SetCurrentElement(SaveElement)
+     END IF
+
+
+     
      IF( ReleaseAny) THEN
        IF( InfoActive(20) ) THEN
          k = COUNT( A % ConstrainedDOF )

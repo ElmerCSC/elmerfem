@@ -79,7 +79,7 @@ MODULE MainUtils
 
   USE SplitFEMUtils, ONLY: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMAddMesh, &
       SplitFEMSetOrigMesh, CreateSplitFEMPerm, CreateSplitFEMVariable, SplitFEMVariableRevert, &
-      LevelsetUpdate, SplitFEMVariableFinalize
+      LevelsetUpdate, SplitFEMVariableExtrapolate
   
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
@@ -5962,9 +5962,9 @@ END BLOCK
 
 
      ! Set the original mesh back, to be on the safe side...
-     IF(ListGetLogical(Params,'SplitFEM',Found ) ) THEN
+     IF(Solver % SplitFEM) THEN
        CALL SplitFEMSetOrigMesh(Solver)
-       CALL SplitFEMVariableFinalize(Solver)         
+       CALL SplitFEMVariableExtrapolate(Solver)         
      END IF
      
      ! We do not need the old meshes. When we reach a new timestep
