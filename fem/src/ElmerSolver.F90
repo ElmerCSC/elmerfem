@@ -91,6 +91,7 @@
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
          SetGlobalBubblesFlag, SwapMesh
+     USE SplitFEMUtils, ONLY : SplitFEMRevert
      USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, GetBranch, &
          GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
@@ -3524,6 +3525,14 @@
              END DO
            END IF
          END IF
+
+         ! SplitFEM: This probably takes place after all visualization etc. are done.
+         ! We do not need the old meshes any more. Next timestep we should make a fresh start.
+         IF( ANY( CurrentModel % Solvers(1:nSolvers) % SplitFEM ) ) THEN
+           CALL SplitFEMRevert(CurrentModel)
+         END IF
+         !----------------------------------------------------------------------------
+         
 !------------------------------------------------------------------------------
          CALL ListPopNameSpace()
 !------------------------------------------------------------------------------

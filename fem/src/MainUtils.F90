@@ -3355,14 +3355,6 @@ CONTAINS
           CALL ParallelBarrier
         END IF
       END DO
-
-      ! SplitFEM: This probably takes place after all visualization etc. are done.
-      ! We do not need the old meshes any more. Next timestep we should make a fresh start.
-      IF( ANY( Model % Solvers(1:nSolvers) % SplitFEM ) ) THEN
-        CALL SplitFEMRevert(Model)
-      END IF
-      !----------------------------------------------------------------------------
-
     END IF
 
     ParEnv_Common = ParEnv_Save
