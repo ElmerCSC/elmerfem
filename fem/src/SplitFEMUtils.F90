@@ -55,6 +55,7 @@ MODULE SplitFemUtils
   USE ParallelUtils
   USE MeshBasics, ONLY : PointInMesh, TransferCoordAndTime
   USE MeshTransform, ONLY : DetectExtrudedStructure
+  USE MeshIO, ONLY : WriteMeshToDisk2
   
   IMPLICIT NONE
 
@@ -63,7 +64,7 @@ MODULE SplitFemUtils
   LOGICAL, ALLOCATABLE :: CutDof(:)
   INTEGER, POINTER :: ExtendPerm(:) => NULL(), CutPerm(:) => NULL(), PhiPerm(:) => NULL()
   REAL(KIND=dp), POINTER :: ExtendValues(:) => NULL(), PhiValues(:) => NULL()
-  INTEGER, POINTER :: AddActiveElements(:), UnsplitActiveElements(:)
+  INTEGER, POINTER :: AddActiveElements(:), UnsplitActiveElements(:) 
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CutInterp(:)
   TYPE(Matrix_t), POINTER :: NodeMatrix
   INTEGER :: SplitFemBody
@@ -80,7 +81,7 @@ MODULE SplitFemUtils
   PUBLIC :: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMPerm, CreateSplitFEMAddMesh, &
       SplitFEMVariableExtrapolate, SplitFEMSetOrigMesh, SplitFEMSetAddMesh, SplitFEMLevelSetUpdate, &
       CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck, CreateSplitFEMVariable, &
-      SplitFEMRevert, SetSplitFEMBodies
+      SplitFEMRevert, SetSplitFEMBodies, SplitFEMOutput
 
   PUBLIC :: CutInterp
   
@@ -117,12 +118,11 @@ CONTAINS
     
     Params => CurrentModel % Simulation
     Mesh => Solver % Mesh
-    ! Memorize original nodal matrix
+    
+    ! Memorize original nodal matrix and mesh
     NodeMatrix => Solver % Matrix
-
     SplitFEMOrigMesh => Solver % Mesh 
-    Solver % OrigActiveElements => Solver % ActiveElements
-
+    
     UpdateOrigCoords = ListGetLogical( Params,'SplitFEM bodyfitted',Found )
 
     ! We always need mesh edges since the new dofs are created in intersections of levelset and edge. 
@@ -556,7 +556,6 @@ CONTAINS
     
     ! This is just counter for different split cases while developing the code. 
     nCase = 0
-!    Solver % CutInterp => CutInterp 
     Model % CutInterp => CutInterp
     
   END SUBROUTINE CreateSplitFEMPerm
@@ -659,7 +658,7 @@ CONTAINS
     END DO
   END SUBROUTINE SetSplitFEMBodies
 
-
+  
   
   ! Given permutation make additional vector for containing the values of the splitfem
   ! field of the solver in question. Memorize the original nodal values.
@@ -686,11 +685,6 @@ CONTAINS
       CALL Fatal(Caller,'Only nodal Variables supported, not: '//I2S(Variable % Type))
     END IF
     
-    IF(.NOT. ASSOCIATED(Solver % OrigActiveElements ) ) THEN
-      CALL Info('CreateSplitFEMVariable','Storing original ActiveElements table!',Level=15)
-      Solver % OrigActiveElements => Solver % ActiveElements
-    END IF
-      
     CALL Info(Caller,'Creating storage for the SplitFEM field variable: '//TRIM(Variable % Name),Level=10)
     
     nsize = MAXVAL(CutPerm)
@@ -860,12 +854,15 @@ CONTAINS
         IF(ASSOCIATED(MimicMat % DampValues)) AllocVecs(2) = 1
         IF(ASSOCIATED(MimicMat % Force)) AllocVecs(3) = SIZE(MimicMat % Force,2)
       END IF
+
+      m = SIZE(A % Values)
+      
       IF(AllocVecs(1) > 0 ) THEN
-        ALLOCATE(A % MassValues(SIZE(A % Values)))
+        ALLOCATE(A % MassValues(m))
         A % MassValues = 0.0_dp
       END IF
       IF(AllocVecs(2) > 0) THEN
-        ALLOCATE(A % DampValues(SIZE(A % Values)))
+        ALLOCATE(A % DampValues(m))
         A % DampValues = 0.0_dp
       END IF
       n = AllocVecs(3) 
@@ -1582,15 +1579,21 @@ CONTAINS
   ! This creates the additional mesh consisting of sliptted elements around the interface.
   ! Going through these elements is done always as the 2nd phase of system assembly.
   !--------------------------------------------------------------------------------------
-  SUBROUTINE CreateSplitFEMAddMesh(Solver) 
+  SUBROUTINE CreateSplitFEMAddMesh(Solver,UseExisting) 
     TYPE(Solver_t) :: Solver
+    LOGICAL :: UseExisting
     
     INTEGER :: Sweep, t, n, i
     LOGICAL :: IsActive, IsCut
     TYPE(Element_t), POINTER :: Element
 
-    CALL Info('CreateSplitFEMAddMesh','Creating interface mesh from split element',Level=10)
-    
+    IF( UseExisting ) THEN
+      CALL Info('CreateSplitFEMAddMesh','Using previously created split elements',Level=10)
+      GOTO 100 
+    ELSE
+      CALL Info('CreateSplitFEMAddMesh','Creating interface mesh from split elements',Level=10)
+    END IF
+      
     DO Sweep = 0,1 
       n = 0      
       DO t=1,SplitFEMOrigMesh % NumberOfBulkElements
@@ -1635,11 +1638,11 @@ CONTAINS
     IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
       CALL Fatal('CreateSplitFEMAddMesh','UnsplitActiveElements not associated!')
     END IF
-      
-    Solver % ActiveElements => UnsplitActiveElements
-    Solver % NumberOfActiveElements = SIZE(UnsplitActiveElements)
 
     CALL Info('CreateSplitFEMAddMesh','Add mesh created with '//I2S(i)//' active elements!',Level=10)
+    
+100 Solver % ActiveElements => UnsplitActiveElements
+    Solver % NumberOfActiveElements = SIZE(UnsplitActiveElements)
     
   END SUBROUTINE CreateSplitFEMAddMesh
     
@@ -1649,7 +1652,7 @@ CONTAINS
     Solver % Mesh => SplitFEMAddMesh
     CurrentModel % Mesh => SplitFEMAddMesh
 
-    IF(.NOT. ASSOCIATED(UnsplitActiveElements)) THEN
+    IF(.NOT. ASSOCIATED(AddActiveElements)) THEN
       CALL Fatal('SplitFEMSetAddMesh','AddActiveElements not associated!')
     END IF
     
@@ -1752,11 +1755,11 @@ CONTAINS
     
     CutExtend = ListGetLogical( Solver % Values,'SplitFEM extend',Found )
     CutExtrapolate = ListGetLogical( Solver% Values,'SplitFEM extrapolate',Found )
-    
+
     Mesh => Solver % Mesh
     nn = Mesh % NumberOfNodes
     ne = Mesh % NumberOfEdges
-    dofs = Solver % Variable % Dofs !CutDofs 
+    dofs = Solver % Variable % Dofs 
     
     ! If we solve some other equation in between store the original norm.
     CutValues => Solver % Variable % Values
@@ -1821,7 +1824,6 @@ CONTAINS
       END DO
     END IF
 
-    
     ! Extend values using FEM strategies beyond value set above. 
     ! We can extrapolate much but the extrapolation method is nonphysical.
     IF( CutExtend ) THEN
@@ -1964,14 +1966,14 @@ CONTAINS
       END IF
       Variable % Type = Variable_on_nodes
 
-      Solver % ActiveElements => Solver % OrigActiveElements
-      IF(ASSOCIATED(Solver % ActiveElements)) &
-          Solver % NumberOfActiveElements = SIZE(Solver % ActiveElements)
-
       IF(InfoActive(25)) THEN
         PRINT *,'Range OrigMesh:',MINVAL(Variable % Values),MAXVAL(Variable % Values)
       END IF
 
+      ! We should not have vanilla ActiveElements available!
+      Solver % ActiveElements => NULL()
+      Solver % NumberOfActiveElements = 0
+      
     END SUBROUTINE SplitFEMVariableRevert
 
   END SUBROUTINE SplitFEMRevert
@@ -2048,7 +2050,6 @@ CONTAINS
       MeshPerm => Perm      
     END IF
     
-    
     NewMesh => AllocateMesh()    
     NewMesh % SingleMesh = Mesh % SingleMesh
     NewMesh % MaxNDofs = Mesh % MaxNDofs
@@ -2069,11 +2070,15 @@ CONTAINS
       NewMesh % Name = TRIM(Mesh % Name)//'-splitfem'
       NodeCnt = MAXVAL(MeshPerm)
       NewMesh % OutputActive = .TRUE.
-
+      
       CALL AllocateVector( NewMesh % Nodes % x, NodeCnt ) 
       CALL AllocateVector( NewMesh % Nodes % y, NodeCnt ) 
       CALL AllocateVector( NewMesh % Nodes % z, NodeCnt ) 
-
+      
+      IF(nn+ne > SIZE(MeshPerm)) THEN
+        CALL Fatal(Caller,'Size of MeshPerm is too small!')
+      END IF
+      
       ! This includes already the nodes created at the intersections. 
       DO i=1,nn+ne
         j = MeshPerm(i)
@@ -2165,18 +2170,15 @@ CONTAINS
           NewMesh % NumberOfBulkElements = nBC
           NewMesh % NumberOfBoundaryElements = 0
         END IF
-
-        IF(InfoActive(25)) THEN
-          PRINT *,'Old Element Counts:',Mesh % NumberOfBulkElements, Mesh % NumberOfBoundaryElements
-          PRINT *,'New Element Counts:',nBulk, nBC
-        END IF
-
+          
         IF( ParEnv % PEs == 1 ) THEN
           IF( nBulk + nBC == 0) CALL Fatal(Caller,'Zero elements in mesh!')
         END IF
+
+        CALL Info(Caller,'Number of bulk elements SplitFEM mesh: '//I2S(nBulk),Level=10)
+        CALL Info(Caller,'Number of boundary elements SplitFEM mesh: '//I2S(nBC),Level=10)
         
         CALL AllocateVector( NewMesh % Elements, nBulk+nBC )
-        CALL Info(Caller,'New mesh allocated for '//I2S(nBulk+nBc)//' elements', Level=10 )
       END IF
     END DO
 
@@ -2186,7 +2188,6 @@ CONTAINS
 
       ! If we create interface only then we have original numbering and may use 
       IF(PRESENT(ProjectPrefix)) THEN
-        PRINT *,'DO LS Variables',TRIM(ProjectPrefix)
         CALL InterpolateLevelsetVariables()
       END IF
     END IF
@@ -2553,7 +2554,7 @@ CONTAINS
     NormalMove = ListGetLogical( Params,'SplitFEM normal move',Found )
     NodeHistory = ListGetLogical( Params,'SplitFEM node history',Found )
     CheckLS = ListGetLogical( Params,'SplitFEM check ls field',Found )
-
+    
     ALLOCATE(NodeDiff(Mesh % NumberOfNodes), Trust(Mesh % NumberOfNodes))
     NodeDiff = 0.0_dp; Trust = .FALSE.
     IF(NodeHistory) THEN
@@ -2633,10 +2634,10 @@ CONTAINS
       MovingLevelset = .TRUE.
       Nonzero = .TRUE.
     END IF
-              
+    
     PhiMax = MAXVAL(ABS(PhiVar1D % Values)) 
     PhiMax = 1.01 * ( PhiMax + SQRT(Vx**2+Vy**2)*dt )
-
+    
     IF(NormalMove .OR. NonZero) THEN
       CALL LevelsetNormalMove()
       NonZero = .FALSE.
@@ -4399,7 +4400,43 @@ CONTAINS
     END FUNCTION VecCross2D
 
   END SUBROUTINE SplitFEMLevelsetUpdate
-  
+
+
+  ! This either saves the SplitFEM result in a visualization mesh, or
+  ! saves the actural mesh coming from the SplitFEM process.
+  !------------------------------------------------------------------------------
+  SUBROUTINE SplitFEMOutput(Model,Solver)
+
+    TYPE(Model_t) :: Model
+    TYPE(Solver_t) :: Solver
+
+    TYPE(Mesh_t), POINTER :: sMesh
+    LOGICAL :: Found
+    CHARACTER(LEN=MAX_PATH_LEN) :: MeshDir
+
+
+    ! We do not need to create the actual SplitFEM Mesh, but we might want to have it
+    ! for visualization purposes. 
+    NULLIFY(sMesh)
+    IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) .OR. &
+        ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
+      ! This 2D mesh becomes Mesh % Next % Next
+      sMesh => CreateSplitFEMMesh(Solver,Solver % Mesh,CutPerm,&
+          .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
+      IF( ListGetLogical( Model % Simulation,'SplitFEM Mesh Save', Found ) ) THEN         
+        Solver % Mesh % Next % Next => sMesh
+      END IF
+    END IF
+
+    IF(ListGetLogical(CurrentModel % Simulation,'SplitFEM Mesh Output',Found ) ) THEN
+      MeshDir = TRIM(Solver % Mesh % Name)//'-split'           
+      CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
+      CALL WriteMeshToDisk2(Model, sMesh, MeshDir)
+    END IF
+
+  END SUBROUTINE SplitFEMOutput
+
+       
 END MODULE SplitFemUtils
 
 !> \} ElmerLib

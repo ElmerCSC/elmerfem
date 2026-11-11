@@ -609,39 +609,25 @@
        IF ( Initialize == 1 ) EXIT
 
 
+       ! Mark potential SplitFEM solvers with a flag.
        BLOCK
          TYPE(Mesh_t), POINTER :: Mesh
-         INTEGER :: i,j,imin,imax
+         INTEGER :: i,j,imin,imax,icnt
 
          j = CurrentModel % NumberOfSolvers
+         icnt = 0
          imax = 0
          imin = j
          DO i=1,j
            IF(ListGetLogical(CurrentModel % Solvers(i) % Values,'SplitFEM',Found ) ) THEN
+             icnt = icnt + 1
              imax = MAX(imax,i)
              imin = MIN(imin,i)
              CurrentModel % Solvers(i) % SplitFEM = .TRUE.
            END IF
          END DO
-         IF(imin <= imax ) THEN
-           !CALL Info(Caller,'We have SplitFEM used in some Solver!')
-           ! Create the SplitFEM mesh just before 1st splitfem solver
-           i = ListGetInteger(CurrentModel % Simulation,'SplitFEM Create Solver Index',Found )
-           IF(.NOT. Found) i=imin
-           CALL Info('MAIN','SplitFEM to be created before solver: '//I2S(i))
-           CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'SplitFEM Create',.TRUE.)
-
-           ! Interpolate the SplitFEM results just after the last splitfem solver
-           i = ListGetInteger(CurrentModel % Simulation,'SplitFEM Interpolate Solver Index',Found )
-           IF(.NOT. Found) i=imax
-           CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'SplitFEM Interpolate',.TRUE.)
-           CALL Info('MAIN','SplitFEM to be interpolated after solver: '//I2S(i))
-
-           ! Destroy the temporal stuff after all solvers
-           i = ListGetInteger(CurrentModel % Simulation,'SplitFEM Destroy Solver Index',Found )
-           IF(.NOT. Found) i=j
-           CALL ListAddLogical(CurrentModel % Solvers(i) % Values,'SplitFEM Destroy',.TRUE.)
-           CALL Info('MAIN','SplitFEM to be destroyed after solver: '//I2S(i))
+         IF( icnt > 0) THEN
+           CALL Info('MAIN','We have '//I2S(icnt)//' SplitFEM solvers in interval: '//I2S(imin)//'-'//I2S(imax))  
          END IF
        END BLOCK
 
