@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO square-tri.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(SplitFEMLibPoisson4 LABELS quick splitfem)
+ADD_ELMER_TEST(SplitFEMPoisson4 LABELS quick splitfem)
