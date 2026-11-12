@@ -1030,7 +1030,7 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
-    USE Differentials, ONLY: JouleHeat
+    USE Differentials, ONLY: JouleHeat, JouleHeatActive
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
@@ -1546,12 +1546,14 @@ CONTAINS
 
     ! Joule heating from a coupled electric/magnetic solver ("Joule Heat = True"
     ! on this element's body force).
-    DO t=1,ngp
-      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
-      IF( JouleH /= 0._dp ) THEN
-        FORCE(1:nd) = FORCE(1:nd) + DetJVec(t) * JouleH * Basis(t,1:nd)
-      END IF
-    END DO
+    IF( JouleHeatActive( Element ) ) THEN
+      DO t=1,ngp
+        JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+        IF( JouleH /= 0._dp ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + DetJVec(t) * JouleH * Basis(t,1:nd)
+        END IF
+      END DO
+    END IF
 
     ! The heat equation may have lower dimensional elements active also.
     ! For example, heat transfer through a pipe could be expressed by 1d
@@ -1940,7 +1942,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
-    USE Differentials, ONLY: JouleHeat
+    USE Differentials, ONLY: JouleHeat, JouleHeatActive
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
@@ -1973,7 +1975,7 @@ CONTAINS
     ! ConvVec/StreamVec split this mirrors. Tau is the Franca et al.
     ! stabilization parameter.
     REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar, JouleH, HTMultAtIp
-    LOGICAL :: HTMultFound
+    LOGICAL :: HTMultFound, JouleOn
     ! Phase Change Model: PhaseChangeElementSetup (shared with LocalMatrixVec)
     ! resolves which model is active and this element's nodal Enthalpy/
     ! Temperature/FallbackCp once, before the Gauss loop; PhaseChangeCL turns
@@ -2081,6 +2083,7 @@ CONTAINS
     ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
 
     HTMultFound = .FALSE.
+    JouleOn = JouleHeatActive( Element )
 
     ! Phase Change Model: determined once per element, not per Gauss point --
     ! see PhaseChangeElementSetup (shared with LocalMatrixVec) for the full
@@ -2352,11 +2355,13 @@ CONTAINS
 
       ! Joule heating from a coupled electric/magnetic solver -- see the
       ! matching comment in LocalMatrixVec. JouleHeat() does its own
-      ! ElementInfo call internally and cheaply no-ops via early return when
-      ! this element's body force does not set "Joule Heat".
-      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
-      IF( JouleH /= 0._dp ) THEN
-        FORCE(1:nd) = FORCE(1:nd) + Weight * JouleH * Basis(1:nd)
+      ! ElementInfo call internally, so skip it unless this element's body
+      ! force sets "Joule Heat".
+      IF( JouleOn ) THEN
+        JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+        IF( JouleH /= 0._dp ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + Weight * JouleH * Basis(1:nd)
+        END IF
       END IF
     END DO
 

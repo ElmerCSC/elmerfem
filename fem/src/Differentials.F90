@@ -66,7 +66,7 @@ CONTAINS
     REAL(KIND=dp) :: L(3),u,v,w,x,y,z
 !------------------------------------------------------------------------------
     TYPE(Variable_t), POINTER :: Mx,My,Mz,MFx,MFy,MFz
-    INTEGER :: i,j,k,bfId
+    INTEGER :: i,j,k
     LOGICAL :: stat,GotIt
     INTEGER, POINTER :: NodeIndexes(:)
 
@@ -308,13 +308,7 @@ CONTAINS
 !------------------------------------------------------------------------------
     JouleH = 0.0_dp
 
-    bfId = ListGetInteger( CurrentModel % Bodies( Element % BodyId ) % &
-         Values, 'Body Force', GotIt, 1, CurrentModel % NumberOfBodyForces )
-
-    IF ( .NOT.GotIt ) RETURN
-
-    IF ( .NOT.ListGetLogical( CurrentModel % BodyForces( &
-         bfId ) % Values, 'Joule Heat' , GotIt ) ) RETURN
+    IF ( .NOT. JouleHeatActive( Element ) ) RETURN
 !------------------------------------------------------------------------------
 
     IF( JouleMode == 0 ) THEN
@@ -542,6 +536,32 @@ CONTAINS
   END FUNCTION ComputeMagneticHeat
 !------------------------------------------------------------------------------
   END FUNCTION JouleHeat
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Tells whether the body force of the element sets "Joule Heat". Callers test
+!> this once per element to skip the JouleHeat call at every integration point.
+!------------------------------------------------------------------------------
+  FUNCTION JouleHeatActive( Element ) RESULT( Active )
+!------------------------------------------------------------------------------
+    TYPE(Element_t), INTENT(IN) :: Element
+    LOGICAL :: Active
+!------------------------------------------------------------------------------
+    INTEGER :: bfId
+    LOGICAL :: GotIt
+!------------------------------------------------------------------------------
+    Active = .FALSE.
+
+    bfId = ListGetInteger( CurrentModel % Bodies( Element % BodyId ) % &
+         Values, 'Body Force', GotIt, 1, CurrentModel % NumberOfBodyForces )
+
+    IF ( .NOT.GotIt ) RETURN
+
+    Active = ListGetLogical( CurrentModel % BodyForces( bfId ) % Values, &
+         'Joule Heat' , GotIt )
+!------------------------------------------------------------------------------
+  END FUNCTION JouleHeatActive
 !------------------------------------------------------------------------------
 
 
