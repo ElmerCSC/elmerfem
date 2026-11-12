@@ -709,6 +709,27 @@ CONTAINS
   END FUNCTION PickComplex
 
 
+  ! Whether the swapped form of a variable differs from the original in
+  ! anything the field enumeration sees. Both swappers drop mode data, and
+  ! p2LagrangeSwapper leaves on-element and elemental variables untouched.
+  FUNCTION SwapChangesEnumeration( Var ) RESULT( Changes )
+    TYPE(Variable_t), POINTER :: Var
+    LOGICAL :: Changes
+
+    Changes = .FALSE.
+    IF( .NOT. ASSOCIATED( Var ) ) RETURN
+
+    IF( LagN > 0 .AND. ( Var % TYPE == Variable_on_nodes_on_elements .OR. &
+        Var % TYPE == Variable_on_elements ) ) THEN
+      Changes = .TRUE.
+      RETURN
+    END IF
+
+    IF( Var % FrozenMode ) Changes = .TRUE.
+    IF( MaxModes > 0 .AND. ASSOCIATED( Var % EigenVectors ) ) Changes = .TRUE.
+    IF( MaxModes2 > 0 .AND. ASSOCIATED( Var % ConstraintModes ) ) Changes = .TRUE.
+  END FUNCTION SwapChangesEnumeration
+
 
   ! Writes a single VTU file that can be read by Paraview, ViSiT etc.
   !---------------------------------------------------------------------------------------
@@ -728,7 +749,7 @@ CONTAINS
         ComponentVector, ComponentVectorB, ComplementExists, &
         Use2, IsHarmonic, FlipActive, RotateActive
     INTEGER :: DoIm
-    LOGICAL :: WriteData, WriteXML, L, Buffered
+    LOGICAL :: WriteData, WriteXML, L, Buffered, SwapNeeded
     TYPE(Variable_t), POINTER :: Solution, Solution2, Solution3, TmpSolDg, TmpSolDg2, TmpSolDg3
     INTEGER, POINTER :: Perm(:), PermB(:), DispPerm(:), DispBPerm(:)
     REAL(KIND=dp), POINTER :: Values(:), Values2(:), Values3(:), DispValues(:)
@@ -953,20 +974,28 @@ CONTAINS
 
           VarType = Solution % Type
 
+          ! The xml-only pass enumerates the fields but discards the swapped
+          ! values. Delay the projection to the data pass unless the swap would
+          ! also change what the enumeration sees.
+          SwapNeeded = WriteData .OR. SwapChangesEnumeration( Solution ) .OR. &
+              SwapChangesEnumeration( Solution2 ) .OR. SwapChangesEnumeration( Solution3 )
+
           IF( LagN > 0 ) THEN
-            ! Let us create a L-field on-the-fly and have the solution vector point to that.
-            IF(.NOT. ASSOCIATED(TmpSolDg)) THEN
-              ALLOCATE(TmpSolDg,TmpSolDg2,TmpSolDg3)
-            END IF
-            CALL p2LagrangeSwapper( Mesh, Solution, TmpSolDg, LagN, DgPerm, NumberOfDofNodes )
-            Solution => TmpSolDg
-            IF( ASSOCIATED(Solution2) ) THEN
-              CALL p2LagrangeSwapper( Mesh, Solution2, TmpSolDg2, LagN, DgPerm, NumberOfDofNodes )
-              Solution2 => TmpSolDg2
-            END IF
-            IF( ASSOCIATED(Solution3) ) THEN
-              CALL p2LagrangeSwapper( Mesh, Solution3, TmpSolDg3, LagN, DgPerm, NumberOfDofNodes )
-              Solution3 => TmpSolDg3
+            IF( SwapNeeded ) THEN
+              ! Let us create a L-field on-the-fly and have the solution vector point to that.
+              IF(.NOT. ASSOCIATED(TmpSolDg)) THEN
+                ALLOCATE(TmpSolDg,TmpSolDg2,TmpSolDg3)
+              END IF
+              CALL p2LagrangeSwapper( Mesh, Solution, TmpSolDg, LagN, DgPerm, NumberOfDofNodes )
+              Solution => TmpSolDg
+              IF( ASSOCIATED(Solution2) ) THEN
+                CALL p2LagrangeSwapper( Mesh, Solution2, TmpSolDg2, LagN, DgPerm, NumberOfDofNodes )
+                Solution2 => TmpSolDg2
+              END IF
+              IF( ASSOCIATED(Solution3) ) THEN
+                CALL p2LagrangeSwapper( Mesh, Solution3, TmpSolDg3, LagN, DgPerm, NumberOfDofNodes )
+                Solution3 => TmpSolDg3
+              END IF
             END IF
           ELSE IF ( VarType == Variable_on_nodes_on_elements ) THEN
             IF( .NOT. ( DG .OR. DN ) ) CYCLE
@@ -976,19 +1005,21 @@ CONTAINS
           ELSE IF( VarType == Variable_on_gauss_points ) THEN
             IF ( .NOT. ( DG .OR. DN ) ) CYCLE
 
-            CALL Ip2DgSwapper( Mesh, Solution, TmpSolDg, Variable_on_nodes_on_elements )
-            IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg, .FALSE. )
+            IF( SwapNeeded ) THEN
+              CALL Ip2DgSwapper( Mesh, Solution, TmpSolDg, Variable_on_nodes_on_elements )
+              IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg, .FALSE. )
 
-            Solution => TmpSolDg
-            IF(ASSOCIATED(Solution2)) THEN
-              CALL Ip2DgSwapper( Mesh, Solution2, TmpSolDg2, Variable_on_nodes_on_elements )
-              IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg2, .FALSE. )
-              Solution2 => TmpSolDg2
-            END IF
-            IF(ASSOCIATED(Solution3)) THEN
-              CALL Ip2DgSwapper( Mesh, Solution3, TmpSolDg3, Variable_on_nodes_on_elements )
-              IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg3, .FALSE. )
-              Solution3 => TmpSolDg3
+              Solution => TmpSolDg
+              IF(ASSOCIATED(Solution2)) THEN
+                CALL Ip2DgSwapper( Mesh, Solution2, TmpSolDg2, Variable_on_nodes_on_elements )
+                IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg2, .FALSE. )
+                Solution2 => TmpSolDg2
+              END IF
+              IF(ASSOCIATED(Solution3)) THEN
+                CALL Ip2DgSwapper( Mesh, Solution3, TmpSolDg3, Variable_on_nodes_on_elements )
+                IF(DN) CALL CalculateBodyAverage( Mesh, TmpSolDg3, .FALSE. )
+                Solution3 => TmpSolDg3
+              END IF
             END IF
           END IF
 
