@@ -642,6 +642,7 @@ CONTAINS
      ! If variable is defined on gauss points return that instead
      !-------------------------------------------------------------
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
+       ! Variable on gauss points
        j = Element % ElementIndex
        n = Variable % Perm(j+1) - Variable % Perm(j)
        DO i=1,n
@@ -650,6 +651,7 @@ CONTAINS
        IF(PRESENT(Found)) Found = (n>1)
        RETURN
      ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       ! Variable on DG 
        n = Element % TYPE % NumberOfNodes
        Indexes => Element % DGIndexes
        IF(ASSOCIATED( Indexes ) ) THEN
@@ -688,26 +690,33 @@ CONTAINS
        RETURN       
      ELSE IF( Solver % SplitFEMActive ) THEN
        ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
-
+       
        n = Element % TYPE % NumberOfNodes
        Indexes => Element % NodeIndexes
        BLOCK
          INTEGER :: nn,j1,j2
          REAL(KIND=dp) :: r
-         nn = SIZE(Variable % Perm)
 
+         ! If we fetch splitfem values from splitfem variable we do not need any interpolation
+         ! and ordering is available in Perm for all values. 
+         IF( Variable % TYPE == Variable_on_splitfem ) THEN
+           nn = SIZE(Variable % Perm)
+         ELSE
+           nn = Solver % Mesh % NumberOfNodes
+         END IF
+         
          DO i=1,n
            j = Indexes(i)
+
            Found0 = .FALSE.
-           IF ( j>0 .AND. j<=nn ) THEN
+           IF ( j<=nn ) THEN
              ! This is an original node.
              j = Variable % Perm(j)
              IF ( j>0 ) THEN
                Found0 = .TRUE.
                x(i) = Values(j)
              END IF
-           END IF
-           IF(.NOT. Found0 ) THEN
+           ELSE
              ! This is an additional node of the fictitious domain method. 
              ! When we know where the isoline cuts the edge we can use linear interpolation
              ! on the edge to get the value at the intersetion on-the-fly.
@@ -717,7 +726,7 @@ CONTAINS
              IF(j1 > 0 .AND. j2 > 0) THEN
                Found0 = .TRUE.
                x(i) = r*Variable % Values(j1) + (1-r)*Variable % Values(j2)
-               !PRINT *,'interp:',j,j1,j2,r,x(i)
+               !PRINT *,'interp:',TRIM(Variable % Name),j,j1,j2,r,x(i)
              END IF
            END IF
          END DO
@@ -901,15 +910,23 @@ CONTAINS
        BLOCK
          INTEGER :: nn,j1,j2,dofs
          REAL(KIND=dp) :: r
-         nn = SIZE(Variable % Perm)
-         dofs = Variable % Dofs
 
+         ! If we fetch splitfem values from splitfem variable we do not need any interpolation
+         ! and ordering is available in Perm for all values. 
+         IF( Variable % TYPE == Variable_on_splitfem ) THEN
+           nn = SIZE(Variable % Perm)
+         ELSE
+           nn = Solver % Mesh % NumberOfNodes
+         END IF
+         dofs = Variable % Dofs
+         
          DO i=1,n
            j = Indexes(i)
            Found0 = .FALSE.
-           IF ( j>0 .AND. j<=nn ) THEN
+
+           IF ( j<=nn ) THEN
              ! This is an original node,
-             ! or enriched one associated with edge assuming splitfem field
+             ! or enriched one associated with edge assuming splitfem field.
              j = Variable % Perm(j)
              IF ( j>0 ) THEN
                Found0 = .TRUE.
@@ -917,8 +934,7 @@ CONTAINS
                  x(k,i) = Values(dofs*(j-1)+k)
                END DO
              END IF
-           END IF
-           IF(.NOT. Found0) THEN
+           ELSE
              ! This is an additional node of the fictious domain method. 
              ! When we know where the isoline cuts the edge we can use linear interpolation
              ! on the edge to get the value at the intersetion on-the-fly.
