@@ -48,6 +48,12 @@ typedef struct {
   /* MGMN only: kept alive for the whole factorization because the cuDSS
    * communication layer holds a pointer to this MPI_Comm, not a copy. */
   MPI_Comm comm;
+
+  /* MGMN only: pattern of the factorization (0-based host copy), so that a
+   * later call with an identical pattern can refactorize in place. */
+  int  nglob, nnz_glob, first_row, nnzloc;
+  int *h_rows;
+  int *h_cols;
 #endif
 } ElmerCUDSS;
 
@@ -87,6 +93,11 @@ static void cudss_teardown(ElmerCUDSS *ctx)
   if (ctx->d_vals) cudaFree(ctx->d_vals);
   if (ctx->d_b) cudaFree(ctx->d_b);
   if (ctx->d_x) cudaFree(ctx->d_x);
+
+#ifdef HAVE_MPI
+  free(ctx->h_rows);
+  free(ctx->h_cols);
+#endif
 
   free(ctx);
 }
@@ -349,7 +360,10 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
          (nnzloc == 0 || cuda_ok(cudaMemcpy(ctx->d_cols, z_cols, (size_t)nnzloc * sizeof(int), cudaMemcpyHostToDevice), "memcpy(cols)")) &&
          (nnzloc == 0 || cuda_ok(cudaMemcpy(ctx->d_vals, vals, (size_t)nnzloc * ctx->esz, cudaMemcpyHostToDevice), "memcpy(vals)"));
 
-    free(z_rows); free(z_cols);
+    /* Keep the 0-based pattern for cudss_refactorize_par_impl. */
+    ctx->h_rows = z_rows; ctx->h_cols = z_cols;
+    ctx->nglob = nglob; ctx->nnz_glob = nnz_glob;
+    ctx->first_row = first_row; ctx->nnzloc = nnzloc;
     if (!ok) { cudss_teardown(ctx); return NULL; }
   }
 
@@ -420,6 +434,49 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
 
   return ctx;
 }
+
+/* Refactorize an existing MGMN handle in place with new values. Valid only if
+ * every rank's local pattern is identical to the one the handle was built with;
+ * this is checked here and agreed on collectively, since refactorization is
+ * collective. Reusing the handle skips the analysis and keeps all device
+ * buffers (ours and cuDSS's) at the same addresses. Rebuilding every time
+ * instead makes CUDA-aware MPI (UCX cuda_ipc) accumulate mappings of freed peer
+ * buffers. Returns 1 on success; 0 means the caller must free the handle and
+ * do a full factorization, on all ranks. */
+static int cudss_refactorize_par_impl(ElmerCUDSS *ctx, int nglob, int nnz_glob,
+    int nloc, int nnzloc, int first_row, const int *rows, const int *cols,
+    const void *vals, MPI_Comm comm)
+{
+  cudssStatus_t st;
+  int same, all_same, ok, all_ok, i;
+
+  same = ctx && ctx->h_rows && ctx->h_cols &&
+         ctx->nglob == nglob && ctx->nnz_glob == nnz_glob && ctx->n == nloc &&
+         ctx->nnzloc == nnzloc && ctx->first_row == first_row;
+  for (i = 0; same && i <= nloc; i++)  same = (rows[i] - 1 == ctx->h_rows[i]);
+  for (i = 0; same && i < nnzloc; i++) same = (cols[i] - 1 == ctx->h_cols[i]);
+
+  MPI_Allreduce(&same, &all_same, 1, MPI_INT, MPI_LAND, comm);
+  if (!all_same) return 0;
+
+  /* Amat already points at d_vals, so overwriting it updates the matrix. */
+  ok = nnzloc == 0 ||
+       cuda_ok(cudaMemcpy(ctx->d_vals, vals, (size_t)nnzloc * ctx->esz,
+                          cudaMemcpyHostToDevice), "memcpy(vals)");
+  if (ok) {
+    st = cudssExecute(ctx->handle, CUDSS_PHASE_REFACTORIZATION, ctx->config,
+                      ctx->data, ctx->Amat, ctx->xmat, ctx->bmat);
+    /* Should a cuDSS version not support REFACTORIZATION in MGMN mode, redo
+     * the numerical factorization on the existing analysis instead. */
+    if (st == CUDSS_STATUS_NOT_SUPPORTED)
+      st = cudssExecute(ctx->handle, CUDSS_PHASE_FACTORIZATION, ctx->config,
+                        ctx->data, ctx->Amat, ctx->xmat, ctx->bmat);
+    ok = cudss_ok(st, "cudssExecute(REFACTORIZATION)");
+  }
+
+  MPI_Allreduce(&ok, &all_ok, 1, MPI_INT, MPI_LAND, comm);
+  return all_ok;
+}
 #endif /* HAVE_MPI */
 
 ElmerCUDSS *FC_FUNC_(cudss_dfactorize_par,CUDSS_DFACTORIZE_PAR)
@@ -454,6 +511,22 @@ ElmerCUDSS *FC_FUNC_(cudss_zdfactorize_par,CUDSS_ZDFACTORIZE_PAR)
   (void)last_row; (void)rows; (void)cols; (void)vals; (void)mtype; (void)fcomm;
   fprintf(stderr, "CUDSS_SolveSystem: distributed (MGMN) cuDSS needs MPI\n");
   return NULL;
+#endif
+}
+
+/* Real in-place refactorization of an existing MGMN handle; status 1 = done,
+ * 0 = pattern changed or refactorization failed, caller rebuilds. */
+void FC_FUNC_(cudss_drefactorize_par,CUDSS_DREFACTORIZE_PAR)
+    (ElmerCUDSS **handle, int *nglob, int *nnz_glob, int *nloc, int *nnzloc,
+     int *first_row, int *rows, int *cols, double *vals, int *fcomm, int *status)
+{
+#ifdef HAVE_MPI
+  *status = cudss_refactorize_par_impl(*handle, *nglob, *nnz_glob, *nloc,
+      *nnzloc, *first_row, rows, cols, vals, MPI_Comm_f2c(*fcomm));
+#else
+  (void)handle; (void)nglob; (void)nnz_glob; (void)nloc; (void)nnzloc;
+  (void)first_row; (void)rows; (void)cols; (void)vals; (void)fcomm;
+  *status = 0;
 #endif
 }
 

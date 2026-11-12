@@ -926,6 +926,15 @@ CONTAINS
         INTEGER(KIND=AddrInt) :: cudss
       END FUNCTION cudss_dfactorize_par
 
+      SUBROUTINE cudss_drefactorize_par(cudss,nglob,nnz_glob,nloc,nnzloc,first_row, &
+          rows,cols,vals,fcomm,status) BIND(c,NAME="cudss_drefactorize_par")
+        USE Types
+        INTEGER(KIND=AddrInt) :: cudss
+        INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,fcomm,status
+        INTEGER :: rows(*), cols(*)
+        REAL(KIND=dp) :: vals(*)
+      END SUBROUTINE cudss_drefactorize_par
+
       SUBROUTINE cudss_fsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_fsolve")
         USE Types
         REAL(KIND=dp) :: x(*), b(*)
@@ -934,9 +943,9 @@ CONTAINS
       END SUBROUTINE cudss_fsolve
     END INTERFACE
 
-    LOGICAL :: Factorize, FreeFactorize, Found
+    LOGICAL :: Factorize, FreeFactorize, Found, ReuseAnalysis
     INTEGER :: n, i, nOwnLoc, gStartLoc, nGlob, nnzLoc, nnzGlob
-    INTEGER :: first_row, last_row, mtype, SolveOk, ierr
+    INTEGER :: first_row, last_row, mtype, SolveOk, RefactOk, ierr
     INTEGER, ALLOCATABLE :: Owner(:), Rloc(:), Cloc(:)
     REAL(KIND=dp), ALLOCATABLE :: Vloc(:), bsum(:), bloc(:), xloc(:)
 
@@ -961,9 +970,11 @@ CONTAINS
     Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
     IF ( .NOT. Found ) Factorize = .TRUE.
 
-    IF ( Factorize .OR. A % Cudss==0 ) THEN
-      CALL CUDSS_FreeHandle( A )
+    ! Keep the handle between solves and, while the pattern is unchanged, only
+    ! refactorize it numerically (no new analysis, no device reallocation).
+    ReuseAnalysis = ListGetLogical( Solver % Values, 'CUDSS Reuse Analysis', Found )
 
+    IF ( Factorize .OR. A % Cudss==0 ) THEN
       ! Assemble the owned rows into one fully summed CSR with global column
       ! indices. This is where the shared interface rows are summed into their
       ! owner -- the clean partition does not overlap, so cuDSS does not sum.
@@ -971,8 +982,17 @@ CONTAINS
               Rloc, Cloc, Vloc, nnzLoc )
       CALL MPI_ALLREDUCE( nnzLoc, nnzGlob, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
 
-      A % Cudss = cudss_dfactorize_par( nGlob, nnzGlob, nOwnLoc, nnzLoc, &
-              first_row, last_row, Rloc, Cloc, Vloc, mtype, A % Comm )
+      RefactOk = 0
+      IF ( ReuseAnalysis .AND. A % Cudss /= 0 ) THEN
+        CALL cudss_drefactorize_par( A % Cudss, nGlob, nnzGlob, nOwnLoc, nnzLoc, &
+                first_row, Rloc, Cloc, Vloc, A % Comm, RefactOk )
+      END IF
+
+      IF ( RefactOk == 0 ) THEN
+        CALL CUDSS_FreeHandle( A )
+        A % Cudss = cudss_dfactorize_par( nGlob, nnzGlob, nOwnLoc, nnzLoc, &
+                first_row, last_row, Rloc, Cloc, Vloc, mtype, A % Comm )
+      END IF
       DEALLOCATE( Rloc, Cloc, Vloc )
 
       IF ( A % Cudss == 0 ) &
@@ -1007,7 +1027,7 @@ CONTAINS
 
     FreeFactorize = ListGetLogical( Solver % Values, &
         'Linear System Free Factorization', Found )
-    IF ( .NOT. Found ) FreeFactorize = .TRUE.
+    IF ( .NOT. Found ) FreeFactorize = .NOT. ReuseAnalysis
     IF ( Factorize .AND. FreeFactorize ) THEN
       CALL CUDSS_FreeHandle( A )
     END IF
