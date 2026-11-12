@@ -4530,9 +4530,10 @@ END SUBROUTINE PickActiveFace
          IF (n==13) THEN
            ! Here the background mesh is supposed to be of type 613. The difference between the standard
            ! reference element and the p-reference element can be taken into account by a simple scaling:
-           CALL NodalBasisFunctions3D(Basis, Element, u, v, sqrt(2.0d0)*w)
-           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, sqrt(2.0d0)*w)
-           dLBasisdx(1:n,3) = sqrt(2.0d0) * dLBasisdx(1:n,3)
+           ! the apex of the p-reference pyramid is at w = sqrt(2), that of the standard one at w = 1.
+           CALL NodalBasisFunctions3D(Basis, Element, u, v, w/sqrt(2.0d0))
+           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, w/sqrt(2.0d0))
+           dLBasisdx(1:n,3) = dLBasisdx(1:n,3) / sqrt(2.0d0)
          ELSE
            ! Background mesh elements of the type 605:
            DO q=1,n
@@ -4550,8 +4551,8 @@ END SUBROUTINE PickActiveFace
            DOFs = 15
          END IF
 
-         IF (n==15) THEN
-           ! Here the background mesh is of type 715.
+         IF (n==15 .OR. n==18) THEN
+           ! Here the background mesh is of type 715 or 718.
            ! The Lagrange interpolation basis on the p-approximation reference element:
 
            h1 = -0.5d0*w + 0.5d0*w**2
@@ -4600,10 +4601,14 @@ END SUBROUTINE PickActiveFace
            dLBasisdx(15,1:2) = grad(1:2) * h3
            dLBasisdx(15,3) = WorkBasis(1,1) * dh3
 
-           h1 = 0.5d0 * (1.0d0 - w)
-           dh1 = -0.5d0
-           h2 = 0.5d0 * (1.0d0 + w)
-           dh2 = 0.5d0
+           ! For 715 the midside nodes of the triangles vary linearly in w; for 718
+           ! they are quadratic in w, completed by the quad face center nodes 16-18.
+           IF (n==15) THEN
+             h1 = 0.5d0 * (1.0d0 - w)
+             dh1 = -0.5d0
+             h2 = 0.5d0 * (1.0d0 + w)
+             dh2 = 0.5d0
+           END IF
 
            WorkBasis(1,1) = (3.0d0 - 3.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + v**2)/3.0d0
            grad(1) = -2.0d0*u
@@ -4614,6 +4619,11 @@ END SUBROUTINE PickActiveFace
            Basis(10) = WorkBasis(1,1) * h2
            dLBasisdx(10,1:2) = grad(1:2) * h2
            dLBasisdx(10,3) = WorkBasis(1,1) * dh2
+           IF (n==18) THEN
+             Basis(16) = WorkBasis(1,1) * h3
+             dLBasisdx(16,1:2) = grad(1:2) * h3
+             dLBasisdx(16,3) = WorkBasis(1,1) * dh3
+           END IF
 
            WorkBasis(1,1) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/3.0d0
            grad(1) = (2.0d0*v)/Sqrt(3.0d0)
@@ -4624,6 +4634,11 @@ END SUBROUTINE PickActiveFace
            Basis(11) = WorkBasis(1,1) * h2
            dLBasisdx(11,1:2) = grad(1:2) * h2
            dLBasisdx(11,3) = WorkBasis(1,1) * dh2
+           IF (n==18) THEN
+             Basis(17) = WorkBasis(1,1) * h3
+             dLBasisdx(17,1:2) = grad(1:2) * h3
+             dLBasisdx(17,3) = WorkBasis(1,1) * dh3
+           END IF
 
            WorkBasis(1,1) = (-2.0d0*v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/3.0d0
            grad(1) = (-2.0d0*v)/Sqrt(3.0d0)
@@ -4634,6 +4649,11 @@ END SUBROUTINE PickActiveFace
            Basis(12) = WorkBasis(1,1) * h2
            dLBasisdx(12,1:2) = grad(1:2) * h2
            dLBasisdx(12,3) = WorkBasis(1,1) * dh2
+           IF (n==18) THEN
+             Basis(18) = WorkBasis(1,1) * h3
+             dLBasisdx(18,1:2) = grad(1:2) * h3
+             dLBasisdx(18,3) = WorkBasis(1,1) * dh3
+           END IF
          ELSE
            ! Here the background mesh is of type 706
            DO q=1,n

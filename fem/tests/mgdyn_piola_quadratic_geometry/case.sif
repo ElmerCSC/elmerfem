@@ -1,0 +1,78 @@
+! Piola-transformed lowest-order edge elements on quadratic geometry:
+! five disconnected straight-sided unit boxes meshed with 820 bricks,
+! 715 wedges, 718 wedges, 613 pyramids and 827 bricks. Dirichlet data is the tangential trace of
+! A = (-y/2, x/2, 0), i.e. B = (0,0,1), which the discrete space contains
+! on straight-sided elements, so B_z = 1 should be reproduced to solver precision.
+! Previously the mesh edges of 820/827 bricks, 715/718 wedges and 613 pyramids got
+! the wrong midside node (wrong Dirichlet edge integrals), the 613 geometry mapping
+! was scaled wrongly, and 718 was not supported.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh"
+End
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+End
+Body 1
+  Target Bodies(1) = 1
+  Equation = 1
+  Material = 1
+End
+Material 1
+  Reluctivity = Real 1.0
+End
+Equation 1
+  Active Solvers(2) = 1 2
+End
+Solver 1
+  Equation = "MGDynamics"
+  Variable = "AV"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Use Piola Transform = Logical True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 2000
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 4000
+  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Abort Not Converged = True
+End
+Solver 2
+  Equation = "MGDynamicsCalc"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Potential Variable = String "AV"
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Nodal Fields = Logical False
+  Calculate Elemental Fields = Logical True
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = CG
+  Linear System Preconditioning = None
+  Linear System Max Iterations = 2000
+  Linear System Convergence Tolerance = 1.0e-12
+End
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Magnetic Flux Density E 3
+  Operator 1 = min
+  Operator 2 = max
+  Variable 2 = Magnetic Flux Density E 1
+  Operator 3 = max abs
+End
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  AV {e} 1 = Variable Coordinate 2
+    Real MATC "-0.5*tx"
+  AV {e} 2 = Variable Coordinate 1
+    Real MATC "0.5*tx"
+  AV {e} 3 = Real 0.0
+End
+
+Solver 3 :: Show Norm Index = 1
+Solver 3 :: Reference Norm = 1.0
+Solver 3 :: Reference Norm Tolerance = 1.0e-6

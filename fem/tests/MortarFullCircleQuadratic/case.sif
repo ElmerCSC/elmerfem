@@ -1,0 +1,117 @@
+! Full-circle rotational mortar interface with quadratic (820/408) geometry and
+! Piola edge elements, using the weak (Galerkin) generic level projector.
+! Rotor r in [0.5,1] (24 sectors), stator r in [1,1.5] (32 sectors, offset 4 deg),
+! connected only through the nonconforming mortar interface at r=1.
+! Dirichlet data is the tangential trace of A = (-y/2, x/2, 0), i.e. B = (0,0,1).
+! The lowest-order Piola basis does not reproduce this exactly on curved 820
+! elements (min B_z ~0.968 even without the mortar); the integral of B_z over
+! the volume is checked instead, which is pi to within ~5e-4.
+! Previously, for slave elements on the "left circle" (|phi| > 90 deg), only the
+! corner nodes of the master element were shifted by 360 deg, leaving the
+! midside nodes behind, which corrupted the master edge basis there
+! (min B_z was ~ -300).
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Target Bodies(2) = 1 2
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Reluctivity = Real 1.0
+End
+
+Equation 1
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "MGDynamics"
+  Variable = "AV"
+  Procedure = "MagnetoDynamics" "WhitneyAVSolver"
+  Use Piola Transform = Logical True
+  Apply Mortar BCs = Logical True
+  Use Lagrange Gauge = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = GCR
+  Linear System GCR Restart = 3000
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 3000
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Residual Output = 100
+  Linear System Abort Not Converged = True
+End
+
+Solver 2
+  Equation = "MGDynamicsCalc"
+  Procedure = "MagnetoDynamics" "MagnetoDynamicsCalcFields"
+  Potential Variable = String "AV"
+  Calculate Magnetic Field Strength = Logical False
+  Calculate Nodal Fields = Logical False
+  Calculate Elemental Fields = Logical True
+
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = CG
+  Linear System Preconditioning = None
+  Linear System Max Iterations = 2000
+  Linear System Convergence Tolerance = 1.0e-12
+End
+
+Solver 3
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+
+  Variable 1 = Magnetic Flux Density E 3
+  Operator 1 = int
+  Operator 2 = min
+  Operator 3 = max
+  Variable 4 = Magnetic Flux Density E 1
+  Operator 4 = max abs
+
+  ! Volume integral of B_z, exact value pi*(1.5^2-0.5^2)*0.5 = pi.
+  ! The system is ill-conditioned (min/max of B vary with the number of
+  ! threads and the solver tolerance), but the integral is robust.
+  Show Norm Index = 1
+End
+
+! Slave: outer surface of the rotor
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  Mortar BC = Integer 2
+  Rotational Projector = Logical True
+  Level Projector = Logical True
+  Galerkin Projector = Logical True
+End
+
+! Master: inner surface of the stator
+Boundary Condition 2
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Target Boundaries(1) = 3
+  AV {e} 1 = Variable Coordinate 2
+    Real MATC "-0.5*tx"
+  AV {e} 2 = Variable Coordinate 1
+    Real MATC "0.5*tx"
+  AV {e} 3 = Real 0.0
+End
+
+Solver 3 :: Reference Norm = 3.14159265
+Solver 3 :: Reference Norm Tolerance = 2.0e-3

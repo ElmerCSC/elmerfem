@@ -2087,8 +2087,8 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), C(3,3), &
                      RotMLoc(3,3), velo(3), omega(3), omega_velo(3,n), &
                      lorentz_velo(3,n), VeloCrossW(3), RotWJ(3), CVelo(3), &
-                     A_t(3,3), A_t_der(3,3), eps=1.0d-3, Permittivity(nd), P_ip
-    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(nd), weight
+                     A_t(3,3), A_t_der(3,3), eps=1.0d-3, Permittivity(n), P_ip
+    REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(n), weight
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
     LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
@@ -2579,7 +2579,7 @@ END SUBROUTINE LocalConstraintMatrix
     INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
 !------------------------------------------------------------------------------
-    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Permittivity(nd), P_ip
+    REAL(KIND=dp) :: WBasis(nd,3), RotWBasis(nd,3), Permittivity(n), P_ip
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     LOGICAL :: Stat, Found
     INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree
