@@ -2153,7 +2153,12 @@ END SUBROUTINE LocalConstraintMatrix
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
 
-    CALL GetPermittivity(GetMaterial(), Permittivity, n)
+    ! The permittivity is only used in the electrodynamics and Darwin models.
+    IF ( ElectroDynamics .OR. Darwin ) THEN
+      CALL GetPermittivity(GetMaterial(), Permittivity, n)
+    ELSE
+      Permittivity = 0.0_dp
+    END IF
 
     IF ( HasHBCurve .OR. HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
