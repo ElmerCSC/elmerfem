@@ -444,25 +444,26 @@ CONTAINS
        INTEGER :: ip, tid
        tid = 1
        !$ tid = omp_get_thread_num() + 1
-       IF ( ip_slot > 0 ) THEN
-         ! O(1) direct slot lookup
-         IF ( ip_slot <= Element % TYPE % BasisCacheCount(tid) ) THEN
-           Basis(1:n)       = Element % Type % BasisCache(ip_slot, 1:n, tid)
-           dLBasisdx(1:n,:) = Element % Type % dBasisCache(ip_slot, 1:n, :, tid)
+       ! Check the key too: another rule on this element type may have filled the slot.
+       IF ( ip_slot > 0 .AND. ip_slot <= Element % TYPE % BasisCacheCount(tid) .AND. &
+            Element % Type % BasisCacheU(ip_slot, tid) == u .AND. &
+            Element % Type % BasisCacheV(ip_slot, tid) == v .AND. &
+            Element % Type % BasisCacheW(ip_slot, tid) == w ) THEN
+         Basis(1:n)       = Element % Type % BasisCache(ip_slot, 1:n, tid)
+         dLBasisdx(1:n,:) = Element % Type % dBasisCache(ip_slot, 1:n, :, tid)
+         EXIT RefBasisBlock
+       END IF
+
+       ! Linear scan by (u,v,w) coordinates
+       DO ip = 1, Element % TYPE % BasisCacheCount(tid)
+         IF ( Element % Type % BasisCacheU(ip, tid) == u .AND. &
+              Element % Type % BasisCacheV(ip, tid) == v .AND. &
+              Element % Type % BasisCacheW(ip, tid) == w ) THEN
+           Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n, tid)
+           dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :, tid)
            EXIT RefBasisBlock
          END IF
-       ELSE
-         ! Linear scan by (u,v,w) coordinates
-         DO ip = 1, Element % TYPE % BasisCacheCount(tid)
-           IF ( Element % Type % BasisCacheU(ip, tid) == u .AND. &
-                Element % Type % BasisCacheV(ip, tid) == v .AND. &
-                Element % Type % BasisCacheW(ip, tid) == w ) THEN
-             Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n, tid)
-             dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :, tid)
-             EXIT RefBasisBlock
-           END IF
-         END DO
-       END IF
+       END DO
 
        CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
        CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
