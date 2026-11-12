@@ -1748,10 +1748,15 @@ CONTAINS
        cdim = CoordinateSystemDimension()
 
        IF (nc <= VECTOR_SMALL_THRESH) THEN
-         DO l=1,nc
-           CALL NodalBasisFunctions(n, BasisWrk(l,:), Element, u(l), v(l), w(l))
-           CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), Element, u(l), v(l), w(l))
-         END DO
+         IF ( .NOT. ElementInfoVec_BasisCacheLookup(Element % TYPE, n, nc, 1, &
+                 u, v, w, 1, BasisWrk, dBasisdxWrk) ) THEN
+           DO l=1,nc
+             CALL NodalBasisFunctions(n, BasisWrk(l,:), Element, u(l), v(l), w(l))
+             CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), Element, u(l), v(l), w(l))
+           END DO
+           CALL ElementInfoVec_BasisCacheStore(Element % TYPE, n, nc, 1, &
+               u, v, w, 1, BasisWrk, dBasisdxWrk)
+         END IF
          elem = ElementMetricVec(Element, Nodes, nc, n, DetJ(1:nc), &
                nbmax, dBasisdxWrk, LtoGMapsWrk)
          IF (.NOT. elem) THEN; retval = .FALSE.; RETURN; END IF
@@ -1778,6 +1783,8 @@ CONTAINS
          ! H1Basis vectorized dispatch: only safe for minimum-node (linear) elements
          ! (type >= nodes means no higher-order nodes to fill).
          ! Higher-order elements fall through to the scalar loop.
+         IF ( .NOT. ElementInfoVec_BasisCacheLookup(Element % TYPE, n, ncl, ll, &
+                 u, v, w, ll, BasisWrk, dBasisdxWrk) ) THEN
          IF (Element % TYPE % ElementCode/100 >= MODULO(Element % TYPE % ElementCode, 100)) THEN
            SELECT CASE(Element % TYPE % ElementCode / 100)
            CASE(2)
@@ -1810,6 +1817,9 @@ CONTAINS
              CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l))
            END DO
          END IF
+         CALL ElementInfoVec_BasisCacheStore(Element % TYPE, n, ncl, ll, &
+             u, v, w, ll, BasisWrk, dBasisdxWrk)
+         END IF  ! .NOT. ElementInfoVec_BasisCacheLookup
          Basis(ll:lln, 1:n) = BasisWrk(1:ncl, 1:n)
 
          ! Element (contravariant) metric and square root of determinant
@@ -1837,6 +1847,74 @@ CONTAINS
        END DO
      END IF
    END FUNCTION ElementInfoVec
+
+!------------------------------------------------------------------------------
+!>  Copy reference basis values for points slot0..slot0+npts-1 from the
+!>  per-type cache. Returns .FALSE. unless every key in the block matches.
+!------------------------------------------------------------------------------
+   FUNCTION ElementInfoVec_BasisCacheLookup( EType, n, npts, slot0, &
+       u, v, w, uoff, BasisWrk, dBasisdxWrk ) RESULT(hit)
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE(ElementType_t), POINTER, INTENT(IN) :: EType
+     INTEGER, INTENT(IN) :: n, npts, slot0, uoff
+     REAL(KIND=dp) CONTIG, INTENT(IN) :: u(:), v(:), w(:)
+     REAL(KIND=dp) CONTIG :: BasisWrk(:,:), dBasisdxWrk(:,:,:)
+     LOGICAL :: hit
+     INTEGER :: i, slot, tid
+!------------------------------------------------------------------------------
+     tid = 1
+     !$ tid = omp_get_thread_num() + 1
+     hit = .FALSE.
+     IF ( slot0 + npts - 1 > ELEM_BASIS_CACHE_SIZE ) RETURN
+     IF ( EType % BasisCacheCount(tid) < slot0 + npts - 1 ) RETURN
+
+     DO i=1,npts
+       slot = slot0 + i - 1
+       IF ( EType % BasisCacheU(slot, tid) /= u(uoff+i-1) .OR. &
+            EType % BasisCacheV(slot, tid) /= v(uoff+i-1) .OR. &
+            EType % BasisCacheW(slot, tid) /= w(uoff+i-1) ) RETURN
+     END DO
+
+     DO i=1,npts
+       slot = slot0 + i - 1
+       BasisWrk(i,1:n)       = EType % BasisCache(slot, 1:n, tid)
+       dBasisdxWrk(i,1:n,:)  = EType % dBasisCache(slot, 1:n, :, tid)
+     END DO
+     hit = .TRUE.
+!------------------------------------------------------------------------------
+   END FUNCTION ElementInfoVec_BasisCacheLookup
+
+!------------------------------------------------------------------------------
+!>  Store a computed block in slots slot0..slot0+npts-1. Reads check the
+!>  keys, so overwriting another rule's slots is safe.
+!------------------------------------------------------------------------------
+   SUBROUTINE ElementInfoVec_BasisCacheStore( EType, n, npts, slot0, &
+       u, v, w, uoff, BasisWrk, dBasisdxWrk )
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE(ElementType_t), POINTER, INTENT(IN) :: EType
+     INTEGER, INTENT(IN) :: n, npts, slot0, uoff
+     REAL(KIND=dp) CONTIG, INTENT(IN) :: u(:), v(:), w(:)
+     REAL(KIND=dp) CONTIG :: BasisWrk(:,:), dBasisdxWrk(:,:,:)
+     INTEGER :: i, slot, tid
+!------------------------------------------------------------------------------
+     tid = 1
+     !$ tid = omp_get_thread_num() + 1
+
+     IF ( slot0 + npts - 1 > ELEM_BASIS_CACHE_SIZE ) RETURN
+
+     DO i=1,npts
+       slot = slot0 + i - 1
+       EType % BasisCacheU(slot, tid) = u(uoff+i-1)
+       EType % BasisCacheV(slot, tid) = v(uoff+i-1)
+       EType % BasisCacheW(slot, tid) = w(uoff+i-1)
+       EType % BasisCache(slot, 1:n, tid)     = BasisWrk(i,1:n)
+       EType % dBasisCache(slot, 1:n, :, tid) = dBasisdxWrk(i,1:n,:)
+     END DO
+     EType % BasisCacheCount(tid) = MAX( EType % BasisCacheCount(tid), slot0 + npts - 1 )
+!------------------------------------------------------------------------------
+   END SUBROUTINE ElementInfoVec_BasisCacheStore
 
    FUNCTION ElementInfoVec_ComputePElementBasis(Element, Nodes, nc, u, v, w, DetJ, nbmax, Basis, &
       uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGmapsWrk, dBasisdx, USolver) RESULT(retval)
