@@ -76,7 +76,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), &
        STIFF(:,:),FORCE(:), TimeForce(:), SMB(:),BMB(:),&
        MASS(:,:), Velo(:,:),  LowerLimit(:), UpperLimit(:), &
-       OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:)
+       OldValues(:), OldRHS(:),MeshVelocity(:,:)
 
   CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName, StabilizeFlag, PassName
 
@@ -97,11 +97,10 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   !-----------------------------------------------------------------------------
   !      remember these variables
   !----------------------------------------------------------------------------- 
-  SAVE STIFF, MASS, FORCE, &
-       SMB,BMB, &
+  SAVE STIFF, MASS, FORCE, SMB,BMB, &
        ElementNodes, AllocationsDone, Velo,  TimeForce, &
-       UseBodyForce, LimitedSolution, LowerLimit, UpperLimit, ActiveNode, OldValues, OldRHS, &
-       ResidualVector, StiffVector, MeshVelocity
+       UseBodyForce, LimitedSolution, LowerLimit, UpperLimit, ActiveNode, &
+       MeshVelocity
 
   !------------------------------------------------------------------------------
   !    Get variable/solver name
@@ -234,12 +233,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              LowerLimit,                      &
              UpperLimit, &
              LimitedSolution,  &
-             ActiveNode,                      & 
-             ResidualVector, &
-             OldValues,&
-             OldRHS,&
-             StiffVector)
-
+             ActiveNode )
      END IF
 
 
@@ -263,10 +257,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           UpperLimit( MMAX ), &
           LimitedSolution( MMAX, 2 ),  &
           ActiveNode( MMAX, 2 ),       &  
-          ResidualVector( L ),         &
-          OldValues(K), &
-          OldRHS(L), &
-          StiffVector( L ), &
           STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal(SolverName,'Memory allocation error 1, Aborting.')
@@ -275,7 +265,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName,'Memory allocations done' )
      AllocationsDone = .TRUE.
      ActiveNode = .FALSE.
-     ResidualVector = 0.0_dp
   END IF
   LimitedSolution=.FALSE.
 
@@ -322,7 +311,20 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
            CALL FATAL(SolverName,"libmassbf type should be on_elements")
   ENDIF
 
+  
   CALL DefaultStart()
+
+  Thick => Solver % Variable % Values
+  ThickPerm => Solver % Variable % Perm
+  SystemMatrix => Solver % Matrix
+  ForceVector => Solver % Matrix % RHS
+
+  ! We allocate these every time since they are not needed outside and their size may change
+  ! because of changing mesh!
+  IF( ComputeResidual ) THEN
+    ALLOCATE(OldValues(SIZE( SystemMatrix % Values )), OldRhs(SIZE(ForceVector)),&
+        ResidualVector(SIZE(ForceVector)))
+  END IF
   
   !------------------------------------------------------------------------------
   ! Non-linear iteration loop
@@ -354,15 +356,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !------------------------------------------------------------------------------
      !    Do the assembly
      !------------------------------------------------------------------------------
-100   Thick => Solver % Variable % Values
-      ThickPerm => Solver % Variable % Perm
-      SystemMatrix => Solver % Matrix
-      ForceVector => Solver % Matrix % RHS
-      IF(SplitFEMOn) THEN
-         DEALLOCATE(StiffVector)
-         ALLOCATE(StiffVector(SIZE( SystemMatrix % RHS )))
-      END IF
-      DO t=1,Solver % NumberOfActiveElements
+
+
+100   DO t=1,Solver % NumberOfActiveElements
         Element => GetActiveElement(t)
         Passive=CheckPassiveElement(Element)
         n = GetElementNOFNodes()
@@ -524,7 +520,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        SplitFEMOn = .TRUE.
        CALL Info(SolverName,'Going back for SplitFEM interface elements!')
        PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'
-       IF(ListCheckPresentAnyBodyForce(Model, PassName)) CALL FATAL(SolverName, 'Cannot have passive variable and use CutFEM')
+       IF(ListCheckPresentAnyBodyForce(Model, PassName)) CALL FATAL(SolverName, 'Cannot have passive variable with SplitFEM')
        GOTO 100
      END IF
      
@@ -535,8 +531,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !    Manipulation of the assembled matrix due to limits
      !------------------------------------------------------------------------------
      IF( ComputeResidual ) THEN
-       OldValues = SystemMatrix % Values
+       OldValues = SystemMatrix % Values       
        OldRHS = ForceVector
+       ResidualVector = 0.0_dp
      END IF
        
      IF (ApplyDirichlet) THEN
@@ -598,12 +595,12 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
           IF ( ParEnv % PEs > 1 ) THEN !!!!!!!!!!!!!!!!!!!!!! we have a parallel run
             CALL ParallelInitSolve( SystemMatrix, Thick, ForceVector, ResidualVector )
-            CALL ParallelMatrixVector( SystemMatrix, Thick, StiffVector, .TRUE. )
-            ResidualVector =  StiffVector - ForceVector
+            CALL ParallelMatrixVector( SystemMatrix, Thick, ResidualVector, .TRUE. )
+            ResidualVector =  ResidualVector - ForceVector
             CALL ParallelSumVector( SystemMatrix, ResidualVector )
           ELSE !!!!!!!!!!!!!!!!!!!!!! serial run 
-            CALL CRS_MatrixVectorMultiply( SystemMatrix, Thick, StiffVector)
-            ResidualVector =  StiffVector - ForceVector
+            CALL CRS_MatrixVectorMultiply( SystemMatrix, Thick, ResidualVector)
+            ResidualVector = ResidualVector - ForceVector
           END IF
         END IF
         !-----------------------------
