@@ -1121,7 +1121,6 @@ CONTAINS
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
     INTEGER :: i,p,q,j,t,k,ngp,tid
-    LOGICAL :: HaveScratch
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -1133,7 +1132,6 @@ CONTAINS
 
     tid = 1
     !$ tid = omp_get_thread_num() + 1
-    HaveScratch = .FALSE.
 
     ASSOCIATE( &
         Source_h      => Source_h(tid),     Cond_h        => Cond_h(tid),      &
@@ -1229,8 +1227,6 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
-
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
 
@@ -1261,7 +1257,10 @@ CONTAINS
     CALL MOVE_ALLOC( VecScratch(tid) % GradPVec, GradPVec )
     CALL MOVE_ALLOC( VecScratch(tid) % CondScalarVec, CondScalarVec )
     CALL MOVE_ALLOC( VecScratch(tid) % CondGvec, CondGvec )
-    HaveScratch = .TRUE.
+
+    ! DefaultUpdateEquations copies the stored local system into STIFF and
+    ! FORCE, so they must be allocated before this jump.
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
 
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN
       CALL GetElementNodesOrigVec( Nodes, UElement=Element )
@@ -1618,24 +1617,22 @@ CONTAINS
 
 10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 
-    IF( HaveScratch ) THEN
-      CALL MOVE_ALLOC( Basis, VecScratch(tid) % Basis )
-      CALL MOVE_ALLOC( dBasisdx, VecScratch(tid) % dBasisdx )
-      CALL MOVE_ALLOC( DetJVec, VecScratch(tid) % DetJVec )
-      CALL MOVE_ALLOC( MASS, VecScratch(tid) % MASS )
-      CALL MOVE_ALLOC( STIFF, VecScratch(tid) % STIFF )
-      CALL MOVE_ALLOC( FORCE, VecScratch(tid) % FORCE )
-      CALL MOVE_ALLOC( ConvVelo, VecScratch(tid) % ConvVelo )
-      CALL MOVE_ALLOC( TmpVec, VecScratch(tid) % TmpVec )
-      CALL MOVE_ALLOC( TmpVec2, VecScratch(tid) % TmpVec2 )
-      CALL MOVE_ALLOC( StreamVec, VecScratch(tid) % StreamVec )
-      CALL MOVE_ALLOC( TauVec, VecScratch(tid) % TauVec )
-      CALL MOVE_ALLOC( CompRhoAtIpVec, VecScratch(tid) % CompRhoAtIpVec )
-      CALL MOVE_ALLOC( PcoeffVec, VecScratch(tid) % PcoeffVec )
-      CALL MOVE_ALLOC( GradPVec, VecScratch(tid) % GradPVec )
-      CALL MOVE_ALLOC( CondScalarVec, VecScratch(tid) % CondScalarVec )
-      CALL MOVE_ALLOC( CondGvec, VecScratch(tid) % CondGvec )
-    END IF
+    CALL MOVE_ALLOC( Basis, VecScratch(tid) % Basis )
+    CALL MOVE_ALLOC( dBasisdx, VecScratch(tid) % dBasisdx )
+    CALL MOVE_ALLOC( DetJVec, VecScratch(tid) % DetJVec )
+    CALL MOVE_ALLOC( MASS, VecScratch(tid) % MASS )
+    CALL MOVE_ALLOC( STIFF, VecScratch(tid) % STIFF )
+    CALL MOVE_ALLOC( FORCE, VecScratch(tid) % FORCE )
+    CALL MOVE_ALLOC( ConvVelo, VecScratch(tid) % ConvVelo )
+    CALL MOVE_ALLOC( TmpVec, VecScratch(tid) % TmpVec )
+    CALL MOVE_ALLOC( TmpVec2, VecScratch(tid) % TmpVec2 )
+    CALL MOVE_ALLOC( StreamVec, VecScratch(tid) % StreamVec )
+    CALL MOVE_ALLOC( TauVec, VecScratch(tid) % TauVec )
+    CALL MOVE_ALLOC( CompRhoAtIpVec, VecScratch(tid) % CompRhoAtIpVec )
+    CALL MOVE_ALLOC( PcoeffVec, VecScratch(tid) % PcoeffVec )
+    CALL MOVE_ALLOC( GradPVec, VecScratch(tid) % GradPVec )
+    CALL MOVE_ALLOC( CondScalarVec, VecScratch(tid) % CondScalarVec )
+    CALL MOVE_ALLOC( CondGvec, VecScratch(tid) % CondGvec )
 
     END ASSOCIATE
 !------------------------------------------------------------------------------
