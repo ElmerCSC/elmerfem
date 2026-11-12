@@ -140,6 +140,12 @@
      INTEGER :: CompressibilityModel
      CHARACTER(LEN=MAX_NAME_LEN) :: EquationName
      CHARACTER(LEN=MAX_NAME_LEN) :: ConcentrationUnits
+! Keyword names that depend on the solver variable, built once per call
+     CHARACTER(:), ALLOCATABLE :: ConvectionKey, EPotFieldKey, ConvFieldKey, DiffusivityKey, &
+         SoretKey, IonChargeKey, MaxSolKey, SourceKey
+     CHARACTER(LEN=MAX_NAME_LEN) :: ConvVeloKey(3)
+     REAL(KIND=dp) :: UnitCharge, BoltzmannConst
+     LOGICAL :: HaveBF, HaveIon, PhysicalUnits
 ! We will read velocity, temperature and electrical potential in
 ! For the moment assume steady-state velocity, temperature and potential
 ! Then ElmerSolver reads them in automatically
@@ -295,6 +301,18 @@
 
      dt = Timestep
 
+     ConvectionKey = TRIM(ComponentName(Solver % Variable)) // ' Convection'
+     EPotFieldKey = TRIM(ComponentName(Solver % Variable)) // ' EPotential Field Variable'
+     ConvFieldKey = TRIM(ComponentName(Solver % Variable)) // ' Convection Field Variable'
+     DiffusivityKey = TRIM(ComponentName(Solver % Variable)) // ' Diffusivity'
+     SoretKey = TRIM(ComponentName(Solver % Variable)) // ' Soret Diffusivity'
+     IonChargeKey = TRIM(ComponentName(Solver % Variable)) // ' Ion Charge'
+     MaxSolKey = TRIM(ComponentName(Solver % Variable)) // ' Maximum Solubility'
+     SourceKey = TRIM(ComponentName(Solver % Variable)) // ' Diffusion Source'
+     DO i=1,3
+       ConvVeloKey(i) = TRIM(ComponentName(Solver % Variable)) // ' Convection Velocity ' // I2S(i)
+     END DO
+
 !------------------------------------------------------------------------------
 
      totat = 0.0d0
@@ -341,8 +359,7 @@
            eq_id = ListGetInteger( Model % Bodies(body_id) % Values,'Equation')
            Eq => Model % Equations(eq_id) % Values
 
-           ConvectionFlag = ListGetString( Eq, &
-               TRIM(ComponentName(Solver % Variable)) //' Convection', GotIt )
+           ConvectionFlag = ListGetString( Eq, ConvectionKey, GotIt )
            IF ( .NOT. GotIt ) &
              ConvectionFlag = ListGetString( Eq,'Convection', GotIt )
 
@@ -376,9 +393,7 @@
              END IF
            END IF
 
-           PhiSolName = ListGetString( Material, &
-               TRIM(ComponentName(Solver % Variable)) // &
-               ' EPotential Field Variable', GotIt )
+           PhiSolName = ListGetString( Material, EPotFieldKey, GotIt )
            IF ( .NOT. GotIt ) &
              PhiSolName = ListGetString( Material, &
                  'EPotential Field Variable', GotIt )
@@ -395,9 +410,7 @@
              END IF
            END IF
 
-           ConvectName = ListGetString( Eq, &
-               TRIM(ComponentName(Solver % Variable)) // &
-               ' Convection Field Variable', GotIt )
+           ConvectName = ListGetString( Eq, ConvFieldKey, GotIt )
            IF ( .NOT. GotIt ) &
              ConvectName = ListGetString( Material, &
                  'Convection Field Variable', GotIt )
@@ -443,6 +456,46 @@
            CASE DEFAULT
              CompressibilityModel = Incompressible
            END SELECT
+
+!          Material and body force values that are constant within a body
+           IonCharge = ListGetConstReal( Material, IonChargeKey, HaveIon )
+           IF ( .NOT. HaveIon ) THEN
+             IonCharge = 0._dp
+           ELSE
+             UnitCharge = ListGetConstReal( Model % Constants,'Unit Charge')
+             BoltzmannConst = ListGetConstReal( Model % Constants,'Boltzmann Constant')
+           END IF
+
+           IF ( CompressibilityModel >= PerfectGas1 .AND. &
+               CompressibilityModel <= PerfectGas3 ) THEN
+             SpecificHeatRatio = ListGetConstReal( Material, &
+                 'Specific Heat Ratio', GotIt )
+             IF ( .NOT.GotIt ) SpecificHeatRatio = 1.4d0
+           END IF
+
+           ReferencePressure = 0.0_dp
+           IF ( CompressibilityModel /= Incompressible ) THEN
+             ReferencePressure = ListGetConstReal( Material, &
+                 'Reference Pressure', GotIt)
+           END IF
+
+           IF ( ScaledToSolubility ) THEN
+             MaxSol = ListGetConstReal( Material, MaxSolKey, GotIt )
+             IF ( .NOT. GotIT ) THEN
+               WRITE( Message, * ) 'Maximum solubility not defined in body : ', &
+                    CurrentElement % BodyId
+               CALL Fatal( 'AdvectionDiffusion', Message )
+             END IF
+           END IF
+
+           bf_id = ListGetInteger( Model % Bodies(body_id) % &
+             Values, 'Body Force', HaveBF, 1, Model % NumberOfBodyForces )
+           Ratio = 1.0d0
+           IF ( HaveBF .AND. ScaledToSolubility ) THEN
+             PhysicalUnits = ListGetLogical( Model % BodyForces(bf_id) % Values, &
+                 'Physical Units', GotIt )
+             IF ( PhysicalUnits ) Ratio = MaxSol
+           END IF
 !------------------------------------------------------------------------------
          END IF
 !------------------------------------------------------------------------------
@@ -472,9 +525,7 @@
 !        Get system parameters for element nodal points
 !------------------------------------------------------------------------------
 
-         CALL ListGetRealArray( Material,  &
-             TRIM(ComponentName(Solver % Variable)) // &
-                     ' Diffusivity', Hwrk, n, NodeIndexes )
+         CALL ListGetRealArray( Material, DiffusivityKey, Hwrk, n, NodeIndexes )
 
          Diffusivity = 0.0d0
          IF ( SIZE(Hwrk,1) == 1 ) THEN
@@ -495,25 +546,15 @@
 
 ! This is also different for each species (in the same carrier gas)
 
-         SoretDiffusivity(1:n) = ListGetReal( Material, &
-              TRIM(ComponentName(Solver % Variable)) // &
-              ' Soret Diffusivity', n, NodeIndexes, GotIt )
+         SoretDiffusivity(1:n) = ListGetReal( Material, SoretKey, n, NodeIndexes, GotIt )
          IF ( .NOT. GotIt )  SoretDiffusivity = 0.0d0
 
-         IonCharge = ListGetConstReal( Material, &
-              TRIM(ComponentName(Solver % Variable)) // &
-              ' Ion Charge', GotIt )
-         IF ( .NOT. GotIt ) THEN
+         IF ( .NOT. HaveIon ) THEN
            NEConst   = 0._dp
-           IonCharge = 0._dp
          ELSE
            NEConst(1:n) = IonCharge / LocalTemperature(1:n) * &
-               ListGetConstReal( Model % Constants,'Unit Charge') / &
-               ListGetConstReal( Model % Constants,'Boltzmann Constant')
+               UnitCharge / BoltzmannConst
          END IF
-
-         HeatCapacity(1:n) = ListGetReal( Material,'Heat Capacity', &
-             n,NodeIndexes,GotIt )
 
 !------------------------------------------------------------------------------
 !      Previous solution for element nodal points
@@ -524,12 +565,8 @@
 ! We need also Density, need to go through all that jazz, if incompressible
          IF ( CompressibilityModel >= PerfectGas1 .AND. &
              CompressibilityModel <= PerfectGas3 ) THEN
-!------------------------------------------------------------------------------
-! Read Specific Heat Ratio
-!------------------------------------------------------------------------------
-           SpecificHeatRatio = ListGetConstReal( Material, &
-               'Specific Heat Ratio', GotIt )
-           IF ( .NOT.GotIt ) SpecificHeatRatio = 1.4d0
+           HeatCapacity(1:n) = ListGetReal( Material,'Heat Capacity', &
+               n,NodeIndexes,GotIt )
 !------------------------------------------------------------------------------
 ! For an ideal gas, \gamma, c_p and R are really a constant
 ! GasConstant is an array only since HeatCapacity formally is
@@ -538,13 +575,6 @@
                HeatCapacity(1:n) / SpecificHeatRatio
          ELSE
            Density(1:n) = ListGetReal( Material,'Density',n,NodeIndexes )
-         END IF
-! Read p_0
-!------------------------------------------------------------------------------
-         ReferencePressure = 0.0_dp
-         IF ( CompressibilityModel /= Incompressible ) THEN
-           ReferencePressure = ListGetConstReal( Material, &
-               'Reference Pressure', GotIt)
          END IF
 
 ! etc.
@@ -556,16 +586,13 @@
 !------------------------------------------------------------------------------
 
          IF ( ConvectionFlag == 'constant' ) THEN
-           U = ListGetReal( Eq, TRIM(ComponentName(Solver % Variable)) // &
-               ' Convection Velocity 1',n,NodeIndexes,GotIt )
+           U = ListGetReal( Eq, TRIM(ConvVeloKey(1)),n,NodeIndexes,GotIt )
            IF ( .NOT. GotIt ) &
                U = ListGetReal( Material,'Convection Velocity 1',n,NodeIndexes, GotIt)
-           V = ListGetReal( Eq, TRIM(ComponentName(Solver % Variable)) // &
-               ' Convection Velocity 2',n,NodeIndexes,GotIt )
+           V = ListGetReal( Eq, TRIM(ConvVeloKey(2)),n,NodeIndexes,GotIt )
            IF ( .NOT. GotIt ) &
              V = ListGetReal( Material,'Convection Velocity 2',n,NodeIndexes, GotIt)
-           W = ListGetReal( Eq, TRIM(ComponentName(Solver % Variable)) // &
-                ' Convection Velocity 3',n,NodeIndexes,GotIt )
+           W = ListGetReal( Eq, TRIM(ConvVeloKey(3)),n,NodeIndexes,GotIt )
            IF ( .NOT. GotIt ) &
              W = ListGetReal( Material,'Convection Velocity 3',n,NodeIndexes, GotIt)
          ELSE IF ( ConvectionFlag == 'computed' ) THEN
@@ -687,52 +714,23 @@
          ELSE
             C0 = 1.0d0
          END IF
-         IF ( ScaledToSolubility ) THEN
-            MaxSol = ListGetConstReal( Material, &
-              TRIM(ComponentName(Solver % Variable)) // &
-                 ' Maximum Solubility', GotIt )
-            IF ( .NOT. GotIT ) THEN
-               WRITE( Message, * ) 'Maximum solubility not defined in body : ', &
-                    CurrentElement % BodyId
-               CALL Fatal( 'AdvectionDiffusion', Message )
-            END IF
-            C0 = C0 / MaxSol
-         END IF
+         IF ( ScaledToSolubility ) C0 = C0 / MaxSol
 
 
 !------------------------------------------------------------------------------
 !      Get element local matrix, and rhs vector
 !------------------------------------------------------------------------------
 ! Add body forces here, if any
-         bf_id = ListGetInteger( Model % Bodies(CurrentElement % BodyId) % &
-           Values, 'Body Force', GotIt, 1, Model % NumberOfBodyForces )
-
-         IF ( GotIt ) THEN
+         IF ( HaveBF ) THEN
 !------------------------------------------------------------------------------
 !          Given species source
 !------------------------------------------------------------------------------
 ! Not multiplied by density => Absolute mass source of c_n [kg/m3s]
 !
 ! Take into account scaling of units if source given in physical units
-
-           IF ( ScaledToSolubility .AND. ListGetLogical( Model % &
-               BodyForces(bf_id) % Values, 'Physical Units', GotIt ) ) THEN
-
-             Ratio = ListGetConstReal( Material, &
-              TRIM(ComponentName(Solver % Variable)) // &
-                 ' Maximum Solubility', GotIt )
-             IF ( .NOT. GotIT ) THEN
-               WRITE( Message, * ) 'Maximum solubility not defined in body : ', &
-                   CurrentElement % BodyId
-               CALL Fatal( 'AdvectionDiffusion', Message )
-             END IF
-           ELSE
-             Ratio = 1.0d0
-           END IF
            Load(1:n) = Load(1:n) + &
                ListGetReal( Model % BodyForces(bf_id) % Values,  &
-               TRIM(ComponentName(Solver % Variable)) // &
-                 ' Diffusion Source',n,NodeIndexes,gotIt ) / Ratio
+               SourceKey,n,NodeIndexes,gotIt ) / Ratio
          END IF
 
 !------------------------------------------------------------------------------
