@@ -789,7 +789,7 @@ CONTAINS
 
    REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError, LinTol, RelTol, BaseTol
    LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual, LFactFound
-   LOGICAL :: AdaptiveTols, FoundAny, ConstraintActive, GotCoil
+   LOGICAL :: AdaptiveTols, FoundAny, ConstraintActive, GotCoil, MassIsZero
 
    TYPE(Matrix_t), POINTER :: MMatrix
    REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
@@ -967,12 +967,13 @@ CONTAINS
      CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-         Element, n, nd+nb, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2 )
+         Element, n, nd+nb, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2, MassIsZero )
 
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
      IF (Transient .OR. EigenSystem) THEN
-       CALL DefaultUpdateMass(MASS)
+       ! The first update allocates the mass values, so it cannot be skipped.
+       IF ( .NOT. MassIsZero .OR. .NOT. ASSOCIATED(A % MassValues) ) CALL DefaultUpdateMass(MASS)
        IF ( ElectroDynamics ) CALL DefaultUpdateDamp(DAMP)
      END IF
 
@@ -2068,7 +2069,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-            Element, n, nd, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2 )
+            Element, n, nd, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2, MassIsZero )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), JFixFORCE(:), JFixVec(:,:)
@@ -2080,6 +2081,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
+    LOGICAL, INTENT(OUT) :: MassIsZero
     REAL(KIND=dp) :: AmsSTIFF(:,:), AmsSTIFF2(:,:)
 
 !------------------------------------------------------------------------------
@@ -2111,6 +2113,12 @@ END SUBROUTINE LocalConstraintMatrix
     MASS  = 0.0_dp
     DAMP  = 0.0_dp
     JAC = 0.0_dp
+
+    ! Every term added to MASS is proportional to the conductivity, the permittivity
+    ! (Darwin or electrodynamics) or the laminate stack conductivity.
+    MassIsZero = .NOT. ( ElectroDynamics .OR. Darwin ) .AND. &
+        LaminateStackModel /= 'low-frequency model' .AND. ALL( Tcoef(:,:,1:n) == 0.0_dp )
+
     IF(ASSOCIATED(AmsMat)) AmsSTIFF = 0.0_dp
     IF(ASSOCIATED(AmsScalMat)) AmsSTIFF2 = 0.0_dp
 
@@ -2438,7 +2446,7 @@ END SUBROUTINE LocalConstraintMatrix
              IF (CoilType /= 'stranded') THEN
                DAMP(p,q) = DAMP(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
              END IF
-           ELSE
+           ELSE IF (.NOT. MassIsZero) THEN
              IF (CoilType /= 'stranded') THEN
                MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
              END IF
