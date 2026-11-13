@@ -343,6 +343,18 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
   TYPE(VariableHandle_t), ALLOCATABLE, SAVE :: ConvField_h(:), TempField_h(:), PrevFlowField_h(:), &
       PressureField_h(:), MeshVeloField_h(:)
 
+  ! Per-thread work arrays of LocalMatrixVec, kept between elements. They stay
+  ! at the exact (ngp,nd) shape because LinearForms takes leading dimensions
+  ! from SIZE().
+  TYPE VecScratch_t
+    INTEGER :: ngp = -1, nd = -1
+    REAL(KIND=dp), ALLOCATABLE :: Basis(:,:), dBasisdx(:,:,:), DetJVec(:), &
+        MASS(:,:), STIFF(:,:), FORCE(:), ConvVelo(:,:), TmpVec(:), TmpVec2(:), &
+        StreamVec(:,:), TauVec(:), CompRhoAtIpVec(:), PcoeffVec(:), GradPVec(:,:), &
+        CondScalarVec(:), CondGvec(:,:)
+  END TYPE VecScratch_t
+  TYPE(VecScratch_t), ALLOCATABLE, SAVE :: VecScratch(:)
+
   ! EnthalpyPrev_h/SpecEnthalpyPrev_h are the SAME gotcha as PressureField_h
   ! above, but for ListGetElementReal's own "same element as last time, reuse
   ! ParValues" cache (Lists.F90, "IF (Handle % EvaluateAtIp)" branch): it is
@@ -499,6 +511,11 @@ SUBROUTINE HeatSolver( Model,Solver,dt,Transient )
         PhaseChangeFlag_h(nthr), PhaseVel1_h(nthr), PhaseVel2_h(nthr), PhaseVel3_h(nthr), &
         PhaseLatentHeat_h(nthr), PhaseDensity_h(nthr) )
   END IF
+
+  IF( ALLOCATED( VecScratch ) ) THEN
+    IF( SIZE( VecScratch ) /= nthr ) DEALLOCATE( VecScratch )
+  END IF
+  IF( .NOT. ALLOCATED( VecScratch ) ) ALLOCATE( VecScratch(nthr) )
 
   ! Per-element bubble history for the transient condensed-bubble case:
   ! allocate once (a no-op on every later call, done via DefaultBubbleHistoryUpdate
@@ -1030,7 +1047,7 @@ CONTAINS
   SUBROUTINE LocalMatrixVec( Element, n, nd, nb, VecAsm, InitHandles )
 !------------------------------------------------------------------------------
     USE LinearForms
-    USE Differentials, ONLY: JouleHeat
+    USE Differentials, ONLY: JouleHeat, JouleHeatActive
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
@@ -1103,7 +1120,7 @@ CONTAINS
     LOGICAL :: DoPhaseChange, UseGradient
 
     LOGICAL :: Stat,Found,ConvComp,ConvConst,HaveCond
-    INTEGER :: i,p,q,j,t,k,ngp,allocstat,tid
+    INTEGER :: i,p,q,j,t,k,ngp,tid
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
@@ -1210,8 +1227,6 @@ CONTAINS
       InitHandles = .FALSE.
     END IF
 
-    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
-
     IP = GaussPointsAdapt(Element)
     ngp = IP % n
 
@@ -1223,15 +1238,29 @@ CONTAINS
       CALL Info(Caller,'Number of 1st integration points: '//I2S(IP % n), Level=10)
     END IF
 
-    ALLOCATE(Basis(ngp,nd), dBasisdx(ngp,nd,3), DetJVec(ngp), &
-        MASS(nd,nd), STIFF(nd,nd), FORCE(nd), ConvVelo(ngp,3), &
-        TmpVec(ngp), TmpVec2(ngp), StreamVec(ngp,nd), TauVec(ngp), &
-        CompRhoAtIpVec(ngp), PcoeffVec(ngp), GradPVec(ngp,3), &
-        CondScalarVec(ngp), CondGvec(nd,3), &
-        STAT=allocstat)
-    IF (allocstat /= 0) THEN
-      CALL Fatal(Caller,'Local storage allocation failed')
-    END IF
+    ! Borrow this thread's work arrays. MOVE_ALLOC keeps them allocatable, so
+    ! the compiler still knows they do not alias.
+    CALL VecScratchPrepare( VecScratch(tid), ngp, nd )
+    CALL MOVE_ALLOC( VecScratch(tid) % Basis, Basis )
+    CALL MOVE_ALLOC( VecScratch(tid) % dBasisdx, dBasisdx )
+    CALL MOVE_ALLOC( VecScratch(tid) % DetJVec, DetJVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % MASS, MASS )
+    CALL MOVE_ALLOC( VecScratch(tid) % STIFF, STIFF )
+    CALL MOVE_ALLOC( VecScratch(tid) % FORCE, FORCE )
+    CALL MOVE_ALLOC( VecScratch(tid) % ConvVelo, ConvVelo )
+    CALL MOVE_ALLOC( VecScratch(tid) % TmpVec, TmpVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % TmpVec2, TmpVec2 )
+    CALL MOVE_ALLOC( VecScratch(tid) % StreamVec, StreamVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % TauVec, TauVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % CompRhoAtIpVec, CompRhoAtIpVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % PcoeffVec, PcoeffVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % GradPVec, GradPVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % CondScalarVec, CondScalarVec )
+    CALL MOVE_ALLOC( VecScratch(tid) % CondGvec, CondGvec )
+
+    ! DefaultUpdateEquations copies the stored local system into STIFF and
+    ! FORCE, so they must be allocated before this jump.
+    IF( UseLocalMatrixCopy( Solver, Element % ElementIndex ) ) GOTO 10
 
     IF( ListGetElementLogical( OrigMesh_h ) ) THEN
       CALL GetElementNodesOrigVec( Nodes, UElement=Element )
@@ -1406,8 +1435,7 @@ CONTAINS
       IF( ConvConst ) THEN
         ! A component with no "Convection Velocity i" keyword of its own
         ! (e.g. only "Convection Velocity 3" given) must default to zero,
-        ! not the uninitialized contents of this element's freshly
-        ! allocated ConvVelo work array.
+        ! not whatever the ConvVelo work array held from the previous element.
         ConvVelo(1:ngp,1:dim) = 0._dp
         DO i=1,dim
           ConvVelo_i => ListGetElementRealVec( ConvVelo_h(i), ngp, Basis, Element, Found )
@@ -1546,12 +1574,14 @@ CONTAINS
 
     ! Joule heating from a coupled electric/magnetic solver ("Joule Heat = True"
     ! on this element's body force).
-    DO t=1,ngp
-      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
-      IF( JouleH /= 0._dp ) THEN
-        FORCE(1:nd) = FORCE(1:nd) + DetJVec(t) * JouleH * Basis(t,1:nd)
-      END IF
-    END DO
+    IF( JouleHeatActive( Element ) ) THEN
+      DO t=1,ngp
+        JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+        IF( JouleH /= 0._dp ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + DetJVec(t) * JouleH * Basis(t,1:nd)
+        END IF
+      END DO
+    END IF
 
     ! The heat equation may have lower dimensional elements active also.
     ! For example, heat transfer through a pipe could be expressed by 1d
@@ -1587,9 +1617,57 @@ CONTAINS
 
 10  CALL DefaultUpdateEquations(STIFF,FORCE,UElement=Element, VecAssembly=VecAsm)
 
+    CALL MOVE_ALLOC( Basis, VecScratch(tid) % Basis )
+    CALL MOVE_ALLOC( dBasisdx, VecScratch(tid) % dBasisdx )
+    CALL MOVE_ALLOC( DetJVec, VecScratch(tid) % DetJVec )
+    CALL MOVE_ALLOC( MASS, VecScratch(tid) % MASS )
+    CALL MOVE_ALLOC( STIFF, VecScratch(tid) % STIFF )
+    CALL MOVE_ALLOC( FORCE, VecScratch(tid) % FORCE )
+    CALL MOVE_ALLOC( ConvVelo, VecScratch(tid) % ConvVelo )
+    CALL MOVE_ALLOC( TmpVec, VecScratch(tid) % TmpVec )
+    CALL MOVE_ALLOC( TmpVec2, VecScratch(tid) % TmpVec2 )
+    CALL MOVE_ALLOC( StreamVec, VecScratch(tid) % StreamVec )
+    CALL MOVE_ALLOC( TauVec, VecScratch(tid) % TauVec )
+    CALL MOVE_ALLOC( CompRhoAtIpVec, VecScratch(tid) % CompRhoAtIpVec )
+    CALL MOVE_ALLOC( PcoeffVec, VecScratch(tid) % PcoeffVec )
+    CALL MOVE_ALLOC( GradPVec, VecScratch(tid) % GradPVec )
+    CALL MOVE_ALLOC( CondScalarVec, VecScratch(tid) % CondScalarVec )
+    CALL MOVE_ALLOC( CondGvec, VecScratch(tid) % CondGvec )
+
     END ASSOCIATE
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixVec
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+! Size one thread's work arrays to exactly ngp x nd, unless they already are.
+!------------------------------------------------------------------------------
+  SUBROUTINE VecScratchPrepare( S, ngp, nd )
+!------------------------------------------------------------------------------
+    IMPLICIT NONE
+    TYPE(VecScratch_t), INTENT(INOUT) :: S
+    INTEGER, INTENT(IN) :: ngp, nd
+!------------------------------------------------------------------------------
+    INTEGER :: allocstat
+    CHARACTER(LEN=256) :: errmsg
+!------------------------------------------------------------------------------
+    IF( S % ngp == ngp .AND. S % nd == nd .AND. ALLOCATED( S % Basis ) ) RETURN
+
+    ! Assigning the default constructor frees every component at once.
+    S = VecScratch_t()
+
+    ALLOCATE( S % Basis(ngp,nd), S % dBasisdx(ngp,nd,3), S % DetJVec(ngp), &
+        S % MASS(nd,nd), S % STIFF(nd,nd), S % FORCE(nd), S % ConvVelo(ngp,3), &
+        S % TmpVec(ngp), S % TmpVec2(ngp), S % StreamVec(ngp,nd), S % TauVec(ngp), &
+        S % CompRhoAtIpVec(ngp), S % PcoeffVec(ngp), S % GradPVec(ngp,3), &
+        S % CondScalarVec(ngp), S % CondGvec(nd,3), STAT=allocstat, ERRMSG=errmsg )
+    IF( allocstat /= 0 ) CALL Fatal('HeatSolver','Local storage allocation failed: '//TRIM(errmsg))
+
+    S % ngp = ngp
+    S % nd = nd
+!------------------------------------------------------------------------------
+  END SUBROUTINE VecScratchPrepare
 !------------------------------------------------------------------------------
 
 
@@ -1940,7 +2018,7 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE LocalMatrix( Element, n, nd, nb, InitHandles )
 !------------------------------------------------------------------------------
-    USE Differentials, ONLY: JouleHeat
+    USE Differentials, ONLY: JouleHeat, JouleHeatActive
     USE MaterialModels, ONLY: Incompressible, PerfectGas1, Thermal
     IMPLICIT NONE
     INTEGER, INTENT(IN) :: n, nd, nb
@@ -1973,7 +2051,7 @@ CONTAINS
     ! ConvVec/StreamVec split this mirrors. Tau is the Franca et al.
     ! stabilization parameter.
     REAL(KIND=dp) :: StreamVec(nd), Tau, hK, mK, VNorm, CondScalar, JouleH, HTMultAtIp
-    LOGICAL :: HTMultFound
+    LOGICAL :: HTMultFound, JouleOn
     ! Phase Change Model: PhaseChangeElementSetup (shared with LocalMatrixVec)
     ! resolves which model is active and this element's nodal Enthalpy/
     ! Temperature/FallbackCp once, before the Gauss loop; PhaseChangeCL turns
@@ -2081,6 +2159,7 @@ CONTAINS
     ConvComp = ListCompareElementString( ConvFlag_h,'computed',Element, Found )
 
     HTMultFound = .FALSE.
+    JouleOn = JouleHeatActive( Element )
 
     ! Phase Change Model: determined once per element, not per Gauss point --
     ! see PhaseChangeElementSetup (shared with LocalMatrixVec) for the full
@@ -2352,11 +2431,13 @@ CONTAINS
 
       ! Joule heating from a coupled electric/magnetic solver -- see the
       ! matching comment in LocalMatrixVec. JouleHeat() does its own
-      ! ElementInfo call internally and cheaply no-ops via early return when
-      ! this element's body force does not set "Joule Heat".
-      JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
-      IF( JouleH /= 0._dp ) THEN
-        FORCE(1:nd) = FORCE(1:nd) + Weight * JouleH * Basis(1:nd)
+      ! ElementInfo call internally, so skip it unless this element's body
+      ! force sets "Joule Heat".
+      IF( JouleOn ) THEN
+        JouleH = JouleHeat( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), n )
+        IF( JouleH /= 0._dp ) THEN
+          FORCE(1:nd) = FORCE(1:nd) + Weight * JouleH * Basis(1:nd)
+        END IF
       END IF
     END DO
 
