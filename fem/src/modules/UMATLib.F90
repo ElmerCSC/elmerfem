@@ -925,1078 +925,637 @@
   END SUBROUTINE hencky_stvenant_kirchhoff
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
-  SUBROUTINE bi_linear(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
-       rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
-       predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
-       coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
-       kstep, kinc)
-! the call from Elmer
-!CALL UMATusersubrtn(UMATSubrtn, StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-!          EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-!          stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-!          predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-!          drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
-!------------------------------------------------------------------------------
-    USE Types
-    IMPLICIT NONE
-
-    REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
-    ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
-    ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
-    ! If the strain increment is defined to be zero in the beginning of the
-    ! nonlinear iteration, Elmer will generate a candidate for the strain increment
-    ! by assuming purely elastic increment characterized by DDSDDE.
-
-    REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
-    ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
-    ! converged solution (cf. the input values)
-
-    REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
-    ! strain evaluated for the current approximation must be returned
-
-    REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
-    ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
-    ! the current approximation may be returned
-
-    REAL(KIND=dp), INTENT(OUT) :: rpl
-    ! The mechanical heating power (volumetric)
-
-    REAL(KIND=dp), INTENT(OUT) :: ddsddt(NTENS), drplde(NTENS), drpldt
-
-    REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS)
-    ! This gives the strains before the time/load increment.
-    ! The strain can be computed from the deformation gradient, so this
-    ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
-    ! is used, but Elmer may also use other strain measures.
-
-    REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
-    ! deformation gradient; cf. the variable stran.
-
-    REAL(KIND=dp), INTENT(IN) :: TIME(2)
-    ! Both entries give time before the time/load increment (the time for the last
-    ! converged solution
-
-    REAL(KIND=dp), INTENT(IN) :: DTIME
-    ! The time increment
-
-    REAL(KIND=dp), INTENT(IN) :: TEMP
-    ! Temperature before the time/load increment
-
-    REAL(KIND=dp), INTENT(IN) :: dtemp
-    ! Temperature increment associated wíth the time/load increment. Currently
-    ! Elmer assumes isothermal conditions during the load increment.
-
-    REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1)
-    ! These are just dummy variables for Elmer
-
-    CHARACTER(len=80), INTENT(IN) :: CMNAME
-    ! The material model name
-
-    INTEGER, INTENT(IN) :: NDI
-    ! The number of direct stress components
-
-    INTEGER, INTENT(IN) :: NSHR
-    ! The number of the engineering shear strain components
-
-    INTEGER, INTENT(IN) :: NTENS 
-    ! The size of the array containing the stress or strain components
-
-    INTEGER, INTENT(IN) :: NSTATEV
-    ! The number of state variables associated with the material model
-
-    REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
-    ! An array of material constants
-
-    INTEGER, INTENT(IN) :: NPROPS
-    ! The number of the material constants
-
-    REAL(KIND=dp), INTENT(IN) :: coords(3)
-    ! The coordinates of the current point could be specified
-
-    REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
-    ! (the variable is initialized to the identity)
-
-    REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
-
-    REAL(KIND=dp), INTENT(IN) :: celent
-    ! The element size is not yet provided by Elmer
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
-    ! time/load level for converged solution)
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
-    ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
-
-    INTEGER, INTENT(IN) :: NOEL
-    ! The element number
-
-    INTEGER, INTENT(IN) :: NPT
-    ! The integration point number
-
-    INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
-    ! kstep and kinc could be provided to give information on the incrementation
-    ! procedure
-!  Material Constants 5
-!  1) Nu, 2) strain at yield, 3) yield stress, 4)strain at final, 5) stress at final
-!  State Variables 7
-! 3 prinipal strains, 3 prinipal stress, mises
-!------------------------------------------------------------------------------
-    ! Local variables:
-    REAL(KIND=dp) :: nu, E1, E2, LambdaLame, MuLame, G, G1, G2, E
-    LOGICAL :: exists,f1exist,f2exist
-    REAl(KIND=dp) :: mises, term1, term2, term3, term4, eprinmax, eprinmin
-    REAL(KIND=dp) :: eprinmid,sprinmax,sprinmid,sprinmin, mises1
-    real(kind=dp) :: strain1,stressc1,strain2,stressc2,term
-    REAL(KIND=dp) :: totstran(ntens), astress(6), prevstran(ntens)
-    Real*8 AA(3,3), ZZ(3,3)
-    integer :: i
-!------------------------------------------------------------------------------
-  ! Get Young's modulus and the Poisson ratio:
-    E1 = Props(3)/Props(2)
-    E2 = (Props(5)-Props(3))/(Props(4)-Props(2))
-    
-    nu = Props(1)
-
-    G1 = E1/(2*(1+nu))
-    G2 = E2/(2*(1+nu))
-
-    strain1 = Props(2)
-    stressc1 = Props(3)
-    strain2 = Props(4)
-    stressc2 = Props(5)
-    
+! UMATplastic_v2.F90  --  small-strain rate-independent J2 plasticity for Elmer
 !
-! check mises1
-E=E1
-totstran = stran + dstran
-prevstran = stran - dstran
+! Replaces the bi_linear and plastic routines of UMATplastic.F90 (hsk_bi is
+! NOT included here, keep it in its own file).
 !
-if (ntens.eq.4) then
- mises1 = sqrt(stran(1)**2-stran(1)*stran(2)+stran(2)**2+3.*stran(4)**2)
-! mises = sqrt(totstran(1)**2-totstran(1)*totstran(2)+totstran(2)**2+3.*totstran(4)**2)
-end if
-if (ntens.eq.6) then
- term1=(stran(1)-stran(2))**2
- term2=(stran(2)-stran(3))**2
- term3=(stran(3)-stran(1))**2
- term4=3.0*(stran(4)**2+stran(5)**2+stran(6)**2)
- mises1=sqrt( ((term1+term2+term3)/2)+term4 )
-endif
+! Model: additive strain split, von Mises yield, isotropic hardening, radial
+! return (exact for a piecewise-linear hardening curve, no iteration needed),
+! consistent algorithmic tangent returned in DDSDDE.
 !
+! The input curve is the uniaxial stress-TOTAL strain curve, as before; it is
+! converted internally to yield stress vs equivalent plastic strain.
+!   Young's modulus = stress1/strain1 (first point is the end of elasticity)
+!   Beyond the last point the material is perfectly plastic.
 !
-if (mises1.ge.props(2)) then
+! plastic   : PROPS = nu, strain1, stress1, strain2, stress2, ... (max 100 pts)
 !
-  E = E2
-!else
-!   if (mises.gt.props(2)) then
-!    write(20,fmt='(f8.6,a7,f8.6,a8,f8.6)') props(2)," stran ",mises1," totstra ",mises
-!    E=E1*0.85
-!   endif       
-end if 
-if (mises1.ge.props(6)) then
-  E = 0.0
-end if
+! STATEV (NSTATEV must be >= 8): Use OUTPUT STATE VARIABLES = LOGICAL TRUE
+! for Paraview they import as cell data not point data
+!   1-3 principal strains (max,mid,min)   4-6 principal stresses (max,mid,min)
+!   7   von Mises stress                  8   equivalent plastic strain (history)
 !
-!
-LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
-    MuLame = E / (2.0d0 * (1.0d0 + nu))
-
-    ddsdde = 0.0d0
-    ddsdde(1:ndi,1:ndi) = LambdaLame
-    DO i=1,ntens
-      ddsdde(i,i) = ddsdde(i,i) + MuLame
-    END DO
-    DO i=1,ndi
-      ddsdde(i,i) = ddsdde(i,i) + MuLame
-    END DO
-   stress = stress + MATMUL(ddsdde,dstran)
-   totstran = stran + dstran
-
-! Calculate invariants for statev
-!
-Select case(ntens)
-     case(4) 
-     mises = sqrt(stress(1)**2-stress(1)*stress(2)+stress(2)**2+3.*stress(4)**2)
-     term1=stress(1)-stress(2) 
-     term2 = (0.5*term1)**2
-     term3 = (stress(4))**2
-     sprinmax = term1+sqrt(term2+term3)
-     sprinmin = term1-sqrt(term2+term3)
-     term1=totstran(1)-totstran(2) 
-     term2 = (0.5*term1)**2
-     term3 = (totstran(4))**2
-     eprinmax = term1+sqrt(term2+term3)
-     eprinmin = term1-sqrt(term2+term3)
-     statev(1) = eprinmax
-     statev(2) = 0.0
-     statev(3) = eprinmin
-     statev(4) = sprinmax
-     statev(5) = 0.0
-     statev(6) = sprinmin
-     statev(7) = mises
-     case(6)
-     term1=(stress(1)-stress(2))**2
-    term2=(stress(2)-stress(3))**2
-    term3=(stress(3)-stress(1))**2
-    term4=3.0*(stress(4)**2+stress(5)**2+stress(6)**2)
-    mises=sqrt( ((term1+term2+term3)/2)+term4 )
-    AA(1,1)=stress(1)
-    AA(2,2)=stress(2)
-    AA(3,3)=stress(3)
-    AA(1,2)=stress(4)
-    AA(1,3)=stress(6)
-    AA(2,3)=stress(5) 
-    AA(2,1)=AA(1,2)
-    AA(3,1)=AA(1,3)
-    AA(3,2)=AA(2,3)
-     call jacobi2(AA,3,ZZ,1.E-6,100)
-     sprinmax=AA(1,1)
-     sprinmid=AA(2,2)
-     sprinmin=AA(3,3)
-    AA(1,1)=totstran(1)
-    AA(2,2)=totstran(2)
-    AA(3,3)=totstran(3)
-    AA(1,2)=totstran(4)
-    AA(1,3)=totstran(6)
-    AA(2,3)=totstran(5) 
-    AA(2,1)=AA(1,2)
-    AA(3,1)=AA(1,3)
-    AA(3,2)=AA(2,3)
-     call jacobi2(AA,3,ZZ,1.E-6,100)
-     eprinmax=AA(1,1)
-     eprinmid=AA(2,2)
-     eprinmin=AA(3,3)
-     statev(1) = eprinmax
-     statev(2) = eprinmid
-     statev(3) = eprinmin
-     statev(4) = sprinmax
-     statev(5) = sprinmid
-     statev(6) = sprinmin
-     statev(7) = mises
- end select
-!------------------------------------------------------------------------------
-  END SUBROUTINE bi_linear
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-  SUBROUTINE hsk_bi(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
-       rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
-       predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
-       coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
-       kstep, kinc)
-!------------------------------------------------------------------------------
-    USE Types
-    IMPLICIT NONE
-
-    REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
-    ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
-    ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
-    ! If the strain increment is defined to be zero in the beginning of the
-    ! nonlinear iteration, Elmer will generate a candidate for the strain increment
-    ! by assuming purely elastic increment characterized by DDSDDE.
-
-    REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
-    ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
-    ! converged solution (cf. the input values)
-
-    REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
-    ! strain evaluated for the current approximation must be returned
-
-    REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
-    ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
-    ! the current approximation may be returned
-
-    REAL(KIND=dp), INTENT(OUT) :: rpl
-    ! The mechanical heating power (volumetric)
-
-    REAL(KIND=dp), INTENT(OUT) :: ddsddt(NTENS), drplde(NTENS), drpldt
-
-    REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS)
-    ! This gives the strains before the time/load increment.
-    ! The strain can be computed from the deformation gradient, so this
-    ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
-    ! is used, but Elmer may also use other strain measures.
-
-    REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
-    ! deformation gradient; cf. the variable stran.
-
-    REAL(KIND=dp), INTENT(IN) :: TIME(2)
-    ! Both entries give time before the time/load increment (the time for the last
-    ! converged solution
-
-    REAL(KIND=dp), INTENT(IN) :: DTIME
-    ! The time increment
-
-    REAL(KIND=dp), INTENT(IN) :: TEMP
-    ! Temperature before the time/load increment
-
-    REAL(KIND=dp), INTENT(IN) :: dtemp
-    ! Temperature increment associated wíth the time/load increment. Currently
-    ! Elmer assumes isothermal conditions during the load increment.
-
-    REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1)
-    ! These are just dummy variables for Elmer
-
-    CHARACTER(len=80), INTENT(IN) :: CMNAME
-    ! The material model name
-
-    INTEGER, INTENT(IN) :: NDI
-    ! The number of direct stress components
-
-    INTEGER, INTENT(IN) :: NSHR
-    ! The number of the engineering shear strain components
-
-    INTEGER, INTENT(IN) :: NTENS 
-    ! The size of the array containing the stress or strain components
-
-    INTEGER, INTENT(IN) :: NSTATEV
-    ! The number of state variables associated with the material model
-
-    REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
-    ! An array of material constants
-
-    INTEGER, INTENT(IN) :: NPROPS
-    ! The number of the material constants
-
-    REAL(KIND=dp), INTENT(IN) :: coords(3)
-    ! The coordinates of the current point could be specified
-
-    REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
-    ! (the variable is initialized to the identity)
-
-    REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
-
-    REAL(KIND=dp), INTENT(IN) :: celent
-    ! The element size is not yet provided by Elmer
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
-    ! time/load level for converged solution)
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
-    ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
-
-    INTEGER, INTENT(IN) :: NOEL
-    ! The element number
-
-    INTEGER, INTENT(IN) :: NPT
-    ! The integration point number
-
-    INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
-    ! kstep and kinc could be provided to give information on the incrementation
-    ! procedure
+! Component order (Abaqus/Elmer): 11,22,33,12,[13,23]; shear strains are
+! engineering strains. NDI must be 3 (3D, axisymmetric, plane strain).
 !------------------------------------------------------------------------------
 
-    INTEGER :: i, j, k
-    INTEGER :: PriLWork=102, PriInfo
-
-    REAL(KIND=dp) :: SymBasis(6,3,3)
-    REAL(KIND=dp) :: Identity(3,3), B(3,3), C(3,3), Strain(3,3), S(3,3), Sigma(3,3)
-    REAL(KIND=dp) :: WorkMat(3,3)
-    REAL(KIND=dp) :: StrainVec(ntens), Stress2(ntens)
-    REAL(KIND=dp) :: DetDefG
-    REAL(KIND=dp) :: nu, E, LambdaLame, MuLame, E1, E2, G, G1, G2
-    REAL(KIND=dp) :: EigenVals(3), PriWork(102)
-    LOGICAL :: exists,f1exist,f2exist
-    REAl(KIND=dp) :: mises, term1, term2, term3, term4, eprinmax, eprinmin
-    REAL(KIND=dp) :: eprinmid,sprinmax,sprinmid,sprinmin
-    real(kind=dp) :: strain1,stressc1,strain2,stressc2,term
-    REAL(KIND=dp) :: totstran(ntens)
-    Real*8 AA(3,3), ZZ(3,3)
 !------------------------------------------------------------------------------
-! Get Young's modulus and the Poisson ratio:
-    E1 = Props(3)/Props(2)
-    E2 = (Props(5)-Props(3))/(Props(4)-Props(2))
-    
-    nu = Props(1)
+! Eigenvalues of a symmetric 3x3 tensor, sorted lam(1)>=lam(2)>=lam(3).
+! v = (a11,a22,a33,a12,a13,a23)
+!------------------------------------------------------------------------------
+SUBROUTINE pl_sym3_eig(v, lam)
+  USE Types
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(IN)  :: v(6)
+  REAL(KIND=dp), INTENT(OUT) :: lam(3)
+  REAL(KIND=dp) :: q, p1, p2, pp, r, phi, scale, detb
+  REAL(KIND=dp) :: b11, b22, b33, b12, b13, b23
+  REAL(KIND=dp), PARAMETER :: pl_pi = 3.14159265358979324_dp
 
-    G1 = E1/(2*(1+nu))
-    G2 = E2/(2*(1+nu))
+  scale = MAXVAL(ABS(v))
+  IF (scale == 0.0_dp) THEN
+    lam = 0.0_dp
+    RETURN
+  END IF
+  q  = (v(1)+v(2)+v(3))/3.0_dp
+  p1 = v(4)**2 + v(5)**2 + v(6)**2
+  p2 = (v(1)-q)**2 + (v(2)-q)**2 + (v(3)-q)**2 + 2.0_dp*p1
+  IF (p2 <= 1.0e-24_dp*scale**2) THEN
+    lam = q
+    RETURN
+  END IF
+  pp  = SQRT(p2/6.0_dp)
+  b11 = (v(1)-q)/pp; b22 = (v(2)-q)/pp; b33 = (v(3)-q)/pp
+  b12 = v(4)/pp;     b13 = v(5)/pp;     b23 = v(6)/pp
+  detb = b11*(b22*b33-b23*b23) - b12*(b12*b33-b23*b13) + b13*(b12*b23-b22*b13)
+  r   = MIN(1.0_dp, MAX(-1.0_dp, 0.5_dp*detb))
+  phi = ACOS(r)/3.0_dp
+  lam(1) = q + 2.0_dp*pp*COS(phi)
+  lam(3) = q + 2.0_dp*pp*COS(phi + 2.0_dp*pl_pi/3.0_dp)
+  lam(2) = 3.0_dp*q - lam(1) - lam(3)
+END SUBROUTINE pl_sym3_eig
 
-    strain1 = Props(2)
-    stressc1 = Props(3)
-    strain2 = Props(4)
-    stressc2 = Props(5)
-    
-!
-! check mises
-E=E1
-!
-if (ntens.eq.4) then
- mises = sqrt(stran(1)**2-stran(1)*stran(2)+stran(2)**2+3.*stran(4)**2)
-end if
-if (ntens.eq.6) then
- term1=(stran(1)-stran(2))**2
- term2=(stran(2)-stran(3))**2
- term3=(stran(3)-stran(1))**2
- term4=3.0*(stran(4)**2+stran(5)**2+stran(6)**2)
- mises=sqrt( ((term1+term2+term3)/2)+term4 )
-endif
-!
-!
-if (mises.gt.props(2)) then
-!
-     E = E2   
-     
-else
-     
-    E = E1
-     
-end if 
-if (mises.gt.props(6)) then
-  E = 0.0
-end if
-!if (time(1).gt.0.0 .and. noel.eq.550) then
-!
-!write(20,fmt='(a3,Es13.6,a5,F4.2,1x,es13.6,1x,es13.6)') "E= ",E," nu= ",nu,props(3),mises
-!
-!end if
-    SymBasis(1,1:3,1:3) = RESHAPE((/ 1,0,0,0,0,0,0,0,0 /),(/ 3,3 /))
-    SymBasis(2,1:3,1:3) = RESHAPE((/ 0,0,0,0,1,0,0,0,0 /),(/ 3,3 /))
-    SymBasis(3,1:3,1:3) = RESHAPE((/ 0,0,0,0,0,0,0,0,1 /),(/ 3,3 /)) 
-    SymBasis(4,1:3,1:3) = RESHAPE((/ 0.0d0,0.5d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.0d0,0.0d0 /),(/ 3,3 /))
-    SymBasis(5,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.5d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.0d0 /),(/ 3,3 /))
-    SymBasis(6,1:3,1:3) = RESHAPE((/ 0.0d0,0.0d0,0.0d0,0.0d0,0.0d0,0.5d0,0.0d0,0.5d0,0.0d0 /),(/ 3,3 /))
-    Identity(1:3,1:3) = RESHAPE((/ 1,0,0,0,1,0,0,0,1 /),(/ 3,3 /))
+!------------------------------------------------------------------------------
+! Convert uniaxial (total strain, stress) points into yield stress Yk versus
+! equivalent plastic strain pk, with hardening slope Hk on each segment.
+! The last segment is perfectly plastic.  ierr /= 0 on invalid input.
+!------------------------------------------------------------------------------
+SUBROUTINE pl_table_setup(n, eps, sig, E, pk, Yk, Hk, ierr)
+  USE Types
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: n
+  REAL(KIND=dp), INTENT(IN)  :: eps(n), sig(n)
+  REAL(KIND=dp), INTENT(OUT) :: E, pk(n), Yk(n), Hk(n)
+  INTEGER, INTENT(OUT) :: ierr
+  INTEGER :: i
 
-    B = MATMUL(dfrgrd1, TRANSPOSE(dfrgrd1))
-    C = MATMUL(TRANSPOSE(dfrgrd1), dfrgrd1)
-
-    ! -----------------------------------------------------------
-    ! Compute the spectral decomposition of C
-    ! -----------------------------------------------------------
-    DO i=1,3
-      k = i
-      DO j=k,3
-        WorkMat(i,j) = C(i,j)
-      END DO
-    END DO
-    CALL DSYEV('V', 'U', 3, WorkMat, 3, EigenVals, PriWork, PriLWork, PriInfo)
-    IF (PriInfo /= 0) THEN
-     ! CALL Fatal( 'UMAT', 'DSYEV cannot generate eigen basis')          
+  ierr = 0
+  IF (n < 1 .OR. eps(1) <= 0.0_dp .OR. sig(1) <= 0.0_dp) THEN
+    ierr = 1; RETURN
+  END IF
+  E = sig(1)/eps(1)
+  DO i=1,n
+    pk(i) = eps(i) - sig(i)/E
+    Yk(i) = sig(i)
+  END DO
+  pk(1) = 0.0_dp
+  DO i=1,n-1
+    IF (pk(i+1) <= pk(i)) THEN
+      ierr = 2; RETURN              ! slope not below E (or strain not increasing)
     END IF
+    Hk(i) = (Yk(i+1)-Yk(i))/(pk(i+1)-pk(i))
+    IF (Hk(i) < 0.0_dp) THEN
+      ierr = 3; RETURN              ! softening not supported
+    END IF
+  END DO
+  Hk(n) = 0.0_dp
+END SUBROUTINE pl_table_setup
 
-    Strain = 0.0d0
-    Strain(1,1) = LOG(SQRT(EigenVals(1)))
-    Strain(2,2) = LOG(SQRT(EigenVals(2)))       
-    Strain(3,3) = LOG(SQRT(EigenVals(3)))
-    ! Transform back to the original coordinates:
-    Strain = MATMUL(WorkMat, MATMUL(Strain,TRANSPOSE(WorkMat)))
-      
-    DO i=1,ndi
-      StrainVec(i) = Strain(i,i)
-    END DO
-    DO i=1,nshr
-      SELECT CASE(i)
-      CASE(1)
-        StrainVec(ndi+i) = Strain(1,2)+Strain(2,1)
-      CASE(2)
-        StrainVec(ndi+i) = Strain(1,3)+Strain(3,1)
-      CASE(3)
-        StrainVec(ndi+i) = Strain(2,3)+Strain(3,2)
-      END SELECT
-    END DO
+!------------------------------------------------------------------------------
+! Stress update (radial return) and consistent tangent.
+! stress: T_n on entry, T_{n+1} on exit.
+!------------------------------------------------------------------------------
+SUBROUTINE pl_j2_update(ntens, ndi, E, nu, npts, pk, Yk, Hk, stress, dstran, &
+     pold, pnew, ddsdde, dissip)
+  USE Types
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: ntens, ndi, npts
+  REAL(KIND=dp), INTENT(IN) :: E, nu, pk(npts), Yk(npts), Hk(npts)
+  REAL(KIND=dp), INTENT(IN) :: dstran(ntens), pold
+  REAL(KIND=dp), INTENT(INOUT) :: stress(ntens)
+  REAL(KIND=dp), INTENT(OUT) :: pnew, ddsdde(ntens,ntens), dissip
 
-    DetDefG = Dfrgrd1(1,1) * ( Dfrgrd1(2,2)*Dfrgrd1(3,3) - Dfrgrd1(2,3)*Dfrgrd1(3,2) ) + &
-        Dfrgrd1(1,2) * ( Dfrgrd1(2,3)*Dfrgrd1(3,1) - Dfrgrd1(2,1)*Dfrgrd1(3,3) ) + &
-        Dfrgrd1(1,3) * ( Dfrgrd1(2,1)*Dfrgrd1(3,2) - Dfrgrd1(2,2)*Dfrgrd1(3,1) )
+  REAL(KIND=dp) :: G, Kb, lam, hyd, sn2, qtr, Yold, Ynew, Hnew, theta, thetab
+  REAL(KIND=dp) :: sig(ntens), s(ntens), nvec(ntens), pcand
+  INTEGER :: i, j, kseg
 
-   
-    LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
-    MuLame = E / (2.0d0 * (1.0d0 + nu))
+  G   = E/(2.0_dp*(1.0_dp+nu))
+  Kb  = E/(3.0_dp*(1.0_dp-2.0_dp*nu))
+  lam = Kb - 2.0_dp*G/3.0_dp
 
-    ! --------------------------------------------------------------------------------
-    ! Here we compute the current stress directly by using the 
-    ! supplied deformation gradient, so that the strain increment is not used. 
-    ! In addition, since it seems that the exact differentiation of the response function 
-    ! for the Cauchy stress cannot be done in a straightforward manner, we now make only
-    ! a partial approximation. The Cauchy stress is given by
-    ! 
-    !     sigma(F) = 1/det(F) F S(E(F)) F^T
-    !
-    ! We however consider only the depedence on the strain as
-    !
-    !     sigma(.) = 1/det(F) F S(.) F^T
-    !
-    ! This simplification makes the nonlinear iteration to be an inexact Newton 
-    ! method whose performance may deteriorate for large strains. If the convergence is 
-    ! attained, the solution nevertheless obeys the St. Venant-Kirchhoff law since
-    ! there are no approximations in the computation of the residual.
-    ! --------------------------------------------------------------------------------
-    ! The constitutive matrix relating the second Piola-Kirchhoff stress and
-    ! the strain tensor:
-    ddsdde = 0.0d0
-    ddsdde(1:ndi,1:ndi) = LambdaLame
+  ! Elastic tangent
+  ddsdde = 0.0_dp
+  ddsdde(1:ndi,1:ndi) = lam
+  DO i=1,ndi
+    ddsdde(i,i) = lam + 2.0_dp*G
+  END DO
+  DO i=ndi+1,ntens
+    ddsdde(i,i) = G
+  END DO
+
+  ! Elastic predictor
+  sig = stress + MATMUL(ddsdde, dstran)
+  hyd = SUM(sig(1:ndi))/3.0_dp
+  s = sig
+  s(1:ndi) = s(1:ndi) - hyd
+  sn2 = SUM(s(1:ndi)**2) + 2.0_dp*SUM(s(ndi+1:ntens)**2)   ! s:s (tensor shears)
+  qtr = SQRT(1.5_dp*sn2)
+
+  ! Current segment of the hardening curve and yield stress at p_n
+  kseg = 1
+  DO i=2,npts
+    IF (pk(i) <= pold) kseg = i
+  END DO
+  Yold = Yk(kseg) + Hk(kseg)*(pold-pk(kseg))
+
+  pnew = pold
+  dissip = 0.0_dp
+  stress = sig
+  IF (qtr <= Yold*(1.0_dp+1.0e-10_dp)) RETURN        ! elastic step
+
+  ! Plastic corrector: solve  qtr - 3G (p - pold) = Y(p)  segment by segment
+  pcand = pold
+  DO i=kseg,npts
+    pcand = (qtr + 3.0_dp*G*pold - Yk(i) + Hk(i)*pk(i))/(3.0_dp*G + Hk(i))
+    kseg = i
+    IF (i == npts) EXIT
+    IF (pcand <= pk(i+1)) EXIT
+  END DO
+  pnew = MAX(pcand, pold)
+  Hnew = Hk(kseg)
+  Ynew = Yk(kseg) + Hnew*(pnew-pk(kseg))
+
+  theta  = Ynew/qtr
+  thetab = 1.0_dp/(1.0_dp + Hnew/(3.0_dp*G))
+  nvec   = s/SQRT(sn2)
+
+  stress = theta*s
+  stress(1:ndi) = stress(1:ndi) + hyd
+  dissip = 0.5_dp*(Yold+Ynew)*(pnew-pold)
+
+  ! Consistent tangent: K 1x1 + 2G theta I_dev - 2G (theta+thetab-1) n x n
+  ddsdde = 0.0_dp
+  ddsdde(1:ndi,1:ndi) = Kb - 2.0_dp*G*theta/3.0_dp
+  DO i=1,ndi
+    ddsdde(i,i) = ddsdde(i,i) + 2.0_dp*G*theta
+  END DO
+  DO i=ndi+1,ntens
+    ddsdde(i,i) = G*theta
+  END DO
+  DO j=1,ntens
     DO i=1,ntens
-      ddsdde(i,i) = ddsdde(i,i) + MuLame
+      ddsdde(i,j) = ddsdde(i,j) - 2.0_dp*G*(theta+thetab-1.0_dp)*nvec(i)*nvec(j)
     END DO
-    DO i=1,ndi
-      ddsdde(i,i) = ddsdde(i,i) + MuLame
-    END DO
-    Stress2 = MATMUL(ddsdde,StrainVec)
+  END DO
+END SUBROUTINE pl_j2_update
 
-    ! The second Piola-Kirchhoff stress in the tensor form:
-    S = 0.0d0
-    DO i=1,ndi
-      S = S + Stress2(i)*SymBasis(i,:,:)
-    END DO
-    DO i=1,nshr
-      S = S + 2.0d0 * Stress2(ndi+i) * SymBasis(ndi+i,:,:)
-    END DO
+!------------------------------------------------------------------------------
+! Diagnostic state variables 1-7 (principal values, von Mises)
+!------------------------------------------------------------------------------
+SUBROUTINE pl_statev(ntens, ndi, stress, strain, statev)
+  USE Types
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: ntens, ndi
+  REAL(KIND=dp), INTENT(IN) :: stress(ntens), strain(ntens)
+  REAL(KIND=dp), INTENT(INOUT) :: statev(*)
+  REAL(KIND=dp) :: v(6), lam(3), hyd, dev(3)
 
-    ! The Cauchy stress tensor:
-    Sigma = 1.0d0/DetDefG * MATMUL(dfrgrd1, MATMUL(S,TRANSPOSE(dfrgrd1)))
+  v = 0.0_dp
+  v(1:ndi) = stress(1:ndi)
+  v(4:ntens) = stress(4:ntens)
+  hyd = (v(1)+v(2)+v(3))/3.0_dp
+  dev = v(1:3) - hyd
+  statev(7) = SQRT(1.5_dp*(SUM(dev**2) + 2.0_dp*SUM(v(4:6)**2)))
+  CALL pl_sym3_eig(v, lam)
+  statev(4:6) = lam
 
-!    DO i=1,ndi
-!      Stress(i) = Sigma(i,i)
-!    END DO
-!    DO i=1,nshr
-!      SELECT CASE(i)
-!      CASE(1)
-!        Stress(ndi+i) = Sigma(1,2)
-!      CASE(2)
-!        Stress(ndi+i) = Sigma(1,3)
-!      CASE(3)
-!        Stress(ndi+i) = Sigma(2,3)
-!      END SELECT
-!    END DO
+  v = 0.0_dp
+  v(1:ndi) = strain(1:ndi)
+  v(4:ntens) = 0.5_dp*strain(4:ntens)        ! engineering -> tensor shear
+  CALL pl_sym3_eig(v, lam)
+  statev(1:3) = lam
+END SUBROUTINE pl_statev
 
-    ! The derivative: The part corresponding to lambda * tr(E) I
-    ddsdde = 0.0d0
-    WorkMat = LambdaLame * 1/DetDefG * B
-    DO i=1,ndi
-      DO j=1,ndi
-        ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
-      END DO
-      DO j=1,nshr
-        SELECT CASE(j)
-        CASE(1)
-          ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,2)
-        CASE(2)
-          ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,3)
-        CASE(3)
-          ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(2,3)
-        END SELECT
-      END DO
-    END DO
+!------------------------------------------------------------------------------
+! Common driver
+!------------------------------------------------------------------------------
+SUBROUTINE pl_drive(ntens, ndi, nstatev, nu, npts, eps, sig, stress, statev, &
+     stran, dstran, ddsdde, spd)
+  USE Types
+  USE Messages
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: ntens, ndi, nstatev, npts
+  REAL(KIND=dp), INTENT(IN) :: nu, eps(npts), sig(npts), stran(ntens), dstran(ntens)
+  REAL(KIND=dp), INTENT(INOUT) :: stress(ntens), statev(nstatev), spd
+  REAL(KIND=dp), INTENT(OUT) :: ddsdde(ntens,ntens)
 
-    ! The rest corresponding to  2 * mu * E
-    DO i=1,ndi
-      WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(i,:,:), TRANSPOSE(dfrgrd1)))
-      DO j=1,ndi
-        ddsdde(j,i) = ddsdde(j,i) + WorkMat(j,j)
-      END DO
-      DO j=1,nshr
-        SELECT CASE(j)
-        CASE(1)
-          ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,2)
-        CASE(2)
-          ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(1,3)
-        CASE(3)
-          ddsdde(ndi+j,i) = ddsdde(ndi+j,i) + WorkMat(2,3)
-        END SELECT
-      END DO
-    END DO
+  REAL(KIND=dp) :: E, pk(npts), Yk(npts), Hk(npts), pnew, dissip
+  INTEGER :: ierr
 
-    DO i=1,nshr
-      WorkMat = 2.0d0 * MuLame * 1/DetDefG * MATMUL(dfrgrd1, MATMUL(SymBasis(ndi+i,:,:), TRANSPOSE(dfrgrd1)))
-      DO j=1,ndi
-        ddsdde(j,ndi+i) = ddsdde(j,ndi+i) + 1.0d0 * WorkMat(j,j)
-      END DO
-      DO j=1,nshr
-        SELECT CASE(j)
-        CASE(1)
-          ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(1,2)
-        CASE(2)
-          ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(1,3)
-        CASE(3)
-          ddsdde(ndi+j,ndi+i) = ddsdde(ndi+j,ndi+i) + 1.0d0 * WorkMat(2,3)
-        END SELECT
-      END DO
-    END DO
+  IF (ndi /= 3 .OR. (ntens /= 4 .AND. ntens /= 6)) &
+      CALL Fatal('UMATplastic', 'Only NDI=3 (NTENS=4 or 6) is supported')
+  IF (nstatev < 8) &
+      CALL Fatal('UMATplastic', 'At least 8 state variables are required')
+  IF (nu <= -1.0_dp .OR. nu >= 0.5_dp) &
+      CALL Fatal('UMATplastic', 'Poisson ratio must satisfy -1 < nu < 0.5')
+
+  CALL pl_table_setup(npts, eps, sig, E, pk, Yk, Hk, ierr)
+  IF (ierr == 1) CALL Fatal('UMATplastic', 'First strain/stress point must be positive')
+  IF (ierr == 2) CALL Fatal('UMATplastic', 'Strains must increase and every tangent slope must be below E')
+  IF (ierr == 3) CALL Fatal('UMATplastic', 'Strain softening is not supported')
+
+  CALL pl_j2_update(ntens, ndi, E, nu, npts, pk, Yk, Hk, stress, dstran, &
+       statev(8), pnew, ddsdde, dissip)
+  statev(8) = pnew
+  spd = spd + dissip
+  CALL pl_statev(ntens, ndi, stress, stran+dstran, statev)
+END SUBROUTINE pl_drive
+!------------------------------------------------------------------------------
+SUBROUTINE plastic(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+     rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
+     predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
+     coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
+     kstep, kinc)
+!------------------------------------------------------------------------------
+  USE Types
+  USE Messages
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS), STATEV(NSTATEV), SSE, SPD, SCD
+  REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS), rpl, ddsddt(NTENS), drplde(NTENS), drpldt
+  REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS), DSTRAN(NTENS), TIME(2), DTIME, TEMP, dtemp
+  REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1), PROPS(NPROPS), coords(3), drot(3,3)
+  REAL(KIND=dp), INTENT(INOUT) :: pnewdt
+  REAL(KIND=dp), INTENT(IN) :: celent, DFRGRD0(3,3), DFRGRD1(3,3)
+  CHARACTER(len=80), INTENT(IN) :: CMNAME
+  INTEGER, INTENT(IN) :: NDI, NSHR, NTENS, NSTATEV, NPROPS, NOEL, NPT, layer, kspt, kstep, kinc
+
+  REAL(KIND=dp) :: eps(100), sig(100)
+  INTEGER :: i, npts
+
+  rpl = 0.0_dp; ddsddt = 0.0_dp; drplde = 0.0_dp; drpldt = 0.0_dp
+
+  npts = (nprops-1)/2
+  IF (npts < 1 .OR. npts > 100) &
+      CALL Fatal('plastic', 'Need 1..100 strain/stress pairs after nu')
+  DO i=1,npts
+    eps(i) = PROPS(2*i)
+    sig(i) = PROPS(2*i+1)
+  END DO
+
+  CALL pl_drive(ntens, ndi, nstatev, PROPS(1), npts, eps(1:npts), sig(1:npts), &
+       stress, statev, stran, dstran, ddsdde, spd)
+END SUBROUTINE plastic
+!------------------------------------------------------------------------------
+! UMATplastic_finite.F90  --  finite-strain J2 plasticity for Elmer
 !
-    stress = stress + MATMUL(ddsdde,dstran)
-! Calculate invariants for statev
+! Entry points:  fbi_linear   (bilinear table, same 6 constants as bi_linear)
+!                fplastic     (table of up to 100 points, same layout as plastic)
 !
-Select case(ntens)
-     case(4) 
-     mises = sqrt(stress(1)**2-stress(1)*stress(2)+stress(2)**2+3.*stress(4)**2)
-     term1=stress(1)-stress(2) 
-     term2 = (0.5*term1)**2
-     term3 = (stress(4))**2
-     sprinmax = term1+sqrt(term2+term3)
-     sprinmin = term1-sqrt(term2+term3)
-     term1=totstran(1)-totstran(2) 
-     term2 = (0.5*term1)**2
-     term3 = (totstran(4))**2
-     eprinmax = term1+sqrt(term2+term3)
-     eprinmin = term1-sqrt(term2+term3)
-     statev(1) = eprinmax
-     statev(2) = 0.0
-     statev(3) = eprinmin
-     statev(4) = sprinmax
-     statev(5) = 0.0
-     statev(6) = sprinmin
-     statev(7) = mises
-     case(6)
-      term1=(stress(1)-stress(2))**2
-      term2=(stress(2)-stress(3))**2
-      term3=(stress(3)-stress(1))**2
-      term4=3.0*(stress(4)**2+stress(5)**2+stress(6)**2)
-       mises=sqrt( ((term1+term2+term3)/2)+term4 )
-    AA(1,1)=stress(1)
-    AA(2,2)=stress(2)
-    AA(3,3)=stress(3)
-    AA(1,2)=stress(4)
-    AA(1,3)=stress(6)
-    AA(2,3)=stress(5) 
-    AA(2,1)=AA(1,2)
-    AA(3,1)=AA(1,3)
-    AA(3,2)=AA(2,3)
-     call jacobi2(AA,3,ZZ,1.E-6,100)
-     sprinmax=AA(1,1)
-     sprinmid=AA(2,2)
-     sprinmin=AA(3,3)
-    AA(1,1)=totstran(1)
-    AA(2,2)=totstran(2)
-    AA(3,3)=totstran(3)
-    AA(1,2)=totstran(4)
-    AA(1,3)=totstran(6)
-    AA(2,3)=totstran(5) 
-    AA(2,1)=AA(1,2)
-    AA(3,1)=AA(1,3)
-    AA(3,2)=AA(2,3)
-     call jacobi2(AA,3,ZZ,1.E-6,100)
-     eprinmax=AA(1,1)
-     eprinmid=AA(2,2)
-     eprinmin=AA(3,3)
-     statev(1) = eprinmax
-     statev(2) = eprinmid
-     statev(3) = eprinmin
-     statev(4) = sprinmax
-     statev(5) = sprinmid
-     statev(6) = sprinmin
-     statev(7) = mises
- end select
-!------------------------------------------------------------------------------
-  END SUBROUTINE hsk_bi
-!------------------------------------------------------------------------------
-! 
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-  SUBROUTINE plastic(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
-       rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
-       predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
-       coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
-       kstep, kinc)
-! the call from Elmer
-!CALL UMATusersubrtn(UMATSubrtn, StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
-!          EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
-!          stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
-!          predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-!          drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
-!------------------------------------------------------------------------------
-    USE Types
-    IMPLICIT NONE
-
-    REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS)
-    ! Requirement for Elmer: At the time of calling the Cauchy stress T_n before
-    ! the time/load increment is given
-    ! Requirement for umat:  The stress T_{n+1}^{(k)} corresponding to the 
-    ! current approximation of the strain increment (DSTRAN) must be returned. 
-    ! If the strain increment is defined to be zero in the beginning of the
-    ! nonlinear iteration, Elmer will generate a candidate for the strain increment
-    ! by assuming purely elastic increment characterized by DDSDDE.
-
-    REAL(KIND=dp), INTENT(INOUT) :: STATEV(NSTATEV)
-    ! Requirement for Elmer: The state variables Q_n as specified at the 
-    ! previous time/load level for converged solution are given.
-    ! Requirement for umat:  The state variables Q_{n+1}^{(k)} corresponding to 
-    ! the current approximation of the strain increment must be returned. If 
-    ! convergence is attained, these values will be saved and associated with the 
-    ! converged solution (cf. the input values)
-
-    REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS)
-    ! The derivative of (Cauchy) stress response function with respect to the 
-    ! strain evaluated for the current approximation must be returned
-
-    REAL(KIND=dp), INTENT(INOUT) :: SSE, SPD, SCD
-    ! Requirement for Elmer: Provide specific strain energy (sse), plastic 
-    ! dissipation (spd) and creep dissipation (scd) at the previous time/load 
-    ! level (these are supposed to be declared to be state variables)
-    ! Requirement for umat:  The values of the energy variables corresponding to 
-    ! the current approximation may be returned
-
-    REAL(KIND=dp), INTENT(OUT) :: rpl
-    ! The mechanical heating power (volumetric)
-
-    REAL(KIND=dp), INTENT(OUT) :: ddsddt(NTENS), drplde(NTENS), drpldt
-
-    REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS)
-    ! This gives the strains before the time/load increment.
-    ! The strain can be computed from the deformation gradient, so this
-    ! argument can be considered to be redundant. Elmer provides
-    ! this information anyway. Abaqus assumes that the logarithmic strain 
-    ! is used, but Elmer may also use other strain measures.
-
-    REAL(KIND=dp), INTENT(IN) :: DSTRAN(NTENS)
-    ! The current candidate for the strain increment to obtain the current 
-    ! candidate for the stress. In principle this could be computed from the 
-    ! deformation gradient; cf. the variable stran.
-
-    REAL(KIND=dp), INTENT(IN) :: TIME(2)
-    ! Both entries give time before the time/load increment (the time for the last
-    ! converged solution
-
-    REAL(KIND=dp), INTENT(IN) :: DTIME
-    ! The time increment
-
-    REAL(KIND=dp), INTENT(IN) :: TEMP
-    ! Temperature before the time/load increment
-
-    REAL(KIND=dp), INTENT(IN) :: dtemp
-    ! Temperature increment associated wíth the time/load increment. Currently
-    ! Elmer assumes isothermal conditions during the load increment.
-
-    REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1)
-    ! These are just dummy variables for Elmer
-
-    CHARACTER(len=80), INTENT(IN) :: CMNAME
-    ! The material model name
-
-    INTEGER, INTENT(IN) :: NDI
-    ! The number of direct stress components
-
-    INTEGER, INTENT(IN) :: NSHR
-    ! The number of the engineering shear strain components
-
-    INTEGER, INTENT(IN) :: NTENS 
-    ! The size of the array containing the stress or strain components
-
-    INTEGER, INTENT(IN) :: NSTATEV
-    ! The number of state variables associated with the material model
-
-    REAL(KIND=dp), INTENT(IN) :: PROPS(NPROPS)
-    ! An array of material constants
-
-    INTEGER, INTENT(IN) :: NPROPS
-    ! The number of the material constants
-
-    REAL(KIND=dp), INTENT(IN) :: coords(3)
-    ! The coordinates of the current point could be specified
-
-    REAL(KIND=dp), INTENT(IN) :: drot(3,3)
-    ! No support for keeping track of rigid body rotations 
-    ! (the variable is initialized to the identity)
-
-    REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
-
-    REAL(KIND=dp), INTENT(IN) :: celent
-    ! The element size is not yet provided by Elmer
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD0(3,3)
-    ! The deformation gradient before the time/load increment (at the previous 
-    ! time/load level for converged solution)
-
-    REAL(KIND=dp), INTENT(IN) :: DFRGRD1(3,3)
-    ! The deformation gradient corresponding to the current approximation
-    ! (cf. the return value of STRESS variable) 
-
-    INTEGER, INTENT(IN) :: NOEL
-    ! The element number
-
-    INTEGER, INTENT(IN) :: NPT
-    ! The integration point number
-
-    INTEGER, INTENT(IN) :: layer, kspt, kstep, kinc
-    ! kstep and kinc could be provided to give information on the incrementation
-    ! procedure
-!  Material Constants variable 
-!  1) Nu, strain, stress pairs up to nprops (material constants)
-!  State Variables 7
-! 3 prinipal strains, 3 prinipal stress, mises
-!------------------------------------------------------------------------------
-    ! Local variables:
-    REAL(KIND=dp) :: nu, Ev(100), LambdaLame, MuLame, E
-    LOGICAL :: exists,f1exist,f2exist
-    REAl(KIND=dp) :: mises, term1, term2, term3, term4, eprinmax, eprinmin
-    REAL(KIND=dp) :: eprinmid,sprinmax,sprinmid,sprinmin, mises1
-    REAL(KIND=dp) :: totstran(ntens), astress(6), prevstran(ntens)
-    Real*8 AA(3,3), ZZ(3,3)
-    integer :: i,j,k,l,m,n
-!------------------------------------------------------------------------------
-  ! Get Young's modulus and the Poisson ratio:
-    j=(nprops-1)/2
-    Ev(1) = Props(3)/Props(2)
-    do i=2,j
-     k=i+(i-2)
-     l=i*2
-     n=i+(i-2)+1
-     m=(i*2)+1
-    Ev(i) = (Props(m)-Props(n))/(Props(l)-Props(k))
-    end do
-    nu = Props(1)
-    
+! Model (Eterovic-Bathe / Simo): multiplicative split F = Fe Fp, Hencky (log)
+! elastic law on the elastic left Cauchy-Green tensor be, von Mises yield,
+! isotropic hardening, exact radial return in principal log-strain space.
+! Everything is computed from DFRGRD0 and DFRGRD1 and the converged state
+! variables, so it does not depend on which strain measure Elmer puts in
+! STRAN/DSTRAN.  It is objective (rigid rotations rotate the stress).
 !
-! check mises1
-E=Ev(1)
-totstran = stran + dstran
-prevstran = stran - dstran
+! INPUT CURVE: TRUE stress against LOGARITHMIC TOTAL strain, uniaxial
+!   (log strain = ln(1+e);  true stress = s (1+e)  from engineering e, s).
+!   If you have true stress against plastic strain (as in CalculiX *PLASTIC),
+!   add the elastic part:  total strain = plastic strain + stress/E.
+!   E = stress1/strain1 (first point = end of elasticity).
+!   Beyond the last point the material is perfectly plastic, so keep a
+!   positive hardening slope up to the largest strain you expect.
 !
-if (ntens.eq.4) then
- mises1 = sqrt(stran(1)**2-stran(1)*stran(2)+stran(2)**2+3.*stran(4)**2)
-! mises = sqrt(totstran(1)**2-totstran(1)*totstran(2)+totstran(2)**2+3.*totstran(4)**2)
-end if
-if (ntens.eq.6) then
- term1=(stran(1)-stran(2))**2
- term2=(stran(2)-stran(3))**2
- term3=(stran(3)-stran(1))**2
- term4=3.0*(stran(4)**2+stran(5)**2+stran(6)**2)
- mises1=sqrt( ((term1+term2+term3)/2)+term4 )
-endif
+! STATEV (NSTATEV must be >= 14): use OUTPUT STATE VARIABLES = LOGICAL TRUE
+! They import to Paraview as cell data
+!   1-3  principal logarithmic strains of the total deformation (max,mid,min)
+!   4-6  principal Cauchy stresses (max,mid,min)
+!   7    von Mises (Cauchy) stress
+!   8    equivalent plastic strain
+!   9-14 elastic left Cauchy-Green tensor be: 11,22,33,12,13,23 (history)
+!        (all zero at start = no plastic history, be is then set from F_n)
 !
-k=2
-do i=1,j-1
- !
- if ((0.90*mises1).ge.Props(i*2)) then
- E=Ev(i+1)
- k=i*2
- end if
-end do
-!  if (noel.eq.125 .and. npt.eq.1) then
-!   write(20,*) 'E=',E,' i=',i," Strain=",stran(1)
-!   write(20,*) 'Mises1:',mises1," Props:",Props(k),' k:',k
-!  endif
-!
-LambdaLame = E * nu / ( (1.0d0+nu) * (1.0d0-2.0d0*nu) )
-    MuLame = E / (2.0d0 * (1.0d0 + nu))
+! STRESS returned is the Cauchy stress.  DDSDDE is the spatial elastic-plastic
+! tangent (1/J times the log-strain consistent tangent); it is an approximation
+! of the exact finite-strain tangent, so Newton convergence is not quadratic at
+! large strain, but the residual (the stress) is exact.
+! Component order: 11,22,33,12,[13,23]; NDI must be 3.
+!------------------------------------------------------------------------------
 
-    ddsdde = 0.0d0
-    ddsdde(1:ndi,1:ndi) = LambdaLame
+!------------------------------------------------------------------------------
+! Eigen-decomposition of a symmetric 3x3 matrix (cyclic Jacobi).
+! Columns of V are the eigenvectors, w the eigenvalues (unsorted).
+!------------------------------------------------------------------------------
+SUBROUTINE pf_jacobi3(A, w, V)
+  USE Types
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(IN)  :: A(3,3)
+  REAL(KIND=dp), INTENT(OUT) :: w(3), V(3,3)
+  REAL(KIND=dp) :: a_(3,3), theta, t, c, s, app, aqq, apq, arp, arq
+  REAL(KIND=dp) :: off, scale, vp(3), vq(3)
+  INTEGER :: sweep, p, q, r, m
+  INTEGER, PARAMETER :: ip(3) = (/1,1,2/), iq(3) = (/2,3,3/), ir(3) = (/3,2,1/)
+
+  a_ = A
+  V = 0.0_dp
+  V(1,1) = 1.0_dp; V(2,2) = 1.0_dp; V(3,3) = 1.0_dp
+  scale = SUM(a_*a_)
+  DO sweep = 1, 60
+    off = a_(1,2)**2 + a_(1,3)**2 + a_(2,3)**2
+    IF (off <= 1.0e-30_dp*scale) EXIT
+    DO m = 1, 3
+      p = ip(m); q = iq(m); r = ir(m)
+      apq = a_(p,q)
+      IF (apq == 0.0_dp) CYCLE
+      app = a_(p,p); aqq = a_(q,q)
+      theta = (aqq-app)/(2.0_dp*apq)
+      t = SIGN(1.0_dp,theta)/(ABS(theta)+SQRT(theta*theta+1.0_dp))
+      c = 1.0_dp/SQRT(t*t+1.0_dp)
+      s = t*c
+      a_(p,p) = app - t*apq
+      a_(q,q) = aqq + t*apq
+      a_(p,q) = 0.0_dp; a_(q,p) = 0.0_dp
+      arp = a_(r,p); arq = a_(r,q)
+      a_(r,p) = c*arp - s*arq; a_(p,r) = a_(r,p)
+      a_(r,q) = c*arq + s*arp; a_(q,r) = a_(r,q)
+      vp = V(:,p); vq = V(:,q)
+      V(:,p) = c*vp - s*vq
+      V(:,q) = s*vp + c*vq
+    END DO
+  END DO
+  w(1) = a_(1,1); w(2) = a_(2,2); w(3) = a_(3,3)
+END SUBROUTINE pf_jacobi3
+
+!------------------------------------------------------------------------------
+! Inverse and determinant of a 3x3 matrix
+!------------------------------------------------------------------------------
+SUBROUTINE pf_inv3(A, Ai, det)
+  USE Types
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(IN)  :: A(3,3)
+  REAL(KIND=dp), INTENT(OUT) :: Ai(3,3), det
+  Ai(1,1) = A(2,2)*A(3,3) - A(2,3)*A(3,2)
+  Ai(1,2) = A(1,3)*A(3,2) - A(1,2)*A(3,3)
+  Ai(1,3) = A(1,2)*A(2,3) - A(1,3)*A(2,2)
+  Ai(2,1) = A(2,3)*A(3,1) - A(2,1)*A(3,3)
+  Ai(2,2) = A(1,1)*A(3,3) - A(1,3)*A(3,1)
+  Ai(2,3) = A(1,3)*A(2,1) - A(1,1)*A(2,3)
+  Ai(3,1) = A(2,1)*A(3,2) - A(2,2)*A(3,1)
+  Ai(3,2) = A(1,2)*A(3,1) - A(1,1)*A(3,2)
+  Ai(3,3) = A(1,1)*A(2,2) - A(1,2)*A(2,1)
+  det = A(1,1)*Ai(1,1) + A(1,2)*Ai(2,1) + A(1,3)*Ai(3,1)
+  IF (det /= 0.0_dp) Ai = Ai/det
+END SUBROUTINE pf_inv3
+
+!------------------------------------------------------------------------------
+! Yield stress Yk versus equivalent plastic strain pk and slope Hk per segment
+! from the uniaxial (log total strain, true stress) points.
+!------------------------------------------------------------------------------
+SUBROUTINE pf_table_setup(n, eps, sig, E, pk, Yk, Hk, ierr)
+  USE Types
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: n
+  REAL(KIND=dp), INTENT(IN)  :: eps(n), sig(n)
+  REAL(KIND=dp), INTENT(OUT) :: E, pk(n), Yk(n), Hk(n)
+  INTEGER, INTENT(OUT) :: ierr
+  INTEGER :: i
+
+  ierr = 0
+  IF (n < 1 .OR. eps(1) <= 0.0_dp .OR. sig(1) <= 0.0_dp) THEN
+    ierr = 1; RETURN
+  END IF
+  E = sig(1)/eps(1)
+  DO i=1,n
+    pk(i) = eps(i) - sig(i)/E
+    Yk(i) = sig(i)
+  END DO
+  pk(1) = 0.0_dp
+  DO i=1,n-1
+    IF (pk(i+1) <= pk(i)) THEN
+      ierr = 2; RETURN
+    END IF
+    Hk(i) = (Yk(i+1)-Yk(i))/(pk(i+1)-pk(i))
+    IF (Hk(i) < 0.0_dp) THEN
+      ierr = 3; RETURN
+    END IF
+  END DO
+  Hk(n) = 0.0_dp
+END SUBROUTINE pf_table_setup
+
+!------------------------------------------------------------------------------
+! Radial return for the piecewise-linear hardening curve (exact, no iteration)
+!------------------------------------------------------------------------------
+SUBROUTINE pf_radial(npts, pk, Yk, Hk, G, qtr, pold, Yold, pnew, Ynew, Hnew, yielded)
+  USE Types
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: npts
+  REAL(KIND=dp), INTENT(IN) :: pk(npts), Yk(npts), Hk(npts), G, qtr, pold
+  REAL(KIND=dp), INTENT(OUT) :: Yold, pnew, Ynew, Hnew
+  LOGICAL, INTENT(OUT) :: yielded
+  REAL(KIND=dp) :: pcand
+  INTEGER :: i, kseg
+
+  kseg = 1
+  DO i=2,npts
+    IF (pk(i) <= pold) kseg = i
+  END DO
+  Yold = Yk(kseg) + Hk(kseg)*(pold-pk(kseg))
+  pnew = pold; Ynew = Yold; Hnew = Hk(kseg)
+  yielded = .FALSE.
+  IF (qtr <= Yold*(1.0_dp+1.0e-10_dp)) RETURN
+  yielded = .TRUE.
+  pcand = pold
+  DO i=kseg,npts
+    pcand = (qtr + 3.0_dp*G*pold - Yk(i) + Hk(i)*pk(i))/(3.0_dp*G + Hk(i))
+    kseg = i
+    IF (i == npts) EXIT
+    IF (pcand <= pk(i+1)) EXIT
+  END DO
+  pnew = MAX(pcand, pold)
+  Hnew = Hk(kseg)
+  Ynew = Yk(kseg) + Hnew*(pnew-pk(kseg))
+END SUBROUTINE pf_radial
+
+!------------------------------------------------------------------------------
+! Common driver
+!------------------------------------------------------------------------------
+SUBROUTINE pf_drive(ntens, ndi, nstatev, nu, npts, eps, sig, dfrgrd0, dfrgrd1, &
+     stress, statev, ddsdde, spd)
+  USE Types
+  USE Messages
+  IMPLICIT NONE
+  INTEGER, INTENT(IN) :: ntens, ndi, nstatev, npts
+  REAL(KIND=dp), INTENT(IN) :: nu, eps(npts), sig(npts), dfrgrd0(3,3), dfrgrd1(3,3)
+  REAL(KIND=dp), INTENT(OUT) :: stress(ntens), ddsdde(ntens,ntens)
+  REAL(KIND=dp), INTENT(INOUT) :: statev(nstatev), spd
+
+  REAL(KIND=dp) :: E, pk(npts), Yk(npts), Hk(npts), G, Kb
+  REAL(KIND=dp) :: F0i(3,3), f(3,3), be(3,3), bt(3,3), tmp(3,3), V(3,3), w(3)
+  REAL(KIND=dp) :: detF0, detF1, ea(3), tr, edev(3), en, qtr, pold, pnew
+  REAL(KIND=dp) :: Yold, Ynew, Hnew, theta, thetab, coef, ean(3), tau(3)
+  REAL(KIND=dp) :: sg(3,3), ben(3,3), nt(3,3), nvec(ntens), vv(3,3), scl
+  REAL(KIND=dp) :: sv(6), hyd, dev(3), lam(3), b1(3,3), w1(3), V1(3,3)
+  LOGICAL :: yielded
+  INTEGER :: ierr, i, j, a
+
+  IF (ndi /= 3 .OR. (ntens /= 4 .AND. ntens /= 6)) &
+      CALL Fatal('UMATplastic_finite', 'Only NDI=3 (NTENS=4 or 6) is supported')
+  IF (nstatev < 14) &
+      CALL Fatal('UMATplastic_finite', 'At least 14 state variables are required')
+  IF (nu <= -1.0_dp .OR. nu >= 0.5_dp) &
+      CALL Fatal('UMATplastic_finite', 'Poisson ratio must satisfy -1 < nu < 0.5')
+  CALL pf_table_setup(npts, eps, sig, E, pk, Yk, Hk, ierr)
+  IF (ierr == 1) CALL Fatal('UMATplastic_finite', 'First strain/stress point must be positive')
+  IF (ierr == 2) CALL Fatal('UMATplastic_finite', 'Strains must increase and every slope must be below E')
+  IF (ierr == 3) CALL Fatal('UMATplastic_finite', 'Strain softening is not supported')
+
+  G  = E/(2.0_dp*(1.0_dp+nu))
+  Kb = E/(3.0_dp*(1.0_dp-2.0_dp*nu))
+
+  CALL pf_inv3(dfrgrd0, F0i, detF0)
+  detF1 = dfrgrd1(1,1)*(dfrgrd1(2,2)*dfrgrd1(3,3)-dfrgrd1(2,3)*dfrgrd1(3,2)) &
+        - dfrgrd1(1,2)*(dfrgrd1(2,1)*dfrgrd1(3,3)-dfrgrd1(2,3)*dfrgrd1(3,1)) &
+        + dfrgrd1(1,3)*(dfrgrd1(2,1)*dfrgrd1(3,2)-dfrgrd1(2,2)*dfrgrd1(3,1))
+  IF (detF0 <= 0.0_dp .OR. detF1 <= 0.0_dp) &
+      CALL Fatal('UMATplastic_finite', 'Non-positive determinant of the deformation gradient')
+
+  ! Elastic left Cauchy-Green tensor at the previous converged level
+  IF (statev(9) == 0.0_dp .AND. statev(10) == 0.0_dp .AND. statev(11) == 0.0_dp) THEN
+    be = MATMUL(dfrgrd0, TRANSPOSE(dfrgrd0))
+  ELSE
+    be(1,1) = statev(9);  be(2,2) = statev(10); be(3,3) = statev(11)
+    be(1,2) = statev(12); be(2,1) = statev(12)
+    be(1,3) = statev(13); be(3,1) = statev(13)
+    be(2,3) = statev(14); be(3,2) = statev(14)
+  END IF
+
+  ! Trial elastic state: be_tr = f be f^T,  f = F_{n+1} F_n^{-1}
+  f = MATMUL(dfrgrd1, F0i)
+  tmp = MATMUL(f, be)
+  bt = MATMUL(tmp, TRANSPOSE(f))
+  bt = 0.5_dp*(bt + TRANSPOSE(bt))
+  CALL pf_jacobi3(bt, w, V)
+  IF (MINVAL(w) <= 0.0_dp) &
+      CALL Fatal('UMATplastic_finite', 'Elastic left Cauchy-Green tensor is not positive definite')
+
+  ea  = 0.5_dp*LOG(w)                 ! principal elastic log strains
+  tr  = SUM(ea)
+  edev = ea - tr/3.0_dp
+  en  = SQRT(SUM(edev**2))
+  qtr = 2.0_dp*G*SQRT(1.5_dp)*en      ! von Mises (Kirchhoff) trial stress
+
+  pold = statev(8)
+  CALL pf_radial(npts, pk, Yk, Hk, G, qtr, pold, Yold, pnew, Ynew, Hnew, yielded)
+
+  IF (yielded) THEN
+    theta  = Ynew/qtr
+    thetab = 1.0_dp/(1.0_dp + Hnew/(3.0_dp*G))
+    coef   = 2.0_dp*G*(theta + thetab - 1.0_dp)
+  ELSE
+    theta = 1.0_dp; thetab = 1.0_dp; coef = 0.0_dp
+  END IF
+  ean = tr/3.0_dp + theta*edev
+  tau = Kb*tr + 2.0_dp*G*theta*edev   ! principal Kirchhoff stresses
+
+  sg = 0.0_dp; ben = 0.0_dp; nt = 0.0_dp
+  DO a=1,3
+    DO j=1,3
+      DO i=1,3
+        vv(i,j) = V(i,a)*V(j,a)
+      END DO
+    END DO
+    sg  = sg  + tau(a)*vv
+    ben = ben + EXP(2.0_dp*ean(a))*vv
+    IF (en > 1.0e-30_dp) nt = nt + (edev(a)/en)*vv
+  END DO
+  scl = 1.0_dp/detF1
+  sg = scl*sg
+
+  ! Cauchy stress in Voigt form
+  DO i=1,3
+    stress(i) = sg(i,i)
+  END DO
+  stress(4) = sg(1,2)
+  IF (ntens == 6) THEN
+    stress(5) = sg(1,3); stress(6) = sg(2,3)
+  END IF
+
+  ! Tangent (spatial, 1/J times log-strain consistent tangent)
+  DO i=1,3
+    nvec(i) = nt(i,i)
+  END DO
+  nvec(4) = nt(1,2)
+  IF (ntens == 6) THEN
+    nvec(5) = nt(1,3); nvec(6) = nt(2,3)
+  END IF
+  ddsdde = 0.0_dp
+  ddsdde(1:3,1:3) = Kb - 2.0_dp*G*theta/3.0_dp
+  DO i=1,3
+    ddsdde(i,i) = ddsdde(i,i) + 2.0_dp*G*theta
+  END DO
+  DO i=4,ntens
+    ddsdde(i,i) = G*theta
+  END DO
+  DO j=1,ntens
     DO i=1,ntens
-      ddsdde(i,i) = ddsdde(i,i) + MuLame
+      ddsdde(i,j) = ddsdde(i,j) - coef*nvec(i)*nvec(j)
     END DO
-    DO i=1,ndi
-      ddsdde(i,i) = ddsdde(i,i) + MuLame
-    END DO
-   stress = stress + MATMUL(ddsdde,dstran)
-   totstran = stran + dstran
+  END DO
+  ddsdde = scl*ddsdde
 
-! Calculate invariants for statev
-!
-Select case(ntens)
-     case(4) 
-     mises = sqrt(stress(1)**2-stress(1)*stress(2)+stress(2)**2+3.*stress(4)**2)
-     term1=stress(1)-stress(2) 
-     term2 = (0.5*term1)**2
-     term3 = (stress(4))**2
-     sprinmax = term1+sqrt(term2+term3)
-     sprinmin = term1-sqrt(term2+term3)
-     term1=totstran(1)-totstran(2) 
-     term2 = (0.5*term1)**2
-     term3 = (totstran(4))**2
-     eprinmax = term1+sqrt(term2+term3)
-     eprinmin = term1-sqrt(term2+term3)
-     statev(1) = eprinmax
-     statev(2) = 0.0
-     statev(3) = eprinmin
-     statev(4) = sprinmax
-     statev(5) = 0.0
-     statev(6) = sprinmin
-     statev(7) = mises
-     case(6)
-     term1=(stress(1)-stress(2))**2
-    term2=(stress(2)-stress(3))**2
-    term3=(stress(3)-stress(1))**2
-    term4=3.0*(stress(4)**2+stress(5)**2+stress(6)**2)
-    mises=sqrt( ((term1+term2+term3)/2)+term4 )
-    AA(1,1)=stress(1)
-    AA(2,2)=stress(2)
-    AA(3,3)=stress(3)
-    AA(1,2)=stress(4)
-    AA(1,3)=stress(6)
-    AA(2,3)=stress(5) 
-    AA(2,1)=AA(1,2)
-    AA(3,1)=AA(1,3)
-    AA(3,2)=AA(2,3)
-     call jacobi2(AA,3,ZZ,1.E-6,100)
-     sprinmax=AA(1,1)
-     sprinmid=AA(2,2)
-     sprinmin=AA(3,3)
-    AA(1,1)=totstran(1)
-    AA(2,2)=totstran(2)
-    AA(3,3)=totstran(3)
-    AA(1,2)=totstran(4)
-    AA(1,3)=totstran(6)
-    AA(2,3)=totstran(5) 
-    AA(2,1)=AA(1,2)
-    AA(3,1)=AA(1,3)
-    AA(3,2)=AA(2,3)
-     call jacobi2(AA,3,ZZ,1.E-6,100)
-     eprinmax=AA(1,1)
-     eprinmid=AA(2,2)
-     eprinmin=AA(3,3)
-     statev(1) = eprinmax
-     statev(2) = eprinmid
-     statev(3) = eprinmin
-     statev(4) = sprinmax
-     statev(5) = sprinmid
-     statev(6) = sprinmin
-     statev(7) = mises
- end select
-!------------------------------------------------------------------------------
-  END SUBROUTINE plastic
-!------------------------------------------------------------------------------
-!
-! Subroutine needed for calculating stress invariants to store in state variables    
-!
-      SUBROUTINE JACOBI2 (AO,N,A,EPS,ITMAX)
-      Real*8 :: AO(3,3), A(3,3),Z,Y,dif,tang,cose,sine,zz,yy
-      Integer iter,i,j,itmax,N,nm1,ip1,irow,icol
-      Real eps
-      ITER=0
-      DO I=1,N
-       DO J=1,N
-        A(I,J)=0.0
-        A(I,I)=1.0
-       end do
-      end do
-    
-    do while (iter.lt.itmax)
-      Z=0.
-      NM1=N-1 
+  ! State variables
+  spd = spd + scl*0.5_dp*(Yold+Ynew)*(pnew-pold)
+  statev(8)  = pnew
+  statev(9)  = ben(1,1); statev(10) = ben(2,2); statev(11) = ben(3,3)
+  statev(12) = ben(1,2); statev(13) = ben(1,3); statev(14) = ben(2,3)
 
-      DO I=1,NM1
-       IP1=I+1
-       DO J=IP1,N
-        IF (ABS(AO(I,J)) .gt. Z) then
-         Z=ABS(AO(I,J))
-         IROW=I
-         ICOL=J
-        end if
-       end do
-      end do
-   
-   IF (ITER .EQ. 0) Y=Z*EPS
- 
-     IF (Z .gt. Y) then
-       DIF=AO(IROW,IROW)-AO(ICOL,ICOL)
-       TANG= (-DIF+SQRT(DIF**2+4.0*Z**2))/(2.0*AO(IROW,ICOL))
-       COSE=1.0/SQRT(1.0+TANG**2)
-       SINE=COSE*TANG
-       DO I=1,N
-        ZZ=A(I,IROW)
-        A(I,IROW)=COSE*ZZ+SINE*A(I,ICOL)
-        A(I,ICOL)=COSE*A(I,ICOL)-SINE*ZZ
-       end do
-       I=1
-       do while (I .ne. IROW)  
-        YY=AO(I,IROW)
-        AO(I,IROW)=COSE*YY+SINE*AO(I,ICOL)
-        AO(I,ICOL)=COSE*AO(I,ICOL)-SINE*YY
-        I=I+1
-       end do
-      I=IROW+1
-      do while (I .ne. ICOL) 
-       YY=AO(IROW,I)
-       AO(IROW,I)=COSE*YY+SINE*AO(I,ICOL)
-       AO(I,ICOL)=COSE*AO(I,ICOL)-SINE*YY
-       I=I+1
-      end do
-      I=ICOL+1
-      do while (I .le. N)  
-      ZZ=AO(IROW,I)
-      AO(IROW,I)=COSE*ZZ+SINE*AO(ICOL,I)
-      AO(ICOL,I)=COSE*AO(ICOL,I)-SINE*ZZ
-      I=I+1
-      end do
-      YY=AO(IROW,IROW)
-      AO(IROW,IROW)=YY*COSE**2+AO(IROW,ICOL)*2.0*COSE*SINE+&
-AO(ICOL,ICOL)*SINE**2
-      AO(ICOL,ICOL)=AO(ICOL,ICOL)*COSE**2+YY*SINE**2-AO(IROW,ICOL)&
-*2.0*COSE*SINE
-      AO(IROW,ICOL)=0.0
-      
-   else
-   iter=itmax 
-   end if
- 
- iter=iter+1 
- end do 
- END subroutine jacobi2
-!     SUBROUTINE FOR SOLVING AX=B USING GAUSS-SEIDEL METHOD
-      SUBROUTINE JACOBI3(A,B,X)
-      Real*8 :: A(6,6),B(6),X(6),XO(6),DIFF,SUM,xnew,check,xcheck
-      integer i,n,j,nn,max,iter,k
-      N=6
-      MAX=1000
-      EPSI= 0.000001
-      DO 50 I=1,N
-	  XO(I)=0.0
-      X(I)=0.0
-50    continue
-      NN=0
-51    DIFF=0.0
-      DO 56 I=1,N
-      SUM=0.0
-      DO 53 J=1,N
-      k = j - i
-      IF(k .lt. 0) SUM=SUM+A(I,J)*XO(J)
-      IF(k .gt. 0) SUM=SUM+A(I,J)*XO(J)
-53    CONTINUE
-      XNEW=(-SUM+B(I))/A(I,I)
-      CHECK=ABS((XO(I)-XNEW)/XNEW)
-      xcheck = check - diff
-      IF(xcheck .le. 0) goto 55
-54    DIFF=CHECK
-55    X(I)=XNEW
-56    CONTINUE
-      do i=1,n
-	  XO(I)=X(I)
-	  enddo
-      NN=NN+1
-      k = nn - max
-      IF(k .ge. 0) goto 58
-      xcheck = diff - epsi
-57    IF(xcheck .le. 0) goto 59
-58    ITER=1
-      MAX=NN
-      RETURN
-59    ITER=0
-      MAX=NN
-      RETURN
-      END
-! 
+  ! Diagnostics: principal log strains of F, principal Cauchy stresses, Mises
+  b1 = MATMUL(dfrgrd1, TRANSPOSE(dfrgrd1))
+  b1 = 0.5_dp*(b1 + TRANSPOSE(b1))
+  CALL pf_jacobi3(b1, w1, V1)
+  lam = 0.5_dp*LOG(w1)
+  statev(1) = MAXVAL(lam); statev(3) = MINVAL(lam)
+  statev(2) = SUM(lam) - statev(1) - statev(3)
+  lam = scl*tau
+  statev(4) = MAXVAL(lam); statev(6) = MINVAL(lam)
+  statev(5) = SUM(lam) - statev(4) - statev(6)
+  sv = 0.0_dp
+  sv(1:3) = stress(1:3); sv(4:ntens) = stress(4:ntens)
+  hyd = (sv(1)+sv(2)+sv(3))/3.0_dp
+  dev = sv(1:3) - hyd
+  statev(7) = SQRT(1.5_dp*(SUM(dev**2) + 2.0_dp*SUM(sv(4:6)**2)))
+END SUBROUTINE pf_drive
+!------------------------------------------------------------------------------
+SUBROUTINE fplastic(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
+     rpl, ddsddt, drplde, drpldt, STRAN, DSTRAN, TIME, DTIME, TEMP, dTemp, &
+     predef, dpred, CMNAME, NDI, NSHR, NTENS, NSTATEV, PROPS, NPROPS, &
+     coords, drot, pnewdt, celent, DFRGRD0, DFRGRD1, NOEL, NPT, layer, kspt, &
+     kstep, kinc)
+!------------------------------------------------------------------------------
+  USE Types
+  USE Messages
+  IMPLICIT NONE
+  REAL(KIND=dp), INTENT(INOUT) :: STRESS(NTENS), STATEV(NSTATEV), SSE, SPD, SCD
+  REAL(KIND=dp), INTENT(OUT) :: DDSDDE(NTENS,NTENS), rpl, ddsddt(NTENS), drplde(NTENS), drpldt
+  REAL(KIND=dp), INTENT(IN) :: STRAN(NTENS), DSTRAN(NTENS), TIME(2), DTIME, TEMP, dtemp
+  REAL(KIND=dp), INTENT(IN) :: predef(1), dpred(1), PROPS(NPROPS), coords(3), drot(3,3)
+  REAL(KIND=dp), INTENT(INOUT) :: pnewdt
+  REAL(KIND=dp), INTENT(IN) :: celent, DFRGRD0(3,3), DFRGRD1(3,3)
+  CHARACTER(len=80), INTENT(IN) :: CMNAME
+  INTEGER, INTENT(IN) :: NDI, NSHR, NTENS, NSTATEV, NPROPS, NOEL, NPT, layer, kspt, kstep, kinc
+
+  REAL(KIND=dp) :: eps(100), sig(100)
+  INTEGER :: i, npts
+
+  rpl = 0.0_dp; ddsddt = 0.0_dp; drplde = 0.0_dp; drpldt = 0.0_dp
+  npts = (nprops-1)/2
+  IF (npts < 1 .OR. npts > 100) &
+      CALL Fatal('fplastic', 'Need 1..100 strain/stress pairs after nu')
+  DO i=1,npts
+    eps(i) = PROPS(2*i)
+    sig(i) = PROPS(2*i+1)
+  END DO
+  CALL pf_drive(ntens, ndi, nstatev, PROPS(1), npts, eps(1:npts), sig(1:npts), &
+       DFRGRD0, DFRGRD1, stress, statev, ddsdde, spd)
+END SUBROUTINE fplastic
