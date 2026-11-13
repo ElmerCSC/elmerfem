@@ -81,7 +81,7 @@ MODULE SplitFemUtils
   PUBLIC :: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMPerm, CreateSplitFEMAddMesh, &
       SplitFEMVariableExtrapolate, SplitFEMSetOrigMesh, SplitFEMSetAddMesh, SplitFEMLevelSetUpdate, &
       CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck, CreateSplitFEMVariable, &
-      SplitFEMRevert, SetSplitFEMBodies, SplitFEMOutput
+      SplitFEMRevert, SetSplitFEMBodies, SplitFEMOutput, SplitFEMEnrichVariable
 
   PUBLIC :: CutInterp
   
@@ -561,6 +561,92 @@ CONTAINS
   END SUBROUTINE CreateSplitFEMPerm
 
 
+
+  ! Enrich a nodal field by values at the zero levelset vs. edge crossings.
+  ! This is meant for fields that are not actually solved by a PDE that would
+  ! also contain a matrix. Hence we can leave the increased size to be, and
+  ! do not have to shrink the size of the vector. Permutation and values
+  ! need to be updated to correspond for the new split. 
+  !------------------------------------------------------------------------
+  SUBROUTINE SplitFEMEnrichVariable(Solver,Var)
+    TYPE(Solver_t) :: Solver
+    TYPE(Variable_t) :: Var
+
+    TYPE(Mesh_t), POINTER :: Mesh
+    TYPE(ValueList_t), POINTER :: Params
+
+    INTEGER :: i,i1,i2,j,k,nn,ne,dofs,m
+    REAL(KIND=dp) :: r
+    INTEGER, POINTER :: Indexes(:), TmpPerm(:)
+    REAL(KIND=dp), POINTER :: TmpValues(:)
+    CHARACTER(*), PARAMETER :: Caller = 'SplitFEMPermEnrichVariable'
+
+
+    Mesh => Solver % Mesh    
+    nn = Mesh % NumberOfNodes   
+    ne = Mesh % NumberOfEdges
+
+    IF(ne == 0) THEN
+      CALL Info(Caller,'No enriching of SplitFEM dofs possible without edges!',Level=20)
+      RETURN
+    END IF
+    IF(.NOT. ALLOCATED(CutInterp)) THEN
+      CALL Info(Caller,'No enriching of SplitFEM dofs possible without CutInterp!',Level=20)
+      RETURN
+    END IF
+
+    CALL Info(Caller,'Enriching variable with SplitFEM dofs: '//TRIM(Var % Name),Level=12)
+
+    dofs = Var % dofs
+    IF( dofs > 1 ) THEN
+      CALL Fatal(Caller,'Implemented so far only for 1 dofs!')
+    END IF
+
+    IF( SIZE( Var % Perm ) < nn + ne ) THEN
+      NULLIFY( TmpPerm ) 
+      ALLOCATE( TmpPerm(nn+ne) )
+      TmpPerm(1:nn) = Var % Perm(1:nn)
+      DEALLOCATE( Var % Perm ) 
+      Var % Perm => TmpPerm 
+    END IF
+
+    Var % Perm(nn+1:nn+ne) = 0          
+    m = MAXVAL(Var % Perm(1:nn))
+    j = m
+    DO i=1,Mesh % NumberOfEdges
+      Indexes => Mesh % Edges(i) % NodeIndexes
+      IF(ANY(Var % Perm(Indexes) == 0)) CYCLE
+      IF(ANY(CutPerm(Indexes) == 0 )) CYCLE
+      j = j+1
+      Var % Perm(nn+i) = j
+    END DO
+
+    IF( SIZE( Var % Values ) < j )  THEN
+      NULLIFY( TmpValues )
+      ALLOCATE( TmpValues(j) )
+      TmpValues(1:m) = Var % Values(1:m)
+      DEALLOCATE(Var % Values)
+      Var % Values => TmpValues      
+    END IF
+    k = SIZE(Var % Values)
+
+    Var % Values(m+1:k) = 0.0_dp
+    DO i=1,Mesh % NumberOfEdges
+      j = Var % Perm(nn+i) 
+      IF(j > 0) THEN
+        i1 = Mesh % Edges(i) % NodeIndexes(1)
+        i2 = Mesh % Edges(i) % NodeIndexes(2)
+        r = cutInterp(i) 
+        Var % Values(j) = (1-r) * Var % Values(Var % Perm(i2)) + r * Var % Values(Var % Perm(i1))
+      END IF
+    END DO
+
+    Var % Type = Variable_on_splitfem
+
+  END SUBROUTINE SplitFEMEnrichVariable
+  
+
+  
   ! Either set the material for SplitFEM usage or revert to the original.
   ! When we visit a new non-splitfem solver we need to set the Body Id's as they were.
   !-----------------------------------------------------------------------------------  

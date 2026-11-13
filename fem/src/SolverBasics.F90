@@ -4518,7 +4518,120 @@ END FUNCTION SearchNodeL
 !------------------------------------------------------------------------------
 
 
+  
+  ! This routine takes an element, and splits it at the levelset into several triangles.
+  ! The gaussian integration points of these triangles are combined thus giving an exact
+  ! integration rule for discontinuities at the zero levelset.
+  !-------------------------------------------------------------------------------------
+  SUBROUTINE DiscontGaussRule(Element,ElemPhi,IntegStuff,Found)
+    
+    TYPE(Element_t) :: Element
+    REAL(KIND=dp) :: ElemPhi(:)
+    TYPE( GaussIntegrationPoints_t ) :: IntegStuff
+    LOGICAL :: Found
+    
 
+    TYPE(Solver_t), POINTER :: pSolver
+    TYPE(Nodes_t) :: ElemNodes
+    LOGICAL :: IsCut, IsMore, stat
+    LOGICAL :: ElemCut(8)
+    INTEGER :: SgnNode, CutCnt, LocalInds(4), m, n, t, i
+    TYPE(Element_t), POINTER :: pElement
+    REAL(KIND=dp) :: Ssum0, Ssum, u, v, w, x, y, z, Basis(4), detJ
+    REAL(KIND=dp), ALLOCATABLE, SAVE :: IPtmp(:,:)
+    TYPE( GaussIntegrationPoints_t ) :: IP
+    TYPE(Element_t), TARGET, SAVE :: PieceElement
+    TYPE( Nodes_t ), SAVE :: PieceNodes
+
+    Found = .FALSE.
+    pSolver => CurrentModel % Solver       
+    n = Element % Type % NumberOfNodes
+
+    IF(.NOT. ASSOCIATED(ElemNodes % x)) THEN
+      ALLOCATE(ElemNodes % x(2*n),ElemNodes % y(2*n), ElemNodes % z(2*n))
+    END IF
+    ElemNodes % x = 0.0_dp
+    ElemNodes % y = 0.0_dp
+    ElemNodes % z = 0.0_dp
+    ElemNodes % x(1:n) = pSolver % Mesh % Nodes % x(Element % NodeIndexes(1:n) )
+    ElemNodes % y(1:n) = pSolver % Mesh % Nodes % y(Element % NodeIndexes(1:n) )
+    ElemNodes % z(1:n) = pSolver % Mesh % Nodes % z(Element % NodeIndexes(1:n) )
+    
+    ElemCut = .FALSE.
+    CALL CutSingleElement(Element, ElemNodes, ElemPhi, ElemCut )
+
+    IF(COUNT(ElemCut(1:2*n)) > 1) THEN
+      
+      IF(.NOT. ASSOCIATED(PieceElement % NodeIndexes)) THEN
+        ALLOCATE(PieceElement % NodeIndexes(4),IpTmp(4,20), &
+            PieceNodes % x(4), PieceNodes % y(4), PieceNodes % z(n) )
+      END IF
+      
+      IntegStuff = GaussPoints( Element, PReferenceElement = .FALSE. )
+      Ssum0 = SUM(IntegStuff % s(1:IntegStuff % n))
+
+      i = 0
+      DO CutCnt=1,10
+        CALL SplitSingleElement(Element, ElemCut, ElemNodes, CutCnt, &
+            IsCut, IsMore, LocalInds, SgnNode )
+        IF(.NOT. IsCut) THEN
+          PRINT *,'ElemCut: ',ElemCut(1:n),ElemPhi(1:n),CutCnt,IsCut,IsMore
+          CALL Warn('GaussPointsAdapt','This should be cut?')
+          RETURN
+        END IF
+
+        m = COUNT(LocalInds > 0)
+        IF(m<3 .OR. m>4) CALL Fatal('GaussPointsAdapt','This is neither triangle or quad?')
+
+        ! Create a local temporal element
+        PieceElement % TYPE => GetElementType( 101*m )   
+        IP = GaussPoints( PieceElement, PReferenceElement = .FALSE. )
+
+        ! Nodes for the temporal element. 
+        PieceNodes % x(1:m) = ElemNodes % x(LocalInds(1:m))
+        PieceNodes % y(1:m) = ElemNodes % y(LocalInds(1:m))
+        PieceNodes % z(1:m) = ElemNodes % z(LocalInds(1:m))
+
+        DO t=1,IP % n
+          i = i+1
+          stat = ElementInfo( PieceElement, PieceNodes, &
+              IP % u(t), IP % v(t), IP % w(t), detJ, Basis )
+
+          ! Global coordinates of the temporal element
+          x = SUM(Basis(1:m)*PieceNodes % x(1:m))
+          y = SUM(Basis(1:m)*PieceNodes % y(1:m))
+          z = SUM(Basis(1:m)*PieceNodes % z(1:m))
+          pElement => PieceElement
+
+          ! Find the corresponding local coordinates of the real element.
+          CALL GlobalToLocal( u, v, w, x, y, z, pElement, ElemNodes ) 
+
+          ! We need temporal space since IP and IntegStuff refer to the same arrays!
+          IpTmp(1,i) = u
+          IpTmp(2,i) = v
+          IpTmp(3,i) = w
+          IpTmp(4,i) = detJ * IP % s(t)
+        END DO
+
+        ! No more element needed to split the reference element.
+        IF(.NOT. IsMore) EXIT
+      END DO
+
+      ! Copy the IP points from the temporal arrays
+      IntegStuff % n = i
+      ssum = SUM(IPtmp(4,1:i))
+
+      IntegStuff % u(1:i) = IPtmp(1,1:i) 
+      IntegStuff % v(1:i) = IPtmp(2,1:i) 
+      IntegStuff % w(1:i) = IPtmp(3,1:i) 
+      IntegStuff % s(1:i) = IPtmp(4,1:i) * (ssum0 / ssum )
+
+      Found = .TRUE.
+    END IF
+
+  END SUBROUTINE DiscontGaussRule
+
+  
 
 !------------------------------------------------------------------------------
 !> Adaptive version for getting gaussian integration points.
@@ -4877,7 +4990,7 @@ END FUNCTION SearchNodeL
 
       IF( .NOT. ( MaxV < MinLim .OR. MinV > MaxLim ) ) THEN
 
-        IF( AdaptSplit ) THEN
+        IF( AdaptSplit ) THEN         
           ! THREADING: this adaptive-split branch is SERIAL-ONLY. ElemNodes
           ! (below) and the PieceElement/IPtmp/PieceNodes SAVEd scratch in the
           ! inner BLOCK are shared across calls, so calling this from an OMP
@@ -4886,101 +4999,9 @@ END FUNCTION SearchNodeL
           ! this scratch to per-call locals before using adaptive-split with a
           ! threaded (*Vec-style) solver. See the NOTE at the SAVE statement.
           ElemPhi(1:n) = ElemPhi(1:n) - MinLim
-          IF(.NOT. ASSOCIATED(ElemNodes % x)) THEN
-            ALLOCATE(ElemNodes % x(2*n),ElemNodes % y(2*n), ElemNodes % z(2*n))
-          END IF
-          ElemNodes % x(1:n) = pSolver % Mesh % Nodes % x(Element % NodeIndexes(1:n) )
-          ElemNodes % y(1:n) = pSolver % Mesh % Nodes % y(Element % NodeIndexes(1:n) )
-          ElemNodes % z(1:n) = pSolver % Mesh % Nodes % z(Element % NodeIndexes(1:n) )
 
-          ElemCut = .FALSE.
-          CALL CutSingleElement(Element, ElemNodes, ElemPhi, ElemCut )
-
-          IF(COUNT(ElemCut(1:2*n)) > 1) THEN
-            BLOCK
-              LOGICAL :: IsCut, IsMore, stat
-              INTEGER :: SgnNode, CutCnt, LocalInds(4), m, t
-              TYPE(Element_t), TARGET, SAVE :: PieceElement
-              TYPE(Element_t), POINTER :: pElement
-              REAL(KIND=dp) :: Ssum0, Ssum, u, v, w, x, y, z, Basis(4), detJ
-              REAL(KIND=dp), ALLOCATABLE, SAVE :: IPtmp(:,:)
-              TYPE( GaussIntegrationPoints_t ) :: IP
-              TYPE( Nodes_t ), SAVE :: PieceNodes
-
-              IF(.NOT. ASSOCIATED(PieceElement % NodeIndexes)) THEN
-                ALLOCATE(PieceElement % NodeIndexes(4),IpTmp(4,20), &
-                    PieceNodes % x(4), PieceNodes % y(4), PieceNodes % z(n) )
-              END IF
-
-              IntegStuff = GaussPoints( Element, PReferenceElement = .FALSE. )
-              Ssum0 = SUM(IntegStuff % s(1:IntegStuff % n))
-
-              i = 0
-              DO CutCnt=1,10
-                CALL SplitSingleElement(Element, ElemCut, ElemNodes, CutCnt, &
-                    IsCut, IsMore, LocalInds, SgnNode )
-                IF(.NOT. IsCut) THEN
-                  PRINT *,'ElemCut: ',ElemCut(1:n),CutCnt,IsCut,IsMore
-                  CALL Warn('GaussPointsAdapt','This should be cut?')
-                  RETURN
-                END IF
-
-                m = COUNT(LocalInds > 0)
-                IF(m<3 .OR. m>4) CALL Fatal('GaussPointsAdapt','This is neither triangle or quad?')
-
-                ! Create a local temporal element
-                PieceElement % TYPE => GetElementType( 101*m )   
-                IP = GaussPoints( PieceElement, PReferenceElement = .FALSE. )
-
-                ! Nodes for the temporal element. 
-                PieceNodes % x(1:m) = ElemNodes % x(LocalInds(1:m))
-                PieceNodes % y(1:m) = ElemNodes % y(LocalInds(1:m))
-                PieceNodes % z(1:m) = ElemNodes % z(LocalInds(1:m))
-
-                DO t=1,IP % n
-                  i = i+1
-                  stat = ElementInfo( PieceElement, PieceNodes, &
-                      IP % u(t), IP % v(t), IP % w(t), detJ, Basis )
-
-                  ! Global coordinates of the temporal element
-                  x = SUM(Basis(1:m)*PieceNodes % x(1:m))
-                  y = SUM(Basis(1:m)*PieceNodes % y(1:m))
-                  z = SUM(Basis(1:m)*PieceNodes % z(1:m))
-                  pElement => PieceElement
-
-                  ! Find the corresponding local coordinates of the real element.
-                  CALL GlobalToLocal( u, v, w, x, y, z, pElement, ElemNodes ) 
-
-                  ! We need temporal space since IP and IntegStuff refer to the same arrays!
-                  IpTmp(1,i) = u
-                  IpTmp(2,i) = v
-                  IpTmp(3,i) = w
-                  IpTmp(4,i) = detJ * IP % s(t)
-                END DO
-
-                ! No more element needed to split the reference element.
-                IF(.NOT. IsMore) EXIT
-              END DO
-
-              ! Copy the IP points from the temporal arrays
-              IntegStuff % n = i
-              ssum = SUM(IPtmp(4,1:i))
-
-              IntegStuff % u(1:i) = IPtmp(1,1:i) 
-              IntegStuff % v(1:i) = IPtmp(2,1:i) 
-              IntegStuff % w(1:i) = IPtmp(3,1:i) 
-              IntegStuff % s(1:i) = IPtmp(4,1:i) * (ssum0 / ssum )
-
-              IF(i>0) THEN
-                !PRINT *,'detJ orig:',CutCnt,i,ssum0,ssum,IP % n
-              END IF
-              !PRINT *,'AdaptiveElement:',Element % ElementIndex, MinV, MaxV, AdaptSplit, IntegStuff % n
-
-              RETURN
-
-            END BLOCK
-
-          END IF
+          CALL DiscontGaussRule(Element,ElemPhi,IntegStuff,Found)
+          IF(Found) RETURN
         ELSE
           RelOrder = AdaptOrder
           Np = AdaptNp
@@ -5014,6 +5035,156 @@ END FUNCTION SearchNodeL
 
   END FUNCTION GaussPointsAdapt
 
+
+
+  ! This routine takes an element that split by an levelset and creates
+  ! an L2 projection for the step function caused by the levelset.
+  ! This way the the field can be integrated by the standard integration
+  ! rule and the resulting fields do not have hidden kinks that cannot
+  ! be presented by the basis functions. 
+  !-----------------------------------------------------------------------
+  SUBROUTINE StepToNodalProjection( Element, NodalCoeff, Found )
+
+    TYPE(Element_t), POINTER :: Element
+    REAL(KIND=dp) :: NodalCoeff(:)
+    LOGICAL :: Found
+
+
+    TYPE(GaussIntegrationPoints_t) :: IP
+    LOGICAL :: Stat, SomeSplit 
+    TYPE(Solver_t), POINTER :: pSolver
+    TYPE(Nodes_t), SAVE :: ElemNodes
+    TYPE(Variable_t), POINTER, SAVE :: IntegVar => NULL()
+    INTEGER :: n,m,t,p,q,nn,i,j,j1,j2,sgn
+    REAL(KIND=dp) :: weight, Phi, detJ, LSLim, minv, maxv, r, a, b
+    REAL(KIND=dp), POINTER, SAVE :: ElemPhi(:)
+    REAL(KIND=dp), ALLOCATABLE :: STIFF(:,:), FORCE(:), Basis(:)
+    CHARACTER(LEN=MAX_NAME_LEN) :: VarName
+    
+    n = Element % Type % NumberOfNodes
+    pSolver => CurrentModel % Solver    
+    VarName = ListGetString( pSolver % Values,'Step Integration Variable', Found )   
+
+    IF(.NOT. Found ) THEN      
+      NodalCoeff(1:n) = 1.0_dp
+      RETURN
+    END IF
+
+    a = ListGetConstReal( pSolver % Values,'Step positive value', Found )
+    IF(.NOT. Found) a = 1.0_dp
+    b = ListGetConstReal( pSolver % Values,'Step negative value', Found )
+    IF(.NOT. Found) b = 0.0_dp
+    
+    IF(.NOT. ASSOCIATED(IntegVar) ) THEN    
+      IntegVar => VariableGet( pSolver % Mesh % Variables, VarName, ThisOnly = .TRUE. )
+      IF( .NOT. ASSOCIATED( IntegVar ) ) THEN
+        CALL Fatal('StepToNodalProjection','Variable "'//TRIM(VarName)//'" does not exist!')
+      END IF
+    END IF
+      
+    IF( IntegVar % TYPE /= Variable_on_nodes ) THEN
+      CALL Fatal('StepToNodalProjection','Wrong type of integration variable!')
+    END IF
+    IF( Element % TYPE % ElementCode > 500 ) THEN
+      CALL Warn('StepToNodalProjection','Integration Split only implemented in 2D!')
+    END IF
+    
+    IF(.NOT. ASSOCIATED(ElemNodes % x) ) THEN
+      m = 10 ! just big enough
+      ALLOCATE(ElemNodes % x(m), ElemNodes % y(m), ElemNodes % z(m), ElemPhi(m))
+    END IF
+    
+    nn = pSolver % Mesh % NumberOfNodes    
+    SomeSplit = .FALSE.
+    DO i=1,n
+      j = Element % NodeIndexes(i)
+      IF ( j<= nn ) THEN
+        j = IntegVar % Perm(j)
+        IF ( j>0 ) THEN
+          ElemPhi(i) = IntegVar % Values(j)
+        END IF
+      ELSE IF( ASSOCIATED( CurrentModel % CutInterp ) ) THEN
+        SomeSplit = .TRUE.
+        j1 = IntegVar % Perm(pSolver % Mesh % Edges(j-nn) % NodeIndexes(1))
+        j2 = IntegVar % Perm(pSolver % Mesh % Edges(j-nn) % NodeIndexes(2))
+        IF(j1 > 0 .AND. j2 > 0) THEN
+          r = CurrentModel % CutInterp(j-nn)
+          ElemPhi(i) = r*IntegVar % Values(j1) + (1-r)*IntegVar % Values(j2)
+        END IF
+      END IF
+    END DO
+    
+    LSLim = ListGetCReal( pSolver % Values,'Step Integration Split Limit', Stat )
+    IF(Stat) ElemPhi(1:n) = ElemPhi(1:n) - LSlim
+
+    MinV = MINVAL(ElemPhi(1:n)) 
+    MaxV = MAXVAL(ElemPhi(1:n)) 
+
+    IF( MaxV <= 0.0_dp ) THEN
+      ! all levelset values are negative
+      NodalCoeff(1:n) = b
+    ELSE IF( MinV >= 0.0_dp ) THEN
+      ! all levelset values are positive
+      NodalCoeff(1:n) = a
+    ELSE      
+      CALL DiscontGaussRule(Element,ElemPhi,IP,Found)
+      
+      IF( IP % n == 0) THEN
+        ! We thought we would have split elements but not.
+        ! Now use the maximum absolute value to set the value in all nodes.  
+        IF( MaxV < -MinV ) THEN
+          ! negative values dominate
+          NodalCoeff(1:n) = b
+        ELSE
+          NodalCoeff(1:n) = a
+        END IF
+      ELSE        
+        ElemNodes % x(1:n) = pSolver % Mesh % Nodes % x(Element % NodeIndexes(1:n) )
+        ElemNodes % y(1:n) = pSolver % Mesh % Nodes % y(Element % NodeIndexes(1:n) )
+        ElemNodes % z(1:n) = pSolver % Mesh % Nodes % z(Element % NodeIndexes(1:n) )
+
+        ALLOCATE(STIFF(n,n), FORCE(n), Basis(n) )
+        STIFF = 0.0_dp
+        FORCE = 0.0_dp
+
+        DO t=1,IP % n
+          stat = ElementInfo( Element, ElemNodes, IP % U(t), IP % V(t), IP % W(t), detJ, Basis )                
+          Weight = IP % s(t) * DetJ
+
+#if 1
+          DO p=1,n
+            DO q=1,n
+              STIFF(p,q) = STIFF(p,q) + Weight * Basis(q) * Basis(p)
+            END DO
+          END DO
+#else
+          ! Mass lumping, avoids extreme fit with outliers
+          DO p=1,n
+            DO q=1,n
+              STIFF(p,p) = STIFF(p,p) + Weight * Basis(q) * Basis(p)
+            END DO
+          END DO
+#endif
+
+          Phi = SUM(ElemPhi(1:n) * Basis(1:n)) 
+          ! We get a contribution to the r.h.s. only inside the levelset
+          IF( Phi < 0.0_dp ) THEN
+            FORCE(1:n) = FORCE(1:n) + b * Weight * Basis(1:n)
+          ELSE
+            FORCE(1:n) = FORCE(1:n) + a * Weight * Basis(1:n)
+          END IF
+        END DO
+
+        CALL SymmetricSolveLinSys(STIFF,FORCE,n)
+        NodalCoeff(1:n) = FORCE(1:n)
+      END IF
+             
+    END IF
+    
+  END SUBROUTINE StepToNodalProjection
+    
+
+  
 
 !------------------------------------------------------------------------------
 !> Report the integration rule each element family is actually being integrated

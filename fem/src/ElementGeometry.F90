@@ -1971,8 +1971,8 @@ END FUNCTION PointFaceDistance
       END IF
 
     CASE DEFAULT
-      PRINT *,'ElemCut:',ElemCut(1:n*n)
-      CALL Fatal('SplitSingleElement','Unknown split case in element divisions: '//I2S(SplitCase))
+      PRINT *,'ElemCut:',ElemCut(1:2*n)
+      CALL Warn('SplitSingleElement','Unknown split case in element divisions: '//I2S(SplitCase))      
     END SELECT
 
     IsMore = (m < mmax )
