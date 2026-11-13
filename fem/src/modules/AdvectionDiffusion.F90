@@ -146,6 +146,10 @@
      CHARACTER(LEN=MAX_NAME_LEN) :: ConvVeloKey(3)
      REAL(KIND=dp) :: UnitCharge, BoltzmannConst
      LOGICAL :: HaveBF, HaveIon, PhysicalUnits
+! Keywords evaluated at the integration points, for bodies that need none of
+! the features only the nodal assembly has (see BodyUsesHandles)
+     TYPE(ValueHandle_t), SAVE :: Diff_h, Density_h, Source_h, VeloEq_h(3), VeloMat_h(3)
+     LOGICAL :: HandleAssembly, UseHandles
 ! We will read velocity, temperature and electrical potential in
 ! For the moment assume steady-state velocity, temperature and potential
 ! Then ElmerSolver reads them in automatically
@@ -312,6 +316,18 @@
      DO i=1,3
        ConvVeloKey(i) = TRIM(ComponentName(Solver % Variable)) // ' Convection Velocity ' // I2S(i)
      END DO
+
+     HandleAssembly = ListGetLogical( Solver % Values, 'Handle Assembly', GotIt )
+     IF ( .NOT. GotIt ) HandleAssembly = .TRUE.
+     IF ( HandleAssembly ) THEN
+       CALL ListInitElementKeyword( Diff_h, 'Material', DiffusivityKey )
+       CALL ListInitElementKeyword( Density_h, 'Material', 'Density' )
+       CALL ListInitElementKeyword( Source_h, 'Body Force', SourceKey )
+       DO i=1,3
+         CALL ListInitElementKeyword( VeloEq_h(i), 'Equation', TRIM(ConvVeloKey(i)) )
+         CALL ListInitElementKeyword( VeloMat_h(i), 'Material', 'Convection Velocity ' // I2S(i) )
+       END DO
+     END IF
 
 !------------------------------------------------------------------------------
 
@@ -496,6 +512,11 @@
                  'Physical Units', GotIt )
              IF ( PhysicalUnits ) Ratio = MaxSol
            END IF
+
+           UseHandles = HandleAssembly
+           IF ( UseHandles ) UseHandles = BodyUsesHandles()
+           IF ( iter == 1 .AND. UseHandles ) CALL Info( 'AdvectionDiffusion', &
+               'Integration point assembly in body ' // I2S(body_id), Level=7 )
 !------------------------------------------------------------------------------
          END IF
 !------------------------------------------------------------------------------
@@ -509,244 +530,249 @@
          ElementNodes % x(1:n) = Mesh % Nodes % x(NodeIndexes)
          ElementNodes % y(1:n) = Mesh % Nodes % y(NodeIndexes)
          ElementNodes % z(1:n) = Mesh % Nodes % z(NodeIndexes)
-         IF ( ASSOCIATED( TempSol ) ) THEN
-           LocalTemperature(1:n) = Temperature( TempPerm(NodeIndexes) )
+         IF ( UseHandles ) THEN
+           CALL HandleLocalMatrix( CurrentElement, n, ElementNodes, &
+               LocalMassMatrix, LocalStiffMatrix, LocalForce )
          ELSE
-           LocalTemperature(1:n) = ListGetReal(  Material, &
-                'Reference Temperature',n,NodeIndexes,GotIt )
-         ENDIF
-         IF ( ASSOCIATED( PhiSol ) ) THEN
-           LocalPotential(1:n) = EPotential( PotentialPerm(NodeIndexes) )
-         ELSE
-           LocalPotential(1:n) = ListGetReal(  Material, &
-                'Reference EPotential',n,NodeIndexes,GotIt )
-         ENDIF
-!------------------------------------------------------------------------------
-!        Get system parameters for element nodal points
-!------------------------------------------------------------------------------
+           IF ( ASSOCIATED( TempSol ) ) THEN
+             LocalTemperature(1:n) = Temperature( TempPerm(NodeIndexes) )
+           ELSE
+             LocalTemperature(1:n) = ListGetReal(  Material, &
+                  'Reference Temperature',n,NodeIndexes,GotIt )
+           ENDIF
+           IF ( ASSOCIATED( PhiSol ) ) THEN
+             LocalPotential(1:n) = EPotential( PotentialPerm(NodeIndexes) )
+           ELSE
+             LocalPotential(1:n) = ListGetReal(  Material, &
+                  'Reference EPotential',n,NodeIndexes,GotIt )
+           ENDIF
+  !------------------------------------------------------------------------------
+  !        Get system parameters for element nodal points
+  !------------------------------------------------------------------------------
 
-         CALL ListGetRealArray( Material, DiffusivityKey, Hwrk, n, NodeIndexes )
+           CALL ListGetRealArray( Material, DiffusivityKey, Hwrk, n, NodeIndexes )
 
-         Diffusivity = 0.0d0
-         IF ( SIZE(Hwrk,1) == 1 ) THEN
-           DO i=1,3
-             Diffusivity( i,i,1:n ) = Hwrk( 1,1,1:n )
-           END DO
-         ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
-           DO i=1,MIN(3,SIZE(Hwrk,1))
-             Diffusivity(i,i,1:n) = Hwrk(i,1,1:n)
-           END DO
-         ELSE
-           DO i=1,MIN(3,SIZE(Hwrk,1))
-             DO j=1,MIN(3,SIZE(Hwrk,2))
-               Diffusivity( i,j,1:n ) = Hwrk(i,j,1:n)
+           Diffusivity = 0.0d0
+           IF ( SIZE(Hwrk,1) == 1 ) THEN
+             DO i=1,3
+               Diffusivity( i,i,1:n ) = Hwrk( 1,1,1:n )
              END DO
-           END DO
-         END IF
-
-! This is also different for each species (in the same carrier gas)
-
-         SoretDiffusivity(1:n) = ListGetReal( Material, SoretKey, n, NodeIndexes, GotIt )
-         IF ( .NOT. GotIt )  SoretDiffusivity = 0.0d0
-
-         IF ( .NOT. HaveIon ) THEN
-           NEConst   = 0._dp
-         ELSE
-           NEConst(1:n) = IonCharge / LocalTemperature(1:n) * &
-               UnitCharge / BoltzmannConst
-         END IF
-
-!------------------------------------------------------------------------------
-!      Previous solution for element nodal points
-!------------------------------------------------------------------------------
-!       C(1:n) = Species( SpeciesPerm(NodeIndexes) )
-!------------------------------------------------------------------------------
-
-! We need also Density, need to go through all that jazz, if incompressible
-         IF ( CompressibilityModel >= PerfectGas1 .AND. &
-             CompressibilityModel <= PerfectGas3 ) THEN
-           HeatCapacity(1:n) = ListGetReal( Material,'Heat Capacity', &
-               n,NodeIndexes,GotIt )
-!------------------------------------------------------------------------------
-! For an ideal gas, \gamma, c_p and R are really a constant
-! GasConstant is an array only since HeatCapacity formally is
-!------------------------------------------------------------------------------
-           GasConstant(1:n) = ( SpecificHeatRatio - 1.d0 ) * &
-               HeatCapacity(1:n) / SpecificHeatRatio
-         ELSE
-           Density(1:n) = ListGetReal( Material,'Density',n,NodeIndexes )
-         END IF
-
-! etc.
-         Load = 0.d0
-         Pressure = 0.d0
-
-!------------------------------------------------------------------------------
-!        Check for convection model
-!------------------------------------------------------------------------------
-
-         IF ( ConvectionFlag == 'constant' ) THEN
-           U = ListGetReal( Eq, TRIM(ConvVeloKey(1)),n,NodeIndexes,GotIt )
-           IF ( .NOT. GotIt ) &
-               U = ListGetReal( Material,'Convection Velocity 1',n,NodeIndexes, GotIt)
-           V = ListGetReal( Eq, TRIM(ConvVeloKey(2)),n,NodeIndexes,GotIt )
-           IF ( .NOT. GotIt ) &
-             V = ListGetReal( Material,'Convection Velocity 2',n,NodeIndexes, GotIt)
-           W = ListGetReal( Eq, TRIM(ConvVeloKey(3)),n,NodeIndexes,GotIt )
-           IF ( .NOT. GotIt ) &
-             W = ListGetReal( Material,'Convection Velocity 3',n,NodeIndexes, GotIt)
-         ELSE IF ( ConvectionFlag == 'computed' ) THEN
-
-           IF( .NOT. ASSOCIATED( FlowSol ) ) THEN
-             CALL Fatal('AdvectionDiffusion','Give > Convection Field Variable <')
+           ELSE IF ( SIZE(Hwrk,2) == 1 ) THEN
+             DO i=1,MIN(3,SIZE(Hwrk,1))
+               Diffusivity(i,i,1:n) = Hwrk(i,1,1:n)
+             END DO
+           ELSE
+             DO i=1,MIN(3,SIZE(Hwrk,1))
+               DO j=1,MIN(3,SIZE(Hwrk,2))
+                 Diffusivity( i,j,1:n ) = Hwrk(i,j,1:n)
+               END DO
+             END DO
            END IF
 
-           DO i=1,n
-             k = FlowPerm(NodeIndexes(i))
-             IF ( k > 0 ) THEN
+  ! This is also different for each species (in the same carrier gas)
 
-!------------------------------------------------------------------------------
-               SELECT CASE( CompressibilityModel )
-!------------------------------------------------------------------------------
-                 CASE( PerfectGas1,PerfectGas2,PerfectGas3 )
-                 Pressure(i) = FlowSolution(NSDOFs*k) + ReferencePressure
-                 Density(i)  = Pressure(i) / &
-                       ( GasConstant(i) * LocalTemperature(i) )
-!------------------------------------------------------------------------------
-               END SELECT
-!------------------------------------------------------------------------------
+           SoretDiffusivity(1:n) = ListGetReal( Material, SoretKey, n, NodeIndexes, GotIt )
+           IF ( .NOT. GotIt )  SoretDiffusivity = 0.0d0
 
-               SELECT CASE( NSDOFs )
-                 CASE(3)
-                 U(i) = FlowSolution( NSDOFs*k-2 )
-                 V(i) = FlowSolution( NSDOFs*k-1 )
-                 W(i) = 0.0D0
+           IF ( .NOT. HaveIon ) THEN
+             NEConst   = 0._dp
+           ELSE
+             NEConst(1:n) = IonCharge / LocalTemperature(1:n) * &
+                 UnitCharge / BoltzmannConst
+           END IF
 
-               CASE(4)
-                 U(i) = FlowSolution( NSDOFs*k-3 )
-                 V(i) = FlowSolution( NSDOFs*k-2 )
-                 W(i) = FlowSolution( NSDOFs*k-1 )
-               END SELECT
+  !------------------------------------------------------------------------------
+  !      Previous solution for element nodal points
+  !------------------------------------------------------------------------------
+  !       C(1:n) = Species( SpeciesPerm(NodeIndexes) )
+  !------------------------------------------------------------------------------
 
-             ELSE
-               U(i) = 0.0d0
-               V(i) = 0.0d0
-               W(i) = 0.0d0
+  ! We need also Density, need to go through all that jazz, if incompressible
+           IF ( CompressibilityModel >= PerfectGas1 .AND. &
+               CompressibilityModel <= PerfectGas3 ) THEN
+             HeatCapacity(1:n) = ListGetReal( Material,'Heat Capacity', &
+                 n,NodeIndexes,GotIt )
+  !------------------------------------------------------------------------------
+  ! For an ideal gas, \gamma, c_p and R are really a constant
+  ! GasConstant is an array only since HeatCapacity formally is
+  !------------------------------------------------------------------------------
+             GasConstant(1:n) = ( SpecificHeatRatio - 1.d0 ) * &
+                 HeatCapacity(1:n) / SpecificHeatRatio
+           ELSE
+             Density(1:n) = ListGetReal( Material,'Density',n,NodeIndexes )
+           END IF
+
+  ! etc.
+           Load = 0.d0
+           Pressure = 0.d0
+
+  !------------------------------------------------------------------------------
+  !        Check for convection model
+  !------------------------------------------------------------------------------
+
+           IF ( ConvectionFlag == 'constant' ) THEN
+             U = ListGetReal( Eq, TRIM(ConvVeloKey(1)),n,NodeIndexes,GotIt )
+             IF ( .NOT. GotIt ) &
+                 U = ListGetReal( Material,'Convection Velocity 1',n,NodeIndexes, GotIt)
+             V = ListGetReal( Eq, TRIM(ConvVeloKey(2)),n,NodeIndexes,GotIt )
+             IF ( .NOT. GotIt ) &
+               V = ListGetReal( Material,'Convection Velocity 2',n,NodeIndexes, GotIt)
+             W = ListGetReal( Eq, TRIM(ConvVeloKey(3)),n,NodeIndexes,GotIt )
+             IF ( .NOT. GotIt ) &
+               W = ListGetReal( Material,'Convection Velocity 3',n,NodeIndexes, GotIt)
+           ELSE IF ( ConvectionFlag == 'computed' ) THEN
+
+             IF( .NOT. ASSOCIATED( FlowSol ) ) THEN
+               CALL Fatal('AdvectionDiffusion','Give > Convection Field Variable <')
              END IF
-           END DO
 
-         ELSE  ! no convection
-           U = 0.0d0
-           V = 0.0d0
-           W = 0.0d0
-         END IF
+             DO i=1,n
+               k = FlowPerm(NodeIndexes(i))
+               IF ( k > 0 ) THEN
 
-! Set C1 to density or 1.0 if there's convection or Nernst-Planck migration
-         IF ( ConvectionFlag == 'constant' .OR. ConvectionFlag == 'computed' &
-              .OR. IonCharge /= 0.0d0 ) THEN
-            IF (.NOT. AbsoluteMass) THEN
-               C1 = Density
-            ELSE
-               C1 = 1.d0
-            END IF
-         ELSE
-           C1 = 0.0d0
-         END IF
+  !------------------------------------------------------------------------------
+                 SELECT CASE( CompressibilityModel )
+  !------------------------------------------------------------------------------
+                   CASE( PerfectGas1,PerfectGas2,PerfectGas3 )
+                   Pressure(i) = FlowSolution(NSDOFs*k) + ReferencePressure
+                   Density(i)  = Pressure(i) / &
+                         ( GasConstant(i) * LocalTemperature(i) )
+  !------------------------------------------------------------------------------
+                 END SELECT
+  !------------------------------------------------------------------------------
 
-         IF (.NOT. AbsoluteMass) THEN
-            CT = Density
-            DO i=1,3
-               DO j=1,3
-                  C2(i,j,:) = Density * Diffusivity(i,j,:)
-               END DO
-            END DO
-!------------------------------------------------------------------------------
-!            The Nernst-Planck drift velocity is built from C2 in the compose
-!            routines (Velo = Velo - C2*NEConst*grad(phi)) and the convection
-!            matrix then multiplies it by C1. In relative mass units C1=Density
-!            and C2=Density*Diffusivity, so the assembled drift would carry
-!            Density twice. The physical term is Density*Diffusivity*NEConst,
-!            so drop the surplus factor here. This cannot be done by dividing
-!            with C1 at the point of use: C1 is set to zero below when there is
-!            neither convection nor migration. Where the density vanishes the
-!            relative mass formulation is degenerate (C1=CT=0), so leave the
-!            drift at zero rather than generate a NaN.
-!------------------------------------------------------------------------------
-            WHERE ( Density(1:n) /= 0.0d0 )
-               NEConst(1:n) = NEConst(1:n) / Density(1:n)
-            ELSEWHERE
-               NEConst(1:n) = 0.0d0
-            END WHERE
-         ELSE
-            CT = 1.0d0
-            DO i=1,3
-               DO j=1,3
-                  C2(i,j,:) = Diffusivity(i,j,:)
-               END DO
-            END DO
-         END IF
+                 SELECT CASE( NSDOFs )
+                   CASE(3)
+                   U(i) = FlowSolution( NSDOFs*k-2 )
+                   V(i) = FlowSolution( NSDOFs*k-1 )
+                   W(i) = 0.0D0
 
-         MU  = 0.0d0
-         MV  = 0.0d0
-         MW  = 0.0d0
-         IF ( ASSOCIATED( MeshVelocity ) ) THEN
-            DO i=1,n
-              IF ( MeshPerm( NodeIndexes(i) ) > 0 ) THEN
-                 MU(i) = MeshVelocity( MDOFs*(MeshPerm(NodeIndexes(i))-1)+1 )
-                 MV(i) = MeshVelocity( MDOFs*(MeshPerm(NodeIndexes(i))-1)+2 )
-                 IF ( MDOFs > 2 ) THEN
-                    MW(i) = MeshVelocity( MDOFs*(MeshPerm(NodeIndexes(i))-1)+3 )
-                 END IF
+                 CASE(4)
+                   U(i) = FlowSolution( NSDOFs*k-3 )
+                   V(i) = FlowSolution( NSDOFs*k-2 )
+                   W(i) = FlowSolution( NSDOFs*k-1 )
+                 END SELECT
+
+               ELSE
+                 U(i) = 0.0d0
+                 V(i) = 0.0d0
+                 W(i) = 0.0d0
+               END IF
+             END DO
+
+           ELSE  ! no convection
+             U = 0.0d0
+             V = 0.0d0
+             W = 0.0d0
+           END IF
+
+  ! Set C1 to density or 1.0 if there's convection or Nernst-Planck migration
+           IF ( ConvectionFlag == 'constant' .OR. ConvectionFlag == 'computed' &
+                .OR. IonCharge /= 0.0d0 ) THEN
+              IF (.NOT. AbsoluteMass) THEN
+                 C1 = Density
+              ELSE
+                 C1 = 1.d0
               END IF
-            END DO
-         END IF
+           ELSE
+             C1 = 0.0d0
+           END IF
 
-!------------------------------------------------------------------------------
-!        C0 is used only as the carrier for the Soret (thermal diffusion)
-!        coefficient: the compose routines copy NodalC0 into NodalCThermal and
-!        then zero NodalC0, so it never acts as a reaction term. The Soret flux
-!        is Density*SoretDiffusivity*grad(T) in relative mass units, where the
-!        species equation carries the extra factor of the density, and
-!        SoretDiffusivity*grad(T) in absolute mass units, where it does not.
-!------------------------------------------------------------------------------
-         IF (.NOT. AbsoluteMass) THEN
-            C0 = Density
-         ELSE
-            C0 = 1.0d0
-         END IF
-         IF ( ScaledToSolubility ) C0 = C0 / MaxSol
+           IF (.NOT. AbsoluteMass) THEN
+              CT = Density
+              DO i=1,3
+                 DO j=1,3
+                    C2(i,j,:) = Density * Diffusivity(i,j,:)
+                 END DO
+              END DO
+  !------------------------------------------------------------------------------
+  !            The Nernst-Planck drift velocity is built from C2 in the compose
+  !            routines (Velo = Velo - C2*NEConst*grad(phi)) and the convection
+  !            matrix then multiplies it by C1. In relative mass units C1=Density
+  !            and C2=Density*Diffusivity, so the assembled drift would carry
+  !            Density twice. The physical term is Density*Diffusivity*NEConst,
+  !            so drop the surplus factor here. This cannot be done by dividing
+  !            with C1 at the point of use: C1 is set to zero below when there is
+  !            neither convection nor migration. Where the density vanishes the
+  !            relative mass formulation is degenerate (C1=CT=0), so leave the
+  !            drift at zero rather than generate a NaN.
+  !------------------------------------------------------------------------------
+              WHERE ( Density(1:n) /= 0.0d0 )
+                 NEConst(1:n) = NEConst(1:n) / Density(1:n)
+              ELSEWHERE
+                 NEConst(1:n) = 0.0d0
+              END WHERE
+           ELSE
+              CT = 1.0d0
+              DO i=1,3
+                 DO j=1,3
+                    C2(i,j,:) = Diffusivity(i,j,:)
+                 END DO
+              END DO
+           END IF
+
+           MU  = 0.0d0
+           MV  = 0.0d0
+           MW  = 0.0d0
+           IF ( ASSOCIATED( MeshVelocity ) ) THEN
+              DO i=1,n
+                IF ( MeshPerm( NodeIndexes(i) ) > 0 ) THEN
+                   MU(i) = MeshVelocity( MDOFs*(MeshPerm(NodeIndexes(i))-1)+1 )
+                   MV(i) = MeshVelocity( MDOFs*(MeshPerm(NodeIndexes(i))-1)+2 )
+                   IF ( MDOFs > 2 ) THEN
+                      MW(i) = MeshVelocity( MDOFs*(MeshPerm(NodeIndexes(i))-1)+3 )
+                   END IF
+                END IF
+              END DO
+           END IF
+
+  !------------------------------------------------------------------------------
+  !        C0 is used only as the carrier for the Soret (thermal diffusion)
+  !        coefficient: the compose routines copy NodalC0 into NodalCThermal and
+  !        then zero NodalC0, so it never acts as a reaction term. The Soret flux
+  !        is Density*SoretDiffusivity*grad(T) in relative mass units, where the
+  !        species equation carries the extra factor of the density, and
+  !        SoretDiffusivity*grad(T) in absolute mass units, where it does not.
+  !------------------------------------------------------------------------------
+           IF (.NOT. AbsoluteMass) THEN
+              C0 = Density
+           ELSE
+              C0 = 1.0d0
+           END IF
+           IF ( ScaledToSolubility ) C0 = C0 / MaxSol
 
 
-!------------------------------------------------------------------------------
-!      Get element local matrix, and rhs vector
-!------------------------------------------------------------------------------
-! Add body forces here, if any
-         IF ( HaveBF ) THEN
-!------------------------------------------------------------------------------
-!          Given species source
-!------------------------------------------------------------------------------
-! Not multiplied by density => Absolute mass source of c_n [kg/m3s]
-!
-! Take into account scaling of units if source given in physical units
-           Load(1:n) = Load(1:n) + &
-               ListGetReal( Model % BodyForces(bf_id) % Values,  &
-               SourceKey,n,NodeIndexes,gotIt ) / Ratio
-         END IF
+  !------------------------------------------------------------------------------
+  !      Get element local matrix, and rhs vector
+  !------------------------------------------------------------------------------
+  ! Add body forces here, if any
+           IF ( HaveBF ) THEN
+  !------------------------------------------------------------------------------
+  !          Given species source
+  !------------------------------------------------------------------------------
+  ! Not multiplied by density => Absolute mass source of c_n [kg/m3s]
+  !
+  ! Take into account scaling of units if source given in physical units
+             Load(1:n) = Load(1:n) + &
+                 ListGetReal( Model % BodyForces(bf_id) % Values,  &
+                 SourceKey,n,NodeIndexes,gotIt ) / Ratio
+           END IF
 
-!------------------------------------------------------------------------------
-         IF ( CoordinateSystem == Cartesian ) THEN
-!------------------------------------------------------------------------------
-           CALL DiffuseConvectiveCompose( &
-               LocalMassMatrix, LocalStiffMatrix, LocalForce, Load, &
-               CT, C0, C1, C2, LocalTemperature, LocalPotential, U(1:n), V(1:n), W(1:n), MU, MV, MW, &
-               SoretDiffusivity, NEConst, (CompressibilityModel /= Incompressible), &
-               AbsoluteMass,Stabilize, Bubbles, CurrentElement, n, ElementNodes )
-         ELSE
-           CALL DiffuseConvectiveGenCompose( &
-               LocalMassMatrix, LocalStiffMatrix, LocalForce, Load, &
-               CT, C0, C1, C2, LocalTemperature, LocalPotential, U, V, W, MU, MV, MW, &
-               SoretDiffusivity, NEConst, (CompressibilityModel /= Incompressible), &
-               AbsoluteMass,Stabilize,CurrentElement, n, ElementNodes )
+  !------------------------------------------------------------------------------
+           IF ( CoordinateSystem == Cartesian ) THEN
+  !------------------------------------------------------------------------------
+             CALL DiffuseConvectiveCompose( &
+                 LocalMassMatrix, LocalStiffMatrix, LocalForce, Load, &
+                 CT, C0, C1, C2, LocalTemperature, LocalPotential, U(1:n), V(1:n), W(1:n), MU, MV, MW, &
+                 SoretDiffusivity, NEConst, (CompressibilityModel /= Incompressible), &
+                 AbsoluteMass,Stabilize, Bubbles, CurrentElement, n, ElementNodes )
+           ELSE
+             CALL DiffuseConvectiveGenCompose( &
+                 LocalMassMatrix, LocalStiffMatrix, LocalForce, Load, &
+                 CT, C0, C1, C2, LocalTemperature, LocalPotential, U, V, W, MU, MV, MW, &
+                 SoretDiffusivity, NEConst, (CompressibilityModel /= Incompressible), &
+                 AbsoluteMass,Stabilize,CurrentElement, n, ElementNodes )
+           END IF
          END IF
 
 !------------------------------------------------------------------------------
@@ -1124,6 +1150,181 @@
 !------------------------------------------------------------------------------
 
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> True when the current body can use HandleLocalMatrix. The nodal assembly
+!> stays for compressibility, Soret and Nernst-Planck terms, bubbles, tensor
+!> diffusivity and non-Cartesian coordinates.
+!------------------------------------------------------------------------------
+   FUNCTION BodyUsesHandles() RESULT( Eligible )
+!------------------------------------------------------------------------------
+     LOGICAL :: Eligible
+     LOGICAL :: Convection, DiffConst, DensConst
+!------------------------------------------------------------------------------
+     Eligible = .FALSE.
+     IF ( CoordinateSystem /= Cartesian ) RETURN
+     IF ( CompressibilityModel /= Incompressible ) RETURN
+     IF ( HaveIon ) RETURN
+     IF ( ListCheckPresent( Material, SoretKey ) ) RETURN
+     IF ( .NOT. ScalarKeyword( Material, DiffusivityKey, DiffConst ) ) RETURN
+
+     SELECT CASE( ConvectionFlag )
+     CASE( 'constant' )
+       Convection = .TRUE.
+     CASE( 'computed' )
+       Convection = .TRUE.
+       IF ( .NOT. ASSOCIATED( FlowSol ) ) RETURN
+       IF ( NSDOFs /= 3 .AND. NSDOFs /= 4 ) RETURN
+     CASE DEFAULT
+       Convection = .FALSE.
+     END SELECT
+     IF ( Convection .AND. Bubbles ) RETURN
+
+     ! The stabilized residual also has the gradient of Density*Diffusivity,
+     ! which only the nodal assembly computes
+     IF ( Convection .AND. Stabilize ) THEN
+       IF ( .NOT. DiffConst ) RETURN
+       IF ( .NOT. AbsoluteMass ) THEN
+         IF ( .NOT. ScalarKeyword( Material, 'Density', DensConst ) ) RETURN
+         IF ( .NOT. DensConst ) RETURN
+       END IF
+     END IF
+     Eligible = .TRUE.
+!------------------------------------------------------------------------------
+   END FUNCTION BodyUsesHandles
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> True when the keyword is in the list as a scalar. Constant tells whether it
+!> is also a plain constant.
+!------------------------------------------------------------------------------
+   FUNCTION ScalarKeyword( List, Name, Constant ) RESULT( Scalar )
+!------------------------------------------------------------------------------
+     TYPE(ValueList_t), POINTER, INTENT(IN) :: List
+     CHARACTER(LEN=*), INTENT(IN) :: Name
+     LOGICAL, INTENT(OUT) :: Constant
+     LOGICAL :: Scalar
+!------------------------------------------------------------------------------
+     TYPE(ValueListEntry_t), POINTER :: ptr
+!------------------------------------------------------------------------------
+     ptr => ListFind( List, Name )
+     Scalar = .FALSE.
+     Constant = .FALSE.
+     IF ( .NOT. ASSOCIATED( ptr ) ) RETURN
+     Scalar = ptr % TYPE >= LIST_TYPE_CONSTANT_SCALAR .AND. &
+         ptr % TYPE <= LIST_TYPE_CONSTANT_SCALAR_PROC
+     Constant = ptr % TYPE == LIST_TYPE_CONSTANT_SCALAR
+!------------------------------------------------------------------------------
+   END FUNCTION ScalarKeyword
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Local matrices of the incompressible Cartesian equation with an isotropic
+!> diffusivity, with the keywords evaluated at the integration points. Gives
+!> the same terms as DiffuseConvectiveCompose without Soret, Nernst-Planck and
+!> bubbles.
+!------------------------------------------------------------------------------
+   SUBROUTINE HandleLocalMatrix( Element, n, Nodes, MassMatrix, StiffMatrix, ForceVector )
+!------------------------------------------------------------------------------
+     TYPE(Element_t), POINTER, INTENT(IN) :: Element
+     INTEGER, INTENT(IN) :: n
+     TYPE(Nodes_t), INTENT(IN) :: Nodes
+     REAL(KIND=dp), INTENT(OUT) :: MassMatrix(:,:), StiffMatrix(:,:), ForceVector(:)
+!------------------------------------------------------------------------------
+     TYPE(GaussIntegrationPoints_t) :: IP
+     REAL(KIND=dp) :: Basis(n), dBasisdx(n,3), ddBasisddx(n,3,3), DetJ, s
+     REAL(KIND=dp) :: NodalVelo(3,n), NodalMeshVelo(3,n), Velo(3), Conv(n), SU(n)
+     REAL(KIND=dp) :: CT, C1, C2, D, Src, VNorm, Pe, Tau, hK, mK
+     LOGICAL :: Convection, Computed, Stab, Found, stat
+     INTEGER :: dim, t, i, k, p, q
+!------------------------------------------------------------------------------
+     dim = CoordinateSystemDimension()
+     MassMatrix = 0.0_dp
+     StiffMatrix = 0.0_dp
+     ForceVector = 0.0_dp
+
+     Computed = ConvectionFlag == 'computed'
+     Convection = Computed .OR. ConvectionFlag == 'constant'
+     Stab = Stabilize .AND. Convection
+     IF ( Stab ) THEN
+       hK = Element % hK
+       mK = Element % StabilizationMK
+     END IF
+
+     IF ( Computed ) THEN
+       NodalVelo = 0.0_dp
+       DO i=1,n
+         k = FlowPerm( Element % NodeIndexes(i) )
+         IF ( k > 0 ) NodalVelo(1:NSDOFs-1,i) = FlowSolution( NSDOFs*(k-1)+1 : NSDOFs*k-1 )
+       END DO
+     END IF
+
+     NodalMeshVelo = 0.0_dp
+     IF ( Convection .AND. ASSOCIATED( MeshVelocity ) ) THEN
+       DO i=1,n
+         k = MeshPerm( Element % NodeIndexes(i) )
+         IF ( k > 0 ) NodalMeshVelo(1:MIN(MDOFs,3),i) = &
+             MeshVelocity( MDOFs*(k-1)+1 : MDOFs*(k-1)+MIN(MDOFs,3) )
+       END DO
+     END IF
+
+     Velo = 0.0_dp
+     Conv = 0.0_dp
+
+     IP = GaussPoints( Element )
+     DO t=1,IP % n
+       stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), DetJ, &
+           Basis, dBasisdx, ddBasisddx, Stab, .FALSE. )
+       s = IP % s(t) * DetJ
+       Tau = 0.0_dp
+       SU = 0.0_dp
+
+       ! Relative mass units: C1 = CT = Density, C2 = Density*Diffusivity
+       IF ( AbsoluteMass ) THEN
+         CT = 1.0_dp
+       ELSE
+         CT = ListGetElementReal( Density_h, Basis, Element, Found )
+       END IF
+       D = ListGetElementReal( Diff_h, Basis, Element, Found )
+       C2 = CT * D
+       C1 = MERGE( CT, 0.0_dp, Convection )
+
+       IF ( C1 /= 0.0_dp ) THEN
+         IF ( Computed ) THEN
+           Velo = MATMUL( NodalVelo, Basis )
+         ELSE
+           DO i=1,dim
+             Velo(i) = ListGetElementReal( VeloEq_h(i), Basis, Element, Found )
+             IF ( .NOT. Found ) Velo(i) = ListGetElementReal( VeloMat_h(i), Basis, Element, Found )
+           END DO
+         END IF
+         Velo = Velo - MATMUL( NodalMeshVelo, Basis )
+         Conv = MATMUL( dBasisdx(:,1:dim), Velo(1:dim) )
+
+         IF ( Stab ) THEN
+           VNorm = NORM2( Velo(1:dim) )
+           Pe = MIN( 1.0_dp, mK*hK*C1*VNorm / (2*ABS(C2)) )
+           IF ( VNorm /= 0.0_dp ) Tau = hK * Pe / (2*C1*VNorm)
+           DO p=1,n
+             SU(p) = C1 * Conv(p) - C2 * SUM( [( ddBasisddx(p,i,i), i=1,dim )] )
+           END DO
+         END IF
+       END IF
+
+       Src = 0.0_dp
+       IF ( HaveBF ) Src = ListGetElementReal( Source_h, Basis, Element, Found ) / Ratio
+
+       DO q=1,n
+         StiffMatrix(1:n,q) = StiffMatrix(1:n,q) + s * ( &
+             C2 * MATMUL( dBasisdx(1:n,1:dim), dBasisdx(q,1:dim) ) + &
+             C1 * Conv(q) * Basis(1:n) + Tau * SU(q) * SU(1:n) )
+         MassMatrix(1:n,q) = MassMatrix(1:n,q) + s * CT * Basis(q) * ( Basis(1:n) + Tau * SU(1:n) )
+       END DO
+       ForceVector(1:n) = ForceVector(1:n) + s * Src * ( Basis(1:n) + Tau * SU(1:n) )
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE HandleLocalMatrix
+!------------------------------------------------------------------------------
 
 !------------------------------------------------------------------------------
 !> Diffuse-convective local matrix computing (cartesian coordinates)
