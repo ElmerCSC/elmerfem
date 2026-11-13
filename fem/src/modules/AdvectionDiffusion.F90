@@ -550,7 +550,8 @@
   !        Get system parameters for element nodal points
   !------------------------------------------------------------------------------
 
-           CALL ListGetRealArray( Material, DiffusivityKey, Hwrk, n, NodeIndexes )
+           CALL ListGetRealArray( Material, DiffusivityKey, Hwrk, n, NodeIndexes, &
+               UnfoundFatal=.TRUE. )
 
            Diffusivity = 0.0d0
            IF ( SIZE(Hwrk,1) == 1 ) THEN
@@ -921,9 +922,8 @@
 !------------------------------------------------------------------------------
 !            Get the diffusivity tensor
 !------------------------------------------------------------------------------
-           CALL ListGetRealArray( Material,  &
-               TRIM(ComponentName(Solver % Variable)) // &
-               ' Diffusivity', Hwrk, n, NodeIndexes )
+           CALL ListGetRealArray( Material, DiffusivityKey, Hwrk, n, NodeIndexes, &
+               UnfoundFatal=.TRUE. )
 
            Diffusivity = 0.0d0
            IF ( SIZE(Hwrk,1) == 1 ) THEN
