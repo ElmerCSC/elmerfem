@@ -2000,6 +2000,7 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 #ifdef HAVE_HYPRE
     CALL SolveHypre(SourceMatrix,XVec,RHSVec,Solver,&
         ParallelInfo,SplittedMatrix)
+    GlobalData => SaveGlobalData
     RETURN
 #else
     CALL Fatal(Caller,'This version has been compiled without HYPRE!')
@@ -2011,7 +2012,8 @@ RECURSIVE SUBROUTINE SParIterSolver( SourceMatrix, ParallelInfo, XVec, &
 #ifdef HAVE_PERMON
     CALL INFO(Caller,'Using permon from sparitersolver',Level=5)
     CALL SolvePermon(SourceMatrix,XVec,RHSVec,Solver,&
-        ParallelInfo,SplittedMatrix)    
+        ParallelInfo,SplittedMatrix)
+    GlobalData => SaveGlobalData
     RETURN
 #else
     CALL Fatal(Caller,'This version has been compiled without Permon!')
