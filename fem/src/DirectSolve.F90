@@ -481,7 +481,11 @@ CONTAINS
 
     IF (iInfo(1)<0) THEN
       PRINT *, 'Error occurred in umf4sym: ', iInfo(1)
+#ifdef __NVCOMPILER
+      ERROR STOP 1
+#else
       ERROR STOP EXIT_ERROR
+#endif
     END IF
 
     IF ( BigMode ) THEN
@@ -492,7 +496,11 @@ CONTAINS
 
     IF (iinfo(1)<0) THEN
       PRINT*, 'Error occurred in umf4num: ', iinfo(1)
+#ifdef __NVCOMPILER
+      ERROR STOP 1
+#else
       ERROR STOP EXIT_ERROR
+#endif
     ENDIF
 
     IF ( BigMode ) THEN
@@ -515,7 +523,11 @@ CONTAINS
 
   IF (iinfo(1)<0) THEN
     PRINT*, 'Error occurred in umf4sol: ', iinfo(1)
+#ifdef __NVCOMPILER
+    ERROR STOP 1
+#else
     ERROR STOP EXIT_ERROR
+#endif
   END IF
 
   FreeFactorize = ListGetLogical( Solver % Values, &
@@ -4625,7 +4637,11 @@ CONTAINS
 
         IF (ierror /= 0) THEN
           WRITE(*,*) 'The following ERROR was detected: ', ierror
+#ifdef __NVCOMPILER
+          ERROR STOP 1
+#else
           ERROR STOP EXIT_ERROR
+#endif
         END IF
 
 !..     Factorization.
@@ -4635,7 +4651,11 @@ CONTAINS
 
         IF (ierror /= 0) THEN
            WRITE(*,*) 'The following ERROR was detected: ', ierror
+#ifdef __NVCOMPILER
+          ERROR STOP 1
+#else
           ERROR STOP EXIT_ERROR
+#endif
         ENDIF
       END IF
 

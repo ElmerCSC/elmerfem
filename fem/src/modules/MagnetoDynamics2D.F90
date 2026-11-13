@@ -1594,11 +1594,11 @@ END SUBROUTINE ! }}}
     INTEGER :: i, n, j, k
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
-    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementDofs), &
-        By(Solver % Mesh % MaxElementDofs)
+    REAL(KIND=dp), ALLOCATABLE :: Bx(:), By(:)
     REAL(KIND=dp) :: x, y
     INTEGER, POINTER :: Perm(:)
 
+    ALLOCATE(Bx(Solver % Mesh % MaxElementDofs), By(Solver % Mesh % MaxElementDofs))
     Perm => Solver % Variable % Perm
     A => Solver % Matrix
     b => A % RHS
@@ -2746,13 +2746,12 @@ CONTAINS
     INTEGER :: i, n, j, k
     TYPE(ValueList_t), POINTER :: BC
     LOGICAL :: Found
-    REAL(KIND=dp) :: Bx(Solver % Mesh % MaxElementDofs), &
-                      Bxim(Solver % Mesh % MaxElementDofs), &
-                      By(Solver % Mesh % MaxElementDofs), &
-                      Byim(Solver % Mesh % MaxElementDofs)
+    REAL(KIND=dp), ALLOCATABLE :: Bx(:), Bxim(:), By(:), Byim(:)
     REAL(KIND=dp) :: x, y
     INTEGER, POINTER :: Perm(:)
 
+    ALLOCATE(Bx(Solver % Mesh % MaxElementDofs), Bxim(Solver % Mesh % MaxElementDofs), &
+             By(Solver % Mesh % MaxElementDofs), Byim(Solver % Mesh % MaxElementDofs))
     Perm => Solver % Variable % Perm
     A => Solver % Matrix
     b => A % RHS
@@ -3075,6 +3074,9 @@ CONTAINS
 !------------------------------------------------------------------------------
   SUBROUTINE BulkAssembly()
 !------------------------------------------------------------------------------
+#ifdef __NVCOMPILER
+    USE IEEE_ARITHMETIC, ONLY : ISNAN => IEEE_IS_NAN
+#endif
 
     INTEGER :: elem,t,i,j,k,p,q,n,nd,BodyId
     TYPE(GaussIntegrationPoints_t), TARGET :: IntegStuff

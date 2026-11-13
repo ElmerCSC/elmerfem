@@ -674,6 +674,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      
      USE PorousMaterialModels
+     USE CoordinateSystems, ONLY : CoordinateSystemDimension
 
      REAL(KIND=dp) :: StiffMatrix(:,:), MassMatrix(:,:)
      REAL(KIND=dp) :: LoadVector(:,:), NodalVelo(:,:)

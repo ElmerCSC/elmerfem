@@ -165,6 +165,7 @@ SUBROUTINE FourierLossSolver( Model,Solver,dt,Transient )
   !------------------------------------------------------------------------------
 
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE MagnetoDynamicsUtils
   USE ParallelUtils, ONLY : ParallelSumNodalVector
 
