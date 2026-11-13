@@ -1955,9 +1955,10 @@ CONTAINS
          IF( k == 0 ) CYCLE
          k = UseLoadVar % Perm(j)
 
+         ! Define indeces of the dof for the normal and tangential components
          indN = cDofs * (i-1) + DofN
-         indT1 = ind - DofN + DofT1
-         IF(cDofs == 3 ) indT2 = ind - DofN + DofT2
+         indT1 = cDofs * (i-1) + DofT1
+         IF(cDofs == 3 ) indT2 = cDofs * (i-1) + DofT2
 
          ! If there is no contact there can be no stick either
          IF( .NOT. MortarBC % Active(indN) ) THEN
