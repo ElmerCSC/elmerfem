@@ -789,7 +789,7 @@ CONTAINS
 
    REAL(KIND=dp)::TOL,Norm,PrevNorm, NonLinError, LinTol, RelTol, BaseTol
    LOGICAL :: Found, FoundMagnetization, CalculateNonlinearResidual, LFactFound
-   LOGICAL :: AdaptiveTols, FoundAny, ConstraintActive, GotCoil
+   LOGICAL :: AdaptiveTols, FoundAny, ConstraintActive, GotCoil, MassIsZero
 
    TYPE(Matrix_t), POINTER :: MMatrix
    REAL(KIND=dp), POINTER :: Mx(:), Mb(:), Mr(:)
@@ -967,12 +967,13 @@ CONTAINS
      CALL LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
          Tcoef, Acoef, LaminateStack, LaminateStackModel, &
          LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-         Element, n, nd+nb, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2 )
+         Element, n, nd+nb, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2, MassIsZero )
 
      ! Update global matrix and rhs vector from local matrix & vector:
      !---------------------------------------------------------------
      IF (Transient .OR. EigenSystem) THEN
-       CALL DefaultUpdateMass(MASS)
+       ! The first update allocates the mass values, so it cannot be skipped.
+       IF ( .NOT. MassIsZero .OR. .NOT. ASSOCIATED(A % MassValues) ) CALL DefaultUpdateMass(MASS)
        IF ( ElectroDynamics ) CALL DefaultUpdateDamp(DAMP)
      END IF
 
@@ -2068,7 +2069,7 @@ END SUBROUTINE LocalConstraintMatrix
   SUBROUTINE LocalMatrix( MASS, DAMP, STIFF, FORCE, JFixFORCE, JFixVec, LOAD, &
             Tcoef, Acoef, LaminateStack, LaminateStackModel, &
             LamThick, LamCond, CoilBody, CoilType, RotM, ConstraintActive, &
-            Element, n, nd, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2 )
+            Element, n, nd, PiolaVersion, SecondOrder, AmsSTIFF, AmsSTIFF2, MassIsZero )
 !------------------------------------------------------------------------------
     IMPLICIT NONE
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), MASS(:,:), DAMP(:,:), JFixFORCE(:), JFixVec(:,:)
@@ -2080,6 +2081,7 @@ END SUBROUTINE LocalConstraintMatrix
     TYPE(Element_t), POINTER :: Element
     INTEGER :: n, nd
     LOGICAL :: PiolaVersion, SecondOrder
+    LOGICAL, INTENT(OUT) :: MassIsZero
     REAL(KIND=dp) :: AmsSTIFF(:,:), AmsSTIFF2(:,:)
 
 !------------------------------------------------------------------------------
@@ -2091,7 +2093,9 @@ END SUBROUTINE LocalConstraintMatrix
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ, L(3), G(3), M(3), JFixPot(n), weight
     REAL(KIND=dp) :: LocalLamThick, LocalLamCond, CVeloSum
     REAL(KIND=dp), POINTER :: MuTensor(:,:)
+    REAL(KIND=dp) :: CW(nd,3), CG(nd,3), AR(nd,3)
     LOGICAL :: Stat, Found, HasVelocity, HasLorentzVelocity, HasAngularVelocity, LocalGauge
+    LOGICAL :: NonStranded, LowFreqLam, FoilCoil, TensorMu, AddMass
     INTEGER :: t, i, j, k, p, q, np, EdgeBasisDegree, mudim
     TYPE(GaussIntegrationPoints_t) :: IP
 
@@ -2111,6 +2115,21 @@ END SUBROUTINE LocalConstraintMatrix
     MASS  = 0.0_dp
     DAMP  = 0.0_dp
     JAC = 0.0_dp
+
+    ! Resolve the string tests once per element instead of per basis pair and Gauss point.
+    NonStranded = CoilType /= 'stranded'
+    LowFreqLam = LaminateStackModel == 'low-frequency model'
+    FoilCoil = CoilBody .AND. CoilType /= 'massive'
+    TensorMu = HasTensorReluctivity .OR. HasReluctivityFunction
+
+    ! Every term added to MASS is proportional to the conductivity, the permittivity
+    ! (Darwin or electrodynamics) or the laminate stack conductivity.
+    MassIsZero = .NOT. ( ElectroDynamics .OR. Darwin ) .AND. &
+        .NOT. LowFreqLam .AND. ALL( Tcoef(:,:,1:n) == 0.0_dp )
+
+    ! Only transient and eigen runs scatter MASS and DAMP.
+    AddMass = ( Transient .OR. EigenSystem ) .AND. .NOT. MassIsZero
+
     IF(ASSOCIATED(AmsMat)) AmsSTIFF = 0.0_dp
     IF(ASSOCIATED(AmsScalMat)) AmsSTIFF2 = 0.0_dp
 
@@ -2134,7 +2153,12 @@ END SUBROUTINE LocalConstraintMatrix
       HasVelocity = HasAngularVelocity .OR. HasLorentzVelocity
     END IF
 
-    CALL GetPermittivity(GetMaterial(), Permittivity, n)
+    ! The permittivity is only used in the electrodynamics and Darwin models.
+    IF ( ElectroDynamics .OR. Darwin ) THEN
+      CALL GetPermittivity(GetMaterial(), Permittivity, n)
+    ELSE
+      Permittivity = 0.0_dp
+    END IF
 
     IF ( HasHBCurve .OR. HasReluctivityFunction ) THEN
       CALL GetScalarLocalSolution(Aloc)
@@ -2234,7 +2258,7 @@ END SUBROUTINE LocalConstraintMatrix
 
        ! Transform the conductivity tensor (in case of a foil winding):
        ! --------------------------------------------------------------
-       IF (CoilBody .AND. CoilType /= 'massive') THEN
+       IF (FoilCoil) THEN
          DO i=1,3
            DO j=1,3
              RotMLoc(i,j) = SUM( RotM(i,j,1:n) * Basis(1:n) )
@@ -2244,6 +2268,19 @@ END SUBROUTINE LocalConstraintMatrix
        END IF
 
        P_ip = SUM( Permittivity(1:n) * Basis(1:n) )
+
+       ! C*W does not depend on the test function, so form it once per Gauss point.
+       IF ( AddMass ) THEN
+         DO j=1,nd-np
+           CW(j,:) = MATMUL(C, WBasis(j,:))
+         END DO
+       END IF
+
+       IF ( TensorMu ) THEN
+         DO j=1,nd-np
+           AR(j,:) = MATMUL(A_t, RotWBasis(j,:))
+         END DO
+       END IF
 
        M = MATMUL( LOAD(4:6,1:n), Basis(1:n) )
        L = MATMUL( LOAD(1:3,1:n), Basis(1:n) )
@@ -2282,6 +2319,9 @@ END SUBROUTINE LocalConstraintMatrix
          ! --------------------------------------------------------
          CONDUCTOR: IF ( SUM(ABS(C)) > AEPS .OR. ElectroDynamics .OR. Darwin) THEN
            IF ( Transient .OR. EigenSystem ) THEN
+             DO q=1,np
+               CG(q,:) = MATMUL(C, dBasisdx(q,:))
+             END DO
              DO p=1,np
                DO q=1,np
 
@@ -2289,7 +2329,7 @@ END SUBROUTINE LocalConstraintMatrix
                  ! matrix (anisotropy taken into account)
                  ! -------------------------------------------
 
-                 STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
+                 STIFF(p,q) = STIFF(p,q) + SUM(CG(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
                  IF(ElectroDynamics) THEN
                    DAMP(p,q) = DAMP(p,q) + P_ip*SUM( dBasisdx(q,:)*dBasisdx(p,:) )*detJ*IP % s(t)
                  END IF
@@ -2305,15 +2345,15 @@ END SUBROUTINE LocalConstraintMatrix
                  ! -------------------------------------------
                  IF(ElectroDynamics) THEN
                    MASS(p,q) = MASS(p,q) + P_ip*SUM( dBasisdx(p,:)*WBasis(j,:) )*detJ*IP % s(t)
-                   DAMP(p,q) = DAMP(p,q) + SUM(MATMUL(C, Wbasis(j,:))*dBasisdx(p,:))*detJ*IP % s(t)
+                   DAMP(p,q) = DAMP(p,q) + SUM(CW(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
                  ELSE
-                   MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, Wbasis(j,:))*dBasisdx(p,:))*detJ*IP % s(t)
+                   MASS(p,q) = MASS(p,q) + SUM(CW(j,:)*dBasisdx(p,:))*detJ*IP % s(t)
                  END IF
 
                  ! Compute the conductivity term <C grad V, eta> for
                  ! stiffness matrix (anisotropy taken into account)
                  ! ------------------------------------------------
-                 STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(p,:))*WBasis(j,:))*detJ*IP % s(t)
+                 STIFF(q,p) = STIFF(q,p) + SUM(CG(p,:)*WBasis(j,:))*detJ*IP % s(t)
                  IF(ElectroDynamics) THEN
                    DAMP(q,p) = DAMP(q,p) + P_ip*SUM( dBasisdx(p,:)*WBasis(j,:) )*detJ*IP % s(t)
                  END IF
@@ -2328,13 +2368,16 @@ END SUBROUTINE LocalConstraintMatrix
              ! This is the steady state branch.
              ! ------------------------------------------------------------------
              IF (.NOT. LaminateStack ) THEN
+               DO q=1,np
+                 CG(q,:) = MATMUL(C, dBasisdx(q,:))
+               END DO
                DO p=1,np
                  DO q=1,np
 
                    ! Compute the conductivity term <C grad V,grad v> for stiffness
                    ! matrix (anisotropy taken into account)
                    ! -------------------------------------------
-                   STIFF(p,q) = STIFF(p,q) + SUM(MATMUL(C, dBasisdx(q,:)) * dBasisdx(p,:))*detJ*IP % s(t)
+                   STIFF(p,q) = STIFF(p,q) + SUM(CG(q,:) * dBasisdx(p,:))*detJ*IP % s(t)
                  END DO
 
                  DO j=1,nd-np
@@ -2343,7 +2386,7 @@ END SUBROUTINE LocalConstraintMatrix
                    ! Compute the conductivity term <C grad V, eta> for
                    ! stiffness matrix (anisotropy taken into account)
                    ! ------------------------------------------------
-                   STIFF(q,p) = STIFF(q,p) + SUM(MATMUL(C, dBasisdx(p,:))*WBasis(j,:))*detJ*IP % s(t)
+                   STIFF(q,p) = STIFF(q,p) + SUM(CG(p,:)*WBasis(j,:))*detJ*IP % s(t)
                  END DO
                END DO
              END IF
@@ -2410,9 +2453,9 @@ END SUBROUTINE LocalConstraintMatrix
          DO j = 1,nd-np
            q = j+np
 
-           IF (HasTensorReluctivity .OR. HasReluctivityFunction ) THEN
+           IF (TensorMu) THEN
              STIFF(p,q) = STIFF(p,q) &
-                 + SUM(RotWBasis(i,:) * MATMUL(A_t, RotWBasis(j,:)))*detJ*IP%s(t)
+                 + SUM(RotWBasis(i,:) * AR(j,:))*detJ*IP%s(t)
            ELSE
              STIFF(p,q) = STIFF(p,q) + mu * SUM(RotWBasis(i,:)*RotWBasis(j,:))*detJ*IP%s(t)
            END IF
@@ -2428,35 +2471,39 @@ END SUBROUTINE LocalConstraintMatrix
                END DO
              END IF
            END IF
-
-           ! Compute the conductivity term <C A,eta> for
-           ! mass matrix (anisotropy taken into account)
-           ! This is not used in the case of stranded coil:
-           ! ----------------------------------------------
-           IF(ElectroDynamics) THEN
-             MASS(p,q) = MASS(p,q) + P_ip*SUM(WBasis(j,:)*WBasis(i,:) )*detJ*IP % s(t)
-             IF (CoilType /= 'stranded') THEN
-               DAMP(p,q) = DAMP(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
-             END IF
-           ELSE
-             IF (CoilType /= 'stranded') THEN
-               MASS(p,q) = MASS(p,q) + SUM(MATMUL(C, WBasis(j,:))*WBasis(i,:) )*detJ*IP % s(t)
-             END IF
-           END IF
-
-           ! Compute the low frequency eddy term for laminate stack model.
-           ! Note that the conductivity term <C A, eta> above can be used to
-           ! introduce the anisotropic effect in the laminate stack. However,
-           ! in classical approach of the Low-Frequency model it is set
-           ! to zero (this is left to the user to decide).
-           ! -------------------------------------------------------------------
-           IF (LaminateStackModel=='low-frequency model') THEN
-               MASS(p,q) = MASS(p,q) + LocalLamCond * LocalLamthick**2/12d0 * &
-                           SUM(RotWBasis(i,:)*RotWBasis(j,:)) * detJ*IP % s(t)
-           END IF
-
          END DO
        END DO
+
+       ! Compute the conductivity term <C A,eta> for
+       ! mass matrix (anisotropy taken into account)
+       ! This is not used in the case of stranded coil.
+       ! The laminate stack low frequency eddy term is added after it.
+       ! Note that the conductivity term above can be used to
+       ! introduce the anisotropic effect in the laminate stack. However,
+       ! in classical approach of the Low-Frequency model it is set
+       ! to zero (this is left to the user to decide).
+       ! ----------------------------------------------
+       IF ( AddMass ) THEN
+         DO i = 1,nd-np
+           p = i+np
+           DO j = 1,nd-np
+             q = j+np
+             IF(ElectroDynamics) THEN
+               MASS(p,q) = MASS(p,q) + P_ip*SUM(WBasis(j,:)*WBasis(i,:) )*detJ*IP % s(t)
+               IF (NonStranded) THEN
+                 DAMP(p,q) = DAMP(p,q) + SUM(CW(j,:)*WBasis(i,:) )*detJ*IP % s(t)
+               END IF
+             ELSE IF (NonStranded) THEN
+               MASS(p,q) = MASS(p,q) + SUM(CW(j,:)*WBasis(i,:) )*detJ*IP % s(t)
+             END IF
+
+             IF (LowFreqLam) THEN
+               MASS(p,q) = MASS(p,q) + LocalLamCond * LocalLamthick**2/12d0 * &
+                           SUM(RotWBasis(i,:)*RotWBasis(j,:)) * detJ*IP % s(t)
+             END IF
+           END DO
+         END DO
+       END IF
 
        ! In steady state we can utilize the scalar variable
        ! for gauging the vector potential.
