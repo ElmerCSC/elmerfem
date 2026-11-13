@@ -661,6 +661,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
               HomogenizationModel, CalculateFluxLinkage, NodalForceJxB
    LOGICAL :: PiolaVersion, ElementalFields, NodalFields, RealField, pRef
    LOGICAL :: CSymmetry, HasHBCurve, LorentzConductivity, HasThinLines=.FALSE., NewMaterial
+   LOGICAL :: AxiFluxCorr   ! axisymmetric flux integral correction (see ProjectorUtils)
 
    TYPE(GaussIntegrationPoints_t) :: IP
    TYPE(Nodes_t), SAVE :: Nodes
@@ -701,7 +702,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
    TYPE(VariableHandle_t), SAVE :: FLCur_h
    INTEGER, POINTER, SAVE :: SetPerm(:) => NULL()
    LOGICAL :: LayerBC, CircuitDrivenBC
-   REAL(KIND=dp) :: SurfPower
+   REAL(KIND=dp) :: SurfPower, corr
    INTEGER :: jh_k, ComponentId
    REAL, ALLOCATABLE :: SurfWeight(:)
    TYPE(ValueHandle_t), SAVE :: mu_h
@@ -2305,6 +2306,9 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
        mu_r = ListGetCReal(BC, 'Layer Relative Permeability', Found)
        IF (.NOT. Found) mu_r = 1.0_dp
 
+       AxiFluxCorr = .FALSE.
+       IF( CSymmetry ) AxiFluxCorr = ListGetLogical( BC,'Flux Integral BC Axi Correction', Found )
+
        LMsol = 0.0_dp
        IF( ASSOCIATED( LagrangeVar ) ) THEN
          IF( ListGetLogical( BC,'Flux Integral BC', Found ) ) THEN
@@ -2357,8 +2361,19 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
 
              ! Include the effect of constraint for surface current density.
              ! Currently only 2D model implemented where the effect goes into z-component only.
-             E(1,3) = E(1,3) + Omega * LMSol(1)
-             E(2,3) = E(2,3) + Omega * LMSol(2)
+             corr = 1.0_dp
+             IF( AxiFluxCorr ) THEN
+               ! The multiplier is a voltage: the offset in E_phi is proportional to 1/r
+               xcoord = SUM( Basis(1:n) * Nodes % x(1:n) )
+               IF( xcoord > EPSILON( xcoord ) ) THEN
+                 corr = 1.0_dp / xcoord
+               ELSE
+                 corr = 0.0_dp
+               END IF
+             END IF
+
+             E(1,3) = E(1,3) + Omega * corr * LMSol(1)
+             E(2,3) = E(2,3) + Omega * corr * LMSol(2)
            ELSE
              E(1,:) = Omega * MATMUL(SOL(2,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(1,1:np), dBasisdx(1:np,:))
              E(2,:) = -Omega * MATMUL(SOL(1,np+1:nd), WBasis(1:nd-np,:)) - MATMUL(SOL(2,1:np), dBasisdx(1:np,:))
