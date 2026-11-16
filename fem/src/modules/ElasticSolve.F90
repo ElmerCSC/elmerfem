@@ -85,8 +85,9 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   LOGICAL :: CalculateStrains, CalculateStresses
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
   LOGICAL :: CalcPrincipalStress, CalcPrincipalStrain
-  LOGICAL :: OutputStateVars
-  INTEGER :: NState
+  LOGICAL :: OutputStateVars, CalcNodal, CalcElemental
+  CHARACTER(LEN=4) :: pre, suf
+  INTEGER :: NState, np
   TYPE(ValueList_t), POINTER :: Material
   CHARACTER(LEN=MAX_NAME_LEN) :: str
   CHARACTER(*), PARAMETER :: Caller = 'ElasticSolver_init'
@@ -200,46 +201,71 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
   CalcPrincipalStrain = CalculateStrains .AND. CalcPrincipal
 
 
-  IF ( CalculateStresses ) THEN
-     ! One layout for every 2D case, axisymmetric or not, and the same one
-     ! StressSolve writes: (11,22,33,12) with the 23 and 13 shears dropped, those
-     ! being identically zero in two dimensions. The out-of-plane 33 is kept, and
-     ! is the hoop component under axial symmetry.
-     CALL ListAddString( SolverParams,&
-          NextFreeKeyword('Exported Variable ',SolverParams), &
-          TRIM(StressFieldDefinition('Stress',dim)) )
+  ! Where the recovered fields live: the continuous nodal L2 fit (the default),
+  ! and/or an elemental (-dg) one fitted element by element. The latter is
+  ! discontinuous across every element boundary, so it keeps the jump of the stress
+  ! at a material interface that the nodal fit smears out; "Discontinuous Bodies"
+  ! in the output then averages it back to continuous within each body. Same names
+  ! with an " e" suffix. Not available with UMAT, whose stresses come from its own
+  ! integration point store.
+  CalcElemental = GetLogical(SolverParams, 'Calculate Elemental Fields', Found)
+  CalcNodal = GetLogical(SolverParams, 'Calculate Nodal Fields', Found)
+  IF ( CalcElemental .AND. ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine') ) THEN
+     CALL Warn(Caller,'"Calculate Elemental Fields" is not available with UMAT, computing nodal fields')
+     CalcElemental = .FALSE.
+     CalcNodal = .TRUE.
+  END IF
+  IF ( .NOT. ( CalcElemental .OR. CalcNodal ) ) CalcNodal = .TRUE.
 
-     CALL ListAddString( SolverParams,&
-          NextFreeKeyword('Exported Variable ',SolverParams), 'vonMises' )
+  DO i = 1, 2
+     IF ( i == 1 ) THEN
+        IF ( .NOT. CalcNodal ) CYCLE
+        pre = ''; np = 0; suf = ''
+     ELSE
+        IF ( .NOT. CalcElemental ) CYCLE
+        pre = '-dg '; np = 4; suf = ' e'
+     END IF
 
-     IF (CalcPrincipalStress) THEN
+     IF ( CalculateStresses ) THEN
+        ! One layout for every 2D case, axisymmetric or not, and the same one
+        ! StressSolve writes: (11,22,33,12) with the 23 and 13 shears dropped, those
+        ! being identically zero in two dimensions. The out-of-plane 33 is kept, and
+        ! is the hoop component under axial symmetry.
         CALL ListAddString( SolverParams,&
              NextFreeKeyword('Exported Variable ',SolverParams), &
-             'Principal Stress[Principal Stress:3]' )
-        CALL ListAddString( SolverParams,&
-             NextFreeKeyword('Exported Variable ',SolverParams), &
-             'Tresca' )
+             pre(1:np)//TRIM(StressFieldDefinition('Stress'//TRIM(suf),dim)) )
 
-        IF (CalcPrincipalAngle) THEN
+        CALL ListAddString( SolverParams,&
+             NextFreeKeyword('Exported Variable ',SolverParams), pre(1:np)//'vonMises'//TRIM(suf) )
+
+        IF (CalcPrincipalStress) THEN
            CALL ListAddString( SolverParams,&
                 NextFreeKeyword('Exported Variable ',SolverParams), &
-                '-dofs 9 Principal Angle' )
+                pre(1:np)//'Principal Stress'//TRIM(suf)//'[Principal Stress'//TRIM(suf)//':3]' )
+           CALL ListAddString( SolverParams,&
+                NextFreeKeyword('Exported Variable ',SolverParams), &
+                pre(1:np)//'Tresca'//TRIM(suf) )
+
+           IF (CalcPrincipalAngle) THEN
+              CALL ListAddString( SolverParams,&
+                   NextFreeKeyword('Exported Variable ',SolverParams), &
+                   pre(1:np)//'-dofs 9 Principal Angle'//TRIM(suf) )
+           END IF
         END IF
      END IF
-  END IF
 
-  IF (CalculateStrains) THEN
-     CALL ListAddString( SolverParams,&
-          NextFreeKeyword('Exported Variable ',SolverParams), &
-          TRIM(StressFieldDefinition('Strain',dim)) )
-
-     IF (CalcPrincipalStrain) THEN
+     IF (CalculateStrains) THEN
         CALL ListAddString( SolverParams,&
              NextFreeKeyword('Exported Variable ',SolverParams), &
-             'Principal Strain[Principal Strain:3]' )
+             pre(1:np)//TRIM(StressFieldDefinition('Strain'//TRIM(suf),dim)) )
 
+        IF (CalcPrincipalStrain) THEN
+           CALL ListAddString( SolverParams,&
+                NextFreeKeyword('Exported Variable ',SolverParams), &
+                pre(1:np)//'Principal Strain'//TRIM(suf)//'[Principal Strain'//TRIM(suf)//':3]' )
+        END IF
      END IF
-  END IF
+  END DO
 
   ! The integration rule for the incompressible MINI element, per family.
   !
@@ -456,6 +482,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   INTEGER :: nve
   LOGICAL :: PseudoTraction, GlobalPseudoTraction
   LOGICAL :: PlaneStress, CalculateStrains, CalculateStresses
+  LOGICAL :: CalcNodalFields, CalcElementalFields
   LOGICAL :: CalcPrincipalAngle, CalcPrincipal
   LOGICAL :: CalcPrincipalStress, CalcPrincipalStrain
   LOGICAL :: AllocationsDone = .FALSE., HarmonicAnalysis
@@ -1002,7 +1029,18 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !--------------------------------------------------------------------------------------------------
   CalcPrincipalStress = CalculateStresses .AND. CalcPrincipal
   CalcPrincipalStrain = CalculateStrains .AND. CalcPrincipal
-  IF ( CalculateStresses ) THEN
+
+  ! Nodal and/or elemental (-dg, " e" suffixed) recovered fields, decided exactly
+  ! as in ElasticSolver_Init, which is what declared the variables.
+  CalcElementalFields = GetLogical(SolverParams, 'Calculate Elemental Fields', GotIt )
+  CalcNodalFields = GetLogical(SolverParams, 'Calculate Nodal Fields', GotIt )
+  IF ( UseUMAT ) THEN
+     CalcElementalFields = .FALSE.
+     CalcNodalFields = .TRUE.
+  END IF
+  IF ( .NOT. ( CalcElementalFields .OR. CalcNodalFields ) ) CalcNodalFields = .TRUE.
+
+  IF ( CalculateStresses .AND. CalcNodalFields ) THEN
      Var => VariableGet( Mesh % Variables, 'Stress', .TRUE. )
      IF ( ASSOCIATED( Var ) ) THEN
         StressPerm  => Var % Perm
@@ -1044,7 +1082,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      END IF
   END IF
 
-  IF (CalculateStrains) THEN
+  IF ( CalculateStrains .AND. CalcNodalFields ) THEN
      Var => VariableGet( Mesh % Variables, 'Strain' )
      IF ( ASSOCIATED( Var ) ) THEN
         NodalStrain => Var % Values
@@ -5770,12 +5808,23 @@ CONTAINS
        NeoHookeanMaterial, CalculateStrains, CalculateStresses, CalcPrincipal, &
        CalcPrincipalAngle, MixedFormulation, LargeDeflection, LinearIncompressible)
 !--------------------------------------------------------------------------------
-    REAL(KIND=dp) :: Displacement(:), NodalStrain(:), NodalStress(:), VonMises(:), &
+    REAL(KIND=dp) :: Displacement(:)
+    ! Pointers, since with only elemental fields asked for the nodal ones are not on
+    ! the mesh and these are never associated.
+    REAL(KIND=dp), POINTER :: NodalStrain(:), NodalStress(:), VonMises(:), &
          PrincipalStress(:), PrincipalStrain(:), Tresca(:), PrincipalAngle(:)
     INTEGER, POINTER :: Perm(:)
     LOGICAL :: CalculateStrains, CalculateStresses, CalcPrincipal, CalcPrincipalAngle, &
          NeoHookeanMaterial, AxialSymmetry, MixedFormulation, LargeDeflection
     LOGICAL :: LinearIncompressible
+    ! The elemental (-dg) counterparts, " e" suffixed; see ElasticSolver_Init.
+    TYPE(Variable_t), POINTER :: StressE, StrainE, VonMisesE, PStressE, TrescaE, &
+         PAngleE, PStrainE
+    REAL(KIND=dp), ALLOCATABLE :: MassE(:,:), xE(:)
+    INTEGER, ALLOCATABLE :: PivotE(:)
+    INTEGER, POINTER :: DgInd(:)
+    REAL(KIND=dp), POINTER :: pPS(:), pTr(:), pPA(:)
+    LOGICAL :: Erroneous
 !--------------------------------------------------------------------------------
     TYPE(Solver_t), POINTER :: StSolver
     TYPE(Nodes_t) :: Nodes
@@ -5829,13 +5878,6 @@ CONTAINS
     LOGICAL :: Rebuilt
 
     SAVE ForceG, SForceG, Nodes, StrainDim
-    !---------------------------------------------------------------------------------------------
-    ! These variables are needed for Principal stress calculation;
-    ! they are quite small and allocated even if principal stress calculation
-    ! is not requested
-    !------------------------------------------------------------------------------------------
-    REAL(KIND=dp) :: PriCache(3,3), PriTmp, PriW(3),PriWork(102)
-    INTEGER       :: PriN=3, PriLWork=102, PriInfo=0
  !----------------------------------------------------------------------------------------------
     cdim = CoordinateSystemDimension()
 
@@ -5865,48 +5907,72 @@ CONTAINS
          NodalLame1(n), &
          NodalLame2(n) )
 
-    ! Rebuilt on mesh change -- see the note in GenerateStrainVariable.
-    ! Resolved here rather than inside the projector, which sits below MainUtils.
-    GlobalBubbles = SetGlobalBubblesFlag( Solver )
+    ! The mesh dimension, not the local "dim" above, which is the stress state's
+    ! and is forced to 3 on the axis.
+    StrainDim = SymTensorOutputComponents( cdim )
 
-    ! Unlike the other two callers this one registers the hidden variable against
-    ! the field permutation rather than the projection's own, so it is passed
-    ! explicitly. Whether that difference is deliberate is a separate question.
-    CALL NodalProjectorSetup( Proj, Solver, 'stress:', 'Calculate Stresses', &
-        'StressTemp', GlobalBubbles, Rebuilt, VarPerm = Perm )
+    IF ( CalcNodalFields ) THEN
+       ! Rebuilt on mesh change -- see the note in GenerateStrainVariable.
+       ! Resolved here rather than inside the projector, which sits below MainUtils.
+       GlobalBubbles = SetGlobalBubblesFlag( Solver )
 
-    StSolver => Proj % PSolver
-    Permutation => Proj % Perm
-    UseMask = Proj % UseMask
-    eqname = Proj % EqName
+       ! Unlike the other two callers this one registers the hidden variable against
+       ! the field permutation rather than the projection's own, so it is passed
+       ! explicitly. Whether that difference is deliberate is a separate question.
+       CALL NodalProjectorSetup( Proj, Solver, 'stress:', 'Calculate Stresses', &
+           'StressTemp', GlobalBubbles, Rebuilt, VarPerm = Perm )
 
-    IF ( Rebuilt ) THEN
-       IF ( ALLOCATED(ForceG) ) DEALLOCATE( ForceG )
-       IF ( ALLOCATED(SForceG) ) DEALLOCATE( SForceG )
+       StSolver => Proj % PSolver
+       Permutation => Proj % Perm
+       UseMask = Proj % UseMask
+       eqname = Proj % EqName
 
-       ! The mesh dimension, not the local "dim" above, which is the stress state's
-       ! and is forced to 3 on the axis.
-       StrainDim = SymTensorOutputComponents( cdim )
+       IF ( Rebuilt ) THEN
+          IF ( ALLOCATED(ForceG) ) DEALLOCATE( ForceG )
+          IF ( ALLOCATED(SForceG) ) DEALLOCATE( SForceG )
 
-       IF (CalculateStrains) ALLOCATE( ForceG(StSolver % Matrix % NumberOfRows*StrainDim) )
-       IF (CalculateStresses) ALLOCATE( SForceG(StSolver % Matrix % NumberOfRows*StrainDim) )
+          IF (CalculateStrains) ALLOCATE( ForceG(StSolver % Matrix % NumberOfRows*StrainDim) )
+          IF (CalculateStresses) ALLOCATE( SForceG(StSolver % Matrix % NumberOfRows*StrainDim) )
+       END IF
+
+       ! Limiters, contact conditions, residual mode, eigen/harmonic settings and the
+       ! relaxation factor belong to the primary solve, not to an L2 fit; put aside
+       ! until NodalProjectorEnd.
+       CALL NodalProjectorBegin( Proj, Solver )
+       IF (CalculateStrains) THEN
+          NodalStrain = 0.0d0
+          ForceG      = 0.0d0
+       END IF
+       IF (CalculateStresses) THEN
+          NodalStress = 0.0d0
+          SForceG      = 0.0d0
+       END IF
+       CALL DefaultInitialize()
+    ELSE
+       ! No global system, but the same keyword namespace and body mask the
+       ! projector would have set up, so both kinds of output read the same data.
+       CALL ListSetNameSpace( 'stress:' )
+       UseMask = ListGetLogicalAnyEquation( CurrentModel, 'Calculate Stresses' )
+       eqname = 'Calculate Stresses'
     END IF
 
-
-
-    ! Limiters, contact conditions, residual mode, eigen/harmonic settings and the
-    ! relaxation factor belong to the primary solve, not to an L2 fit; put aside
-    ! until NodalProjectorEnd.
-    CALL NodalProjectorBegin( Proj, Solver )
-    IF (CalculateStrains) THEN
-       NodalStrain = 0.0d0
-       ForceG      = 0.0d0
+    NULLIFY( StressE, StrainE, VonMisesE, PStressE, TrescaE, PAngleE, PStrainE )
+    IF ( CalcElementalFields ) THEN
+       IF ( CalculateStresses ) THEN
+          StressE => ElasticElementalField( 'Stress e' )
+          VonMisesE => ElasticElementalField( 'vonMises e' )
+          IF ( CalcPrincipal ) THEN
+             PStressE => ElasticElementalField( 'Principal Stress e' )
+             TrescaE => ElasticElementalField( 'Tresca e' )
+             IF ( CalcPrincipalAngle ) PAngleE => ElasticElementalField( 'Principal Angle e' )
+          END IF
+       END IF
+       IF ( CalculateStrains ) THEN
+          StrainE => ElasticElementalField( 'Strain e' )
+          IF ( CalcPrincipal ) PStrainE => ElasticElementalField( 'Principal Strain e' )
+       END IF
+       ALLOCATE( MassE(n,n), xE(n), PivotE(n) )
     END IF
-    IF (CalculateStresses) THEN
-       NodalStress = 0.0d0
-       SForceG      = 0.0d0
-    END IF
-    CALL DefaultInitialize()
 
     !------------------------------------------------------------------------
     ! Assembly loop
@@ -6276,117 +6342,80 @@ CONTAINS
               CALL NodalProjectorTensor( SForce, Basis, nd, StrainDim, Weight, Stress )
        END DO
 
-       CALL DefaultUpdateEquations( Mass, Force )
+       IF ( CalcNodalFields ) THEN
+          CALL DefaultUpdateEquations( Mass, Force )
 
-       !--------------------------------
-       ! Assemble global RHS vectors:
-       !--------------------------------
-       IF (CalculateStrains) &
-           CALL NodalProjectorGlue( ForceG, Force, Permutation, Indices, nd, StrainDim )
-       IF (CalculateStresses) &
-           CALL NodalProjectorGlue( SForceG, SForce, Permutation, Indices, nd, StrainDim )
+          !--------------------------------
+          ! Assemble global RHS vectors:
+          !--------------------------------
+          IF (CalculateStrains) &
+              CALL NodalProjectorGlue( ForceG, Force, Permutation, Indices, nd, StrainDim )
+          IF (CalculateStresses) &
+              CALL NodalProjectorGlue( SForceG, SForce, Permutation, Indices, nd, StrainDim )
+       END IF
+
+       !------------------------------------------------------------------
+       ! The elemental fit: the same L2 projection, but onto this element's
+       ! own nodal basis alone, so it is solved here and needs no global
+       ! system. The leading n x n block of the mass is the nodal basis --
+       ! higher p-modes and bubbles, if any, follow it -- and the DG field
+       ! carries one value per element node.
+       !------------------------------------------------------------------
+       IF ( CalcElementalFields ) THEN
+          MassE(1:n,1:n) = Mass(1:n,1:n)
+          CALL LUDecomp( MassE, n, PivotE, Erroneous )
+          IF ( Erroneous ) CALL Fatal( Caller, 'Elemental stress projection: singular local mass' )
+          DgInd => Element % DGIndexes
+          IF ( .NOT. ASSOCIATED( DgInd ) ) CALL Fatal( Caller, &
+              'Elemental stress projection: element has no DG indexes' )
+          IF ( ASSOCIATED( StressE ) ) &
+              CALL ElementalProjectorSolve( StressE, SForce, MassE, PivotE, n, StrainDim, DgInd )
+          IF ( ASSOCIATED( StrainE ) ) &
+              CALL ElementalProjectorSolve( StrainE, Force, MassE, PivotE, n, StrainDim, DgInd )
+       END IF
 
     END DO
 
-    n = SIZE(StSolver % Variable % Values)
-    !----------------------------------------------------------------------
-    ! Linear solves componentwise...
-    !-----------------------------------------------------------------------
-    IF (CalculateStrains) THEN
-       CALL Info(Caller,'Calculating strain components',Level=7)
-       CALL NodalProjectorSolve( Proj, 'Strain', StrainDim, ForceG, NodalStrain, Perm )
+    IF ( CalcNodalFields ) THEN
+       !----------------------------------------------------------------------
+       ! Linear solves componentwise...
+       !-----------------------------------------------------------------------
+       IF (CalculateStrains) THEN
+          CALL Info(Caller,'Calculating strain components',Level=7)
+          CALL NodalProjectorSolve( Proj, 'Strain', StrainDim, ForceG, NodalStrain, Perm )
+       END IF
+
+       IF (CalculateStresses) THEN
+          CALL Info(Caller,'Calculating stress components',Level=7)
+          CALL NodalProjectorSolve( Proj, 'Stress', StrainDim, SForceG, NodalStress, Perm )
+
+          ! Von Mises, and the principal stresses, directions and Tresca:
+          IF ( CalcPrincipal ) CALL Info(Caller,'Calculating principal stresses',Level=7)
+          CALL StressInvariantFields( Perm, StrainDim, NodalStress, VonMises, &
+              CalcPrincipal, CalcPrincipalAngle, PrincipalStress, Tresca, PrincipalAngle )
+       END IF
+
+       IF (CalcPrincipal .AND. CalculateStrains) THEN
+          CALL Info(Caller,'Calculating principal strains',Level=7)
+          CALL PrincipalStrainField( Perm, StrainDim, NodalStrain, PrincipalStrain )
+       END IF
     END IF
 
-    IF (CalculateStresses) THEN
-       CALL Info(Caller,'Calculating stress components',Level=7)
-       CALL NodalProjectorSolve( Proj, 'Stress', StrainDim, SForceG, NodalStress, Perm )
-
-       ! Von Mises stress from the component nodal values:
-       ! -------------------------------------------------
-       VonMises = 0
-       IF (Identity(3,3) < 1.0d0) Identity(3,3) = 1.0d0
-       Stress = 0.0d0
-       DO i=1,SIZE( Perm )
-          IF ( Perm(i) <= 0 ) CYCLE
-
-          q = StrainDim * (Perm(i)-1)
-          CALL OutputVector2Tensor( NodalStress(q+1:q+StrainDim), StrainDim, Stress )
-
-          Stress(:,:) = Stress(:,:) - TRACE(Stress(:,:),3) * Identity/3
-          DO j=1,3
-             DO k=1,3
-                VonMises(Perm(i)) = VonMises(Perm(i)) + Stress(j,k)**2
-             END DO
-          END DO
-       END DO
-       VonMises = SQRT( 3.0d0 * VonMises / 2.0d0 )
-    END IF
-
-
-    !----------------------------------------------
-    ! The principal and Tresca stresses:
-    !--------------------------------------------------
-    IF (CalcPrincipal .AND. CalculateStresses) THEN
-       CALL Info(Caller,'Calculating principal stresses',Level=7)
-       PriCache = 0.0d0
-       DO i=1,SIZE( Perm )
-          IF ( Perm(i) <= 0 ) CYCLE
-          q = StrainDim * (Perm(i)-1)
-          CALL OutputVector2Tensor( NodalStress(q+1:q+StrainDim), StrainDim, PriCache )
-
-          !-----------------------------------------------------------------------------
-          ! Use lapack to solve the eigenvalues (i.e. the principal stresses)
-          !-----------------------------------------------------------------------------
-          CALL DSYEV( 'V', 'U', 3, PriCache, 3, PriW, PriWork, PriLWork, PriInfo )
-          IF (PriInfo /= 0) THEN
-             CALL Fatal( Caller, 'DSYEV cannot generate eigen basis')
-          END IF
-
-          DO l=1,3
-             ! The eigenvalues are returned in the opposite order:
-             PrincipalStress(3 * (Perm(i)-1 )+l) = PriW(4-l)
-          END DO
-
-          IF (CalcPrincipalAngle) THEN
-             DO k=1,3
-                PrincipalAngle(9 * (Perm(i)-1) + 3*(k-1) + 1) = ACOS(PriCache(1,4-k))
-                PrincipalAngle(9 * (Perm(i)-1) + 3*(k-1) + 2) = ACOS(PriCache(2,4-k))
-                PrincipalAngle(9 * (Perm(i)-1) + 3*(k-1) + 3) = ACOS(PriCache(3,4-k))
-             END DO
-          END IF
-
-          ! Tresca:
-          Tresca(Perm(i)) = (PrincipalStress(3*(Perm(i)-1) +1) - &
-               PrincipalStress(3*(Perm(i)-1) +2))/2
-          PriTmp = (PrincipalStress(3*(Perm(i)-1) +2) - &
-               PrincipalStress(3*(Perm(i)-1) +3))/2
-          IF (PriTmp > Tresca(Perm(i)) ) Tresca(Perm(i)) = PriTmp
-
-          PriTmp = (PrincipalStress(3*(Perm(i)-1) +1) - &
-               PrincipalStress(3*(Perm(i)-1) +3))/2
-          IF (PriTmp > Tresca(Perm(i)) ) Tresca(Perm(i)) = PriTmp
-
-       END DO
-    END IF
-
-    IF (CalcPrincipal .AND. CalculateStrains) THEN
-       CALL Info(Caller,'Calculating principal strains',Level=7)
-       PriCache = 0.0d0
-       DO i=1,SIZE( Perm )
-          IF ( Perm(i) <= 0 ) CYCLE
-          q = StrainDim * (Perm(i)-1)
-          CALL OutputVector2Tensor( NodalStrain(q+1:q+StrainDim), StrainDim, PriCache )
-
-          ! Use lapack to solve eigenvalues:
-          CALL DSYEV( 'N', 'U', 3, PriCache, 3, PriW, PriWork, PriLWork, PriInfo )
-          IF (PriInfo /= 0) THEN
-             CALL Fatal( Caller, 'DSYEV cannot generate eigen basis')
-          END IF
-
-          DO l=1,3
-             PrincipalStrain(3 * (Perm(i)-1 )+l) = PriW(4-l)
-          END DO
-       END DO
+    IF ( CalcElementalFields ) THEN
+       ! The same measures, point by point on the DG nodes. Every DG field here
+       ! was created with the same mask by the same CreateDGPerm, so one
+       ! permutation indexes them all.
+       IF ( ASSOCIATED( StressE ) ) THEN
+          NULLIFY( pPS, pTr, pPA )
+          IF ( ASSOCIATED( PStressE ) ) pPS => PStressE % Values
+          IF ( ASSOCIATED( TrescaE ) ) pTr => TrescaE % Values
+          IF ( ASSOCIATED( PAngleE ) ) pPA => PAngleE % Values
+          CALL StressInvariantFields( StressE % Perm, StrainDim, StressE % Values, &
+              VonMisesE % Values, CalcPrincipal, CalcPrincipalAngle, pPS, pTr, pPA )
+       END IF
+       IF ( ASSOCIATED( PStrainE ) ) &
+           CALL PrincipalStrainField( StrainE % Perm, StrainDim, StrainE % Values, PStrainE % Values )
+       DEALLOCATE( MassE, xE, PivotE )
     END IF
 
     DEALLOCATE( Indices, &
@@ -6399,12 +6428,67 @@ CONTAINS
          NodalLame1, &
          NodalLame2 )
 
-    CALL NodalProjectorEnd( Proj, Solver )
+    IF ( CalcNodalFields ) THEN
+       CALL NodalProjectorEnd( Proj, Solver )
+    ELSE
+       CALL ListSetNameSpace( '' )
+    END IF
 
 
     CALL Info(Caller,'Finished postprocessing',Level=7)
 !--------------------------------------------------------------------------------
   END SUBROUTINE ComputeStressAndStrain
+!--------------------------------------------------------------------------------
+
+
+!--------------------------------------------------------------------------------
+!> An elemental (-dg) output field of this solver, zeroed so that elements the
+!> body mask leaves out read zero rather than a stale value.
+!--------------------------------------------------------------------------------
+  FUNCTION ElasticElementalField( Name ) RESULT( Var )
+!--------------------------------------------------------------------------------
+    CHARACTER(LEN=*) :: Name
+    TYPE(Variable_t), POINTER :: Var
+!--------------------------------------------------------------------------------
+    Var => VariableGet( Solver % Mesh % Variables, Name, ThisOnly=.TRUE. )
+    IF ( .NOT. ASSOCIATED( Var ) ) &
+        CALL Fatal( 'ElasticSolver', 'Variable > '//TRIM(Name)//' < does not exist!' )
+    IF ( Var % TYPE /= Variable_on_nodes_on_elements ) &
+        CALL Fatal( 'ElasticSolver', 'Variable > '//TRIM(Name)//' < is not elemental (-dg)!' )
+    Var % Values = 0.0_dp
+!--------------------------------------------------------------------------------
+  END FUNCTION ElasticElementalField
+!--------------------------------------------------------------------------------
+
+
+!--------------------------------------------------------------------------------
+!> Solve one element's local projection for every component of a symmetric
+!> tensor, F holding the right hand sides interleaved with stride ncomp as
+!> NodalProjectorTensor packs them, and A the LU factors of the n x n nodal
+!> block of the local mass. Written to the DG nodes of the element.
+!--------------------------------------------------------------------------------
+  SUBROUTINE ElementalProjectorSolve( Var, F, A, Pivot, n, ncomp, DgInd )
+!--------------------------------------------------------------------------------
+    TYPE(Variable_t) :: Var
+    REAL(KIND=dp) :: F(:), A(:,:)
+    INTEGER :: Pivot(:), n, ncomp, DgInd(:)
+!--------------------------------------------------------------------------------
+    REAL(KIND=dp) :: x(n)
+    INTEGER :: k, p, j
+!--------------------------------------------------------------------------------
+    DO k=1,ncomp
+      DO p=1,n
+        x(p) = F(ncomp*(p-1)+k)
+      END DO
+      CALL LUSolve( n, A, x, Pivot )
+      DO p=1,n
+        j = Var % Perm( DgInd(p) )
+        IF ( j <= 0 ) CYCLE
+        Var % Values( ncomp*(j-1)+k ) = x(p)
+      END DO
+    END DO
+!--------------------------------------------------------------------------------
+  END SUBROUTINE ElementalProjectorSolve
 !--------------------------------------------------------------------------------
 
 
