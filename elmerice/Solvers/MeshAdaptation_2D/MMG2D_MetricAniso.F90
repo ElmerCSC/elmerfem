@@ -45,7 +45,7 @@
    CHARACTER(LEN=MAX_NAME_LEN) :: Name,TensorName,ExportName
    TYPE(ValueList_t), POINTER :: SolverParams
    TYPE(Variable_t), POINTER :: HessianVariable,MetricVariable
-   LOGICAL :: GotIt
+   LOGICAL :: GotIt, OutputMetrics=.FALSE.
    REAL(KIND=dp) :: Diffusivity=0.5_dp
 
    SolverParams => Solver % Values 
@@ -62,11 +62,18 @@
    IF(.NOT. ListCheckPresent(SolverParams,'Diffusivity')) &
         CALL ListAddConstReal(SolverParams,'Diffusivity',Diffusivity)
    
+   OutputMetrics = GetLogical(SolverParams, 'Output Metrics', GotIt)
+   IF (.NOT.GotIt) OutputMetrics = .FALSE.
+   
    TensorName = ListGetString( SolverParams, 'Hessian Variable Name',  UnFoundFatal=.TRUE. )
    HessianVariable => VariableGet( Solver % Mesh % Variables, TensorName, ThisOnly=.TRUE. )
    IF (.NOT.ASSOCIATED(HessianVariable)) THEN
       ExportName=NextFreeKeyword('Exported Variable',SolverParams)
-      CALL ListAddString( SolverParams,TRIM(ExportName),'-nooutput '//TRIM(TensorName))
+      IF (OutputMetrics) THEN
+        CALL ListAddString( SolverParams,TRIM(ExportName),TRIM(TensorName))
+      ELSE
+        CALL ListAddString( SolverParams,TRIM(ExportName),'-nooutput '//TRIM(TensorName))
+      END IF
       CALL ListAddInteger( SolverParams,TRIM(ExportName)//' DOFs',3)
    ENDIF
 
@@ -74,7 +81,11 @@
    MetricVariable => VariableGet( Solver % Mesh % Variables, TensorName, ThisOnly=.TRUE. )
    IF (.NOT.ASSOCIATED(MetricVariable)) THEN
       ExportName=NextFreeKeyword('Exported Variable',SolverParams)
-      CALL ListAddString( SolverParams,TRIM(ExportName),'-nooutput '//TRIM(TensorName))
+      IF (OutputMetrics) THEN
+        CALL ListAddString( SolverParams,TRIM(ExportName),TRIM(TensorName))
+      ELSE
+        CALL ListAddString( SolverParams,TRIM(ExportName),'-nooutput '//TRIM(TensorName))
+      END IF
       CALL ListAddInteger( SolverParams,TRIM(ExportName)//' DOFs',3)
    ENDIF
    END SUBROUTINE MMG2D_MetricAniso_Init
