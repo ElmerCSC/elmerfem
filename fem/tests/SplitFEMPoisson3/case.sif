@@ -58,8 +58,8 @@ Simulation
   Isoline Variable 2 = String "Surface"
 
 ! Which variables to project to 2D viz. mesh.
-  Project Variable 1 = Potential
-  Project Variable 2 = Surface
+  Project Variable 1 = String "Potential"
+  Project Variable 2 = String "Surface"
 
 ! Should we save the actural splitted mesh in 2D? 
 !  SplitFEM Mesh Save = Logical True
