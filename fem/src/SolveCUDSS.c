@@ -71,22 +71,40 @@ static int cudss_ok(cudssStatus_t st, const char *what)
   return 1;
 }
 
+/* Release only the per-factorization state: the cuDSS data object (which holds
+ * the numeric factors), the matrix descriptors and the device buffers. The
+ * handle, config and -- in the MGMN case -- the comm layer binding and the
+ * stored communicator are left intact so the next factorization can reuse them.
+ * Recreating those every timestep is what leaked host/device memory in the
+ * distributed path (cudssSetCommLayer and the communicator registration), so
+ * refactorization goes through here, not cudss_teardown. Safe to call more than
+ * once: every released field is nulled. */
+static void cudss_release_factors(ElmerCUDSS *ctx)
+{
+  if (!ctx) return;
+
+  if (ctx->Amat) { cudssMatrixDestroy(ctx->Amat); ctx->Amat = NULL; }
+  if (ctx->bmat) { cudssMatrixDestroy(ctx->bmat); ctx->bmat = NULL; }
+  if (ctx->xmat) { cudssMatrixDestroy(ctx->xmat); ctx->xmat = NULL; }
+  if (ctx->data) { cudssDataDestroy(ctx->handle, ctx->data); ctx->data = NULL; }
+
+  if (ctx->d_rows) { cudaFree(ctx->d_rows); ctx->d_rows = NULL; }
+  if (ctx->d_cols) { cudaFree(ctx->d_cols); ctx->d_cols = NULL; }
+  if (ctx->d_vals) { cudaFree(ctx->d_vals); ctx->d_vals = NULL; }
+  if (ctx->d_b)    { cudaFree(ctx->d_b);    ctx->d_b = NULL; }
+  if (ctx->d_x)    { cudaFree(ctx->d_x);    ctx->d_x = NULL; }
+}
+
+/* Full teardown: drop the factorization, then the handle/config that outlive it
+ * across refactorizations, and finally the context itself. */
 static void cudss_teardown(ElmerCUDSS *ctx)
 {
   if (!ctx) return;
 
-  if (ctx->Amat) cudssMatrixDestroy(ctx->Amat);
-  if (ctx->bmat) cudssMatrixDestroy(ctx->bmat);
-  if (ctx->xmat) cudssMatrixDestroy(ctx->xmat);
-  if (ctx->data) cudssDataDestroy(ctx->handle, ctx->data);
+  cudss_release_factors(ctx);
+
   if (ctx->config) cudssConfigDestroy(ctx->config);
   if (ctx->handle) cudssDestroy(ctx->handle);
-
-  if (ctx->d_rows) cudaFree(ctx->d_rows);
-  if (ctx->d_cols) cudaFree(ctx->d_cols);
-  if (ctx->d_vals) cudaFree(ctx->d_vals);
-  if (ctx->d_b) cudaFree(ctx->d_b);
-  if (ctx->d_x) cudaFree(ctx->d_x);
 
   free(ctx);
 }
@@ -258,6 +276,16 @@ void FC_FUNC_(cudss_ffree,CUDSS_FFREE)(ElmerCUDSS **handle)
   *handle = NULL;
 }
 
+/* Partial free for "Linear System Free Factorization": releases the numeric
+ * factors, matrices and device buffers but keeps the handle, config and comm
+ * layer alive for the next refactorization, so the caller must NOT clear its
+ * stored pointer. The handle is fully destroyed by cudss_ffree at matrix
+ * teardown. */
+void FC_FUNC_(cudss_free_factors,CUDSS_FREE_FACTORS)(ElmerCUDSS **handle)
+{
+  cudss_release_factors(*handle);
+}
+
 /* ------------------------------------------------------------------------- *
  * CuDSS multi-GPU multi-node mode
  *
@@ -291,33 +319,67 @@ static void cudss_bind_device(MPI_Comm comm)
  * 1-based from Fortran). cols: GLOBAL column indices (1-based). first_row/
  * last_row: 0-based inclusive global range of the owned block (empty rank:
  * first_row > last_row). */
-static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
-    int nnzloc, int first_row, int last_row, const int *rows, const int *cols,
-    const void *vals, int mtype, int is_complex, MPI_Comm comm)
+/* *ctxp is the persistent context for this matrix: NULL on the first
+ * factorization (create handle/config/comm layer), non-NULL on every
+ * refactorization (reuse them, rebuilding only the factors). On success
+ * *ctxp holds the live context and the function returns 1; on any failure the
+ * context is fully torn down, *ctxp is set to NULL and the function returns 0. */
+static int cudss_dfactorize_par_impl(ElmerCUDSS **ctxp, int nglob, int nnz_glob,
+    int nloc, int nnzloc, int first_row, int last_row, const int *rows,
+    const int *cols, const void *vals, int mtype, int is_complex, MPI_Comm comm)
 {
-  ElmerCUDSS *ctx;
+  ElmerCUDSS *ctx = *ctxp;
   cudssMatrixType_t mt;
   cudssMatrixViewType_t mv;
   cudssDataType_t vt = is_complex ? CUDSS_C_64F : CUDSS_R_64F;
 
-  ctx = (ElmerCUDSS *)calloc(1, sizeof(ElmerCUDSS));
-  if (!ctx) { fprintf(stderr, "CUDSS_SolveSystem: out of host memory\n"); return NULL; }
-  ctx->n    = nloc;              /* the solve works on the owned block */
-  ctx->esz  = is_complex ? 2 * sizeof(double) : sizeof(double);
-  ctx->comm = comm;
+  if (ctx == NULL) {
+    /* First factorization for this matrix. The handle, config and comm layer
+     * are created ONCE and kept alive across refactorizations by
+     * cudss_release_factors -- recreating them (in particular re-running
+     * cudssSetCommLayer and the communicator registration) every timestep is
+     * what leaked in the distributed path. */
+    ctx = (ElmerCUDSS *)calloc(1, sizeof(ElmerCUDSS));
+    if (!ctx) {
+      fprintf(stderr, "CUDSS_SolveSystem: out of host memory\n");
+      *ctxp = NULL;
+      return 0;
+    }
+    ctx->comm = comm;
+
+    cudss_bind_device(comm);
+
+    /* The communication layer library name is determined compile time as macro
+     * definition ELMER_CUDSS_COMMLAYER_NAME. If that is NULL, then fall back to
+     * cuDSS default behavior: read the communication layer library name from
+     * CUDSS_COMM_LIB environment variable. The comm layer is a property of the
+     * handle, so it is set here, once per context. */
+    if (!cudss_ok(cudssCreate(&ctx->handle), "cudssCreate") ||
+        !cudss_ok(cudssConfigCreate(&ctx->config), "cudssConfigCreate") ||
+        !cudss_ok(cudssSetCommLayer(ctx->handle, ELMER_CUDSS_COMMLAYER_NAME), "cudssSetCommLayer")) {
+      cudss_teardown(ctx);
+      *ctxp = NULL;
+      return 0;
+    }
+  } else {
+    /* Refactorization: reuse the live handle/config/comm layer and drop only
+     * the previous factorization's data object, matrices and device buffers. */
+    cudss_release_factors(ctx);
+  }
+
+  ctx->n   = nloc;              /* the solve works on the owned block */
+  ctx->esz = is_complex ? 2 * sizeof(double) : sizeof(double);
 
   switch (mtype) {
-    case 2:  
+    case 2:
       mt = CUDSS_MTYPE_SPD;
       mv = CUDSS_MVIEW_UPPER;
       break;
-    default: 
-      mt = CUDSS_MTYPE_GENERAL; 
+    default:
+      mt = CUDSS_MTYPE_GENERAL;
       mv = CUDSS_MVIEW_FULL;
       break;
   }
-
-  cudss_bind_device(comm);
 
   /* nloc/nnzloc can be 0 on an empty partition; keep device allocations >0. */
   if (!cuda_ok(cudaMalloc((void **)&ctx->d_rows, (size_t)(nloc + 1) * sizeof(int)), "cudaMalloc(rows)") ||
@@ -326,10 +388,11 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
       !cuda_ok(cudaMalloc(&ctx->d_b, (size_t)(nloc > 0 ? nloc : 1) * ctx->esz), "cudaMalloc(b)") ||
       !cuda_ok(cudaMalloc(&ctx->d_x, (size_t)(nloc > 0 ? nloc : 1) * ctx->esz), "cudaMalloc(x)")) {
     cudss_teardown(ctx);
-    return NULL;
+    *ctxp = NULL;
+    return 0;
   }
 
-  /* Modify local rows and offsets to 0-based indexing and copy to device. 
+  /* Modify local rows and offsets to 0-based indexing and copy to device.
    * TODO: Modify on device to get rid of extra memory copy. */
   {
     int *z_rows = (int *)malloc((size_t)(nloc + 1) * sizeof(int));
@@ -339,7 +402,8 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
     if (!z_rows || !z_cols) {
       fprintf(stderr, "CUDSS_SolveSystem: out of host memory for index conversion\n");
       free(z_rows); free(z_cols); cudss_teardown(ctx);
-      return NULL;
+      *ctxp = NULL;
+      return 0;
     }
 
     for (i = 0; i <= nloc; i++)  z_rows[i] = rows[i] - 1;
@@ -350,20 +414,13 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
          (nnzloc == 0 || cuda_ok(cudaMemcpy(ctx->d_vals, vals, (size_t)nnzloc * ctx->esz, cudaMemcpyHostToDevice), "memcpy(vals)"));
 
     free(z_rows); free(z_cols);
-    if (!ok) { cudss_teardown(ctx); return NULL; }
+    if (!ok) { cudss_teardown(ctx); *ctxp = NULL; return 0; }
   }
 
-  if (!cudss_ok(cudssCreate(&ctx->handle), "cudssCreate") ||
-      !cudss_ok(cudssConfigCreate(&ctx->config), "cudssConfigCreate") ||
-      !cudss_ok(cudssDataCreate(ctx->handle, &ctx->data), "cudssDataCreate")) {
-    cudss_teardown(ctx);
-    return NULL;
-  }
-
-  /* The communication layer library name is determined compile time as macro
-   * definition ELMER_CUDSS_COMMLAYER_NAME. If that is NULL, then fall back to
-   * cuDSS default behavior: read the communication layer library name from
-   * CUDSS_COMM_LIB environment variable.
+  /* The data object holds the numeric factors, so it is rebuilt on every
+   * factorization. The communicator registration lives on the data object and
+   * is therefore redone here; only the comm *layer* (on the handle, above) is
+   * set once.
    *
    * cuDSS splits the communicator into a device and a host one. With the MPI
    * (openmpi) comm layer both backends are MPI, so both get the same MPI
@@ -373,13 +430,14 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
    * If you build against an older cuDSS that still has the single
    * CUDSS_DATA_COMM, replace the two calls below with one on CUDSS_DATA_COMM.
    * */
-  if (!cudss_ok(cudssSetCommLayer(ctx->handle, ELMER_CUDSS_COMMLAYER_NAME), "cudssSetCommLayer") ||
+  if (!cudss_ok(cudssDataCreate(ctx->handle, &ctx->data), "cudssDataCreate") ||
       !cudss_ok(cudssDataSet(ctx->handle, ctx->data, CUDSS_DATA_COMM_DEVICE,
                     &ctx->comm, sizeof(&ctx->comm)), "cudssDataSet(COMM_DEVICE)") ||
       !cudss_ok(cudssDataSet(ctx->handle, ctx->data, CUDSS_DATA_COMM_HOST,
                     &ctx->comm, sizeof(&ctx->comm)), "cudssDataSet(COMM_HOST)")) {
     cudss_teardown(ctx);
-    return NULL;
+    *ctxp = NULL;
+    return 0;
   }
 
   /* Global descriptor (nglob x nglob, nnz_glob) with this rank's LOCAL arrays;
@@ -392,7 +450,8 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
       !cudss_ok(cudssMatrixSetDistributionRow1d(ctx->Amat, first_row, last_row),
                 "cudssMatrixSetDistributionRow1d(A)")) {
     cudss_teardown(ctx);
-    return NULL;
+    *ctxp = NULL;
+    return 0;
   }
 
   /* b and x share the matrix's owned-block distribution (no overlap). ld is the
@@ -406,7 +465,8 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
       !cudss_ok(cudssMatrixSetDistributionRow1d(ctx->xmat, first_row, last_row),
                 "cudssMatrixSetDistributionRow1d(x)")) {
     cudss_teardown(ctx);
-    return NULL;
+    *ctxp = NULL;
+    return 0;
   }
 
   /* Analysis + factorization are collective over the communicator. */
@@ -415,45 +475,53 @@ static ElmerCUDSS *cudss_dfactorize_par_impl(int nglob, int nnz_glob, int nloc,
       !cudss_ok(cudssExecute(ctx->handle, CUDSS_PHASE_FACTORIZATION, ctx->config, ctx->data,
                     ctx->Amat, ctx->xmat, ctx->bmat), "cudssExecute(FACTORIZATION)")) {
     cudss_teardown(ctx);
-    return NULL;
+    *ctxp = NULL;
+    return 0;
   }
 
-  return ctx;
+  *ctxp = ctx;
+  return 1;
 }
 #endif /* HAVE_MPI */
 
-ElmerCUDSS *FC_FUNC_(cudss_dfactorize_par,CUDSS_DFACTORIZE_PAR)
-    (int *nglob, int *nnz_glob, int *nloc, int *nnzloc, int *first_row,
-     int *last_row, int *rows, int *cols, double *vals, int *mtype, int *fcomm)
+/* handle is in/out: NULL-valued on the first factorization (a fresh context is
+ * created) and the live context on every refactorization (handle/config/comm
+ * layer reused, only the factors rebuilt). On failure it is set to NULL, which
+ * the Fortran caller treats as a fatal factorization error. */
+void FC_FUNC_(cudss_dfactorize_par,CUDSS_DFACTORIZE_PAR)
+    (ElmerCUDSS **handle, int *nglob, int *nnz_glob, int *nloc, int *nnzloc,
+     int *first_row, int *last_row, int *rows, int *cols, double *vals,
+     int *mtype, int *fcomm)
 {
 #ifdef HAVE_MPI
   MPI_Comm comm = MPI_Comm_f2c(*fcomm);
-  return cudss_dfactorize_par_impl(*nglob, *nnz_glob, *nloc, *nnzloc, *first_row,
+  cudss_dfactorize_par_impl(handle, *nglob, *nnz_glob, *nloc, *nnzloc, *first_row,
       *last_row, rows, cols, vals, *mtype, 0, comm);
 #else
   (void)nglob; (void)nnz_glob; (void)nloc; (void)nnzloc; (void)first_row;
   (void)last_row; (void)rows; (void)cols; (void)vals; (void)mtype; (void)fcomm;
   fprintf(stderr, "CUDSS_SolveSystem: distributed (MGMN) cuDSS needs MPI\n");
-  return NULL;
+  *handle = NULL;
 #endif
 }
 
 /* Complex counterpart: the matrix is a complex CSR of order n (not Elmer's
  * real 2n), vals holds 2*nnzloc interleaved (re,im) doubles -- i.e. Fortran
  * COMPLEX(KIND=dp), layout-compatible with cuDoubleComplex. */
-ElmerCUDSS *FC_FUNC_(cudss_zdfactorize_par,CUDSS_ZDFACTORIZE_PAR)
-    (int *nglob, int *nnz_glob, int *nloc, int *nnzloc, int *first_row,
-     int *last_row, int *rows, int *cols, double *vals, int *mtype, int *fcomm)
+void FC_FUNC_(cudss_zdfactorize_par,CUDSS_ZDFACTORIZE_PAR)
+    (ElmerCUDSS **handle, int *nglob, int *nnz_glob, int *nloc, int *nnzloc,
+     int *first_row, int *last_row, int *rows, int *cols, double *vals,
+     int *mtype, int *fcomm)
 {
 #ifdef HAVE_MPI
   MPI_Comm comm = MPI_Comm_f2c(*fcomm);
-  return cudss_dfactorize_par_impl(*nglob, *nnz_glob, *nloc, *nnzloc, *first_row,
+  cudss_dfactorize_par_impl(handle, *nglob, *nnz_glob, *nloc, *nnzloc, *first_row,
       *last_row, rows, cols, vals, *mtype, 1, comm);
 #else
   (void)nglob; (void)nnz_glob; (void)nloc; (void)nnzloc; (void)first_row;
   (void)last_row; (void)rows; (void)cols; (void)vals; (void)mtype; (void)fcomm;
   fprintf(stderr, "CUDSS_SolveSystem: distributed (MGMN) cuDSS needs MPI\n");
-  return NULL;
+  *handle = NULL;
 #endif
 }
 

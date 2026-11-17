@@ -306,12 +306,11 @@ ENDIF()
 
 # cuDSS: NVIDIA's GPU sparse direct solver. 
 IF(WITH_CUDSS)
-  FIND_PACKAGE(CUDAToolkit REQUIRED)
+  FIND_PACKAGE(CUDAToolkit REQUIRED GLOBAL)
 
   # Find cuDSS from CUDSS_ROOT.
-  FIND_PACKAGE(CUDSS REQUIRED)
+  FIND_PACKAGE(CUDSS REQUIRED GLOBAL)
   SET(COMPILE_CUDSS_COMMLAYER TRUE CACHE BOOL "Compile cuDSS communication layer library. Not required if the cuDSS supplied one works.")
-
 
   IF(COMPILE_CUDSS_COMMLAYER)
     SET(CUDSS_COMMLAYER_SRC_MPI "${CUDSS_INCLUDE_DIR}/../src/cudss_commlayer_openmpi.cu" CACHE FILEPATH "Source file for the cuDSS MPI communication layer.")
@@ -325,9 +324,10 @@ IF(WITH_CUDSS)
 
     add_library(elmer_cudss_commlayer SHARED ${CUDSS_COMMLAYER_SRC_MPI})
     target_include_directories(elmer_cudss_commlayer PRIVATE ${CUDA_INCLUDE_DIR} ${CUDSS_INCLUDE_DIR})
-    target_link_libraries(elmer_cudss_commlayer PRIVATE MPI::MPI_C CUDA::cudart)
+    target_link_libraries(elmer_cudss_commlayer PRIVATE MPI::MPI_C CUDA::cudart CUDA::nvtx3)
     install(TARGETS elmer_cudss_commlayer LIBRARY DESTINATION ${ELMER_INSTALL_LIB_DIR})
     SET(ELMER_CUDSS_COMMLAYER_NAME "\"libelmer_cudss_commlayer${CMAKE_SHARED_LIBRARY_SUFFIX}\"" CACHE INTERNAL "")
+    set_property(TARGET elmer_cudss_commlayer PROPERTY CUDA_ARCHITECTURES native)
   ELSE()
     SET(ELMER_CUDSS_COMMLAYER_NAME NULL INTERNAL)
   ENDIF(COMPILE_CUDSS_COMMLAYER)

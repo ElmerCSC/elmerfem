@@ -917,14 +917,16 @@ CONTAINS
     INCLUDE 'mpif.h'
 #  endif
     INTERFACE
-      FUNCTION cudss_dfactorize_par(nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
-          rows,cols,vals,mtype,fcomm) RESULT(cudss) BIND(c,NAME="cudss_dfactorize_par")
+      ! cudss is in/out: 0 on the first factorization (a context is created),
+      ! the live context thereafter (reused handle, factors rebuilt), 0 on failure.
+      SUBROUTINE cudss_dfactorize_par(cudss,nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
+          rows,cols,vals,mtype,fcomm) BIND(c,NAME="cudss_dfactorize_par")
         USE Types
+        INTEGER(KIND=AddrInt) :: cudss
         INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,fcomm
         INTEGER :: rows(*), cols(*)
         REAL(KIND=dp) :: vals(*)
-        INTEGER(KIND=AddrInt) :: cudss
-      END FUNCTION cudss_dfactorize_par
+      END SUBROUTINE cudss_dfactorize_par
 
       SUBROUTINE cudss_fsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_fsolve")
         USE Types
@@ -962,7 +964,9 @@ CONTAINS
     IF ( .NOT. Found ) Factorize = .TRUE.
 
     IF ( Factorize .OR. A % Cudss==0 ) THEN
-      CALL CUDSS_FreeHandle( A )
+      ! No full free here: cudss_dfactorize_par reuses the live handle/comm layer
+      ! when A % Cudss is set and only rebuilds the factors, which avoids the
+      ! per-timestep comm-layer leak in the distributed path.
 
       ! Assemble the owned rows into one fully summed CSR with global column
       ! indices. This is where the shared interface rows are summed into their
@@ -971,7 +975,7 @@ CONTAINS
               Rloc, Cloc, Vloc, nnzLoc )
       CALL MPI_ALLREDUCE( nnzLoc, nnzGlob, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
 
-      A % Cudss = cudss_dfactorize_par( nGlob, nnzGlob, nOwnLoc, nnzLoc, &
+      CALL cudss_dfactorize_par( A % Cudss, nGlob, nnzGlob, nOwnLoc, nnzLoc, &
               first_row, last_row, Rloc, Cloc, Vloc, mtype, A % Comm )
       DEALLOCATE( Rloc, Cloc, Vloc )
 
@@ -1009,7 +1013,9 @@ CONTAINS
         'Linear System Free Factorization', Found )
     IF ( .NOT. Found ) FreeFactorize = .TRUE.
     IF ( Factorize .AND. FreeFactorize ) THEN
-      CALL CUDSS_FreeHandle( A )
+      ! Free the factors but keep the handle/comm layer alive for the next
+      ! refactorization (fully destroyed via Free_Fact at matrix teardown).
+      CALL CUDSS_ReleaseFactors( A )
     END IF
 #else
     CALL Fatal( 'CUDSS_DistSolveReal', 'cuDSS Solver has not been installed.' )
@@ -1043,14 +1049,16 @@ CONTAINS
     INCLUDE 'mpif.h'
 #  endif
     INTERFACE
-      FUNCTION cudss_zdfactorize_par(nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
-          rows,cols,vals,mtype,fcomm) RESULT(cudss) BIND(c,NAME="cudss_zdfactorize_par")
+      ! cudss is in/out: 0 on the first factorization (a context is created),
+      ! the live context thereafter (reused handle, factors rebuilt), 0 on failure.
+      SUBROUTINE cudss_zdfactorize_par(cudss,nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
+          rows,cols,vals,mtype,fcomm) BIND(c,NAME="cudss_zdfactorize_par")
         USE Types
+        INTEGER(KIND=AddrInt) :: cudss
         INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,fcomm
         INTEGER :: rows(*), cols(*)
         COMPLEX(KIND=dp) :: vals(*)
-        INTEGER(KIND=AddrInt) :: cudss
-      END FUNCTION cudss_zdfactorize_par
+      END SUBROUTINE cudss_zdfactorize_par
 
       SUBROUTINE cudss_zsolve(cudss, n, x, b, status) BIND(c,NAME="cudss_zsolve")
         USE Types
@@ -1109,7 +1117,9 @@ CONTAINS
     IF ( .NOT. Found ) Factorize = .TRUE.
 
     IF ( Factorize .OR. A % Cudss==0 ) THEN
-      CALL CUDSS_FreeHandle( A )
+      ! No full free here: cudss_zdfactorize_par reuses the live handle/comm layer
+      ! when A % Cudss is set and only rebuilds the factors, which avoids the
+      ! per-timestep comm-layer leak in the distributed path.
 
       ! Assemble the owned scalar rows (real, summed), then pack the 2x2 blocks
       ! into a complex CSR of order nOwnC.
@@ -1121,7 +1131,7 @@ CONTAINS
 
       CALL MPI_ALLREDUCE( nnzLocC, nnzGlobC, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
 
-      A % Cudss = cudss_zdfactorize_par( nGlobC, nnzGlobC, nOwnC, nnzLocC, &
+      CALL cudss_zdfactorize_par( A % Cudss, nGlobC, nnzGlobC, nOwnC, nnzLocC, &
               first_row, last_row, ZRloc, ZCloc, ZVloc, mtype, A % Comm )
       DEALLOCATE( ZRloc, ZCloc, ZVloc )
 
@@ -1164,7 +1174,9 @@ CONTAINS
         'Linear System Free Factorization', Found )
     IF ( .NOT. Found ) FreeFactorize = .TRUE.
     IF ( Factorize .AND. FreeFactorize ) THEN
-      CALL CUDSS_FreeHandle( A )
+      ! Free the factors but keep the handle/comm layer alive for the next
+      ! refactorization (fully destroyed via Free_Fact at matrix teardown).
+      CALL CUDSS_ReleaseFactors( A )
     END IF
 #else
     CALL Fatal( 'CUDSS_DistSolveComplex', 'cuDSS Solver has not been installed.' )
@@ -1224,6 +1236,28 @@ CONTAINS
     END IF
 !------------------------------------------------------------------------------
   END SUBROUTINE CUDSS_FreeHandle
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Release the stored cuDSS factors (data object, matrices, device buffers) but
+!> keep the handle and comm layer alive for the next refactorization. Used for
+!> the distributed drivers' post-solve "Linear System Free Factorization" so the
+!> comm layer is not torn down and recreated -- and leaked -- every timestep.
+!> A % Cudss is deliberately left set; CUDSS_FreeHandle does the full teardown.
+!------------------------------------------------------------------------------
+  SUBROUTINE CUDSS_ReleaseFactors( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t) :: A
+    INTERFACE
+      SUBROUTINE cudss_free_factors(cudss) BIND(c,NAME="cudss_free_factors")
+        USE Types
+        INTEGER(KIND=AddrInt) :: cudss
+      END SUBROUTINE cudss_free_factors
+    END INTERFACE
+    IF ( A % Cudss /= 0 ) CALL cudss_free_factors( A % Cudss )
+!------------------------------------------------------------------------------
+  END SUBROUTINE CUDSS_ReleaseFactors
 !------------------------------------------------------------------------------
 #endif
 
