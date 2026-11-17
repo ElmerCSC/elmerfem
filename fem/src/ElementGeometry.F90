@@ -1702,7 +1702,7 @@ END FUNCTION PointFaceDistance
     INTEGER :: SgnNode
 
 
-    INTEGER :: n,n_split,n_cut,ElemType,SplitCase,iCase,subcase
+    INTEGER :: n,ne,n_split,n_cut,ElemType,SplitCase,iCase,subcase
     INTEGER :: j,j2,j3,j4,mmax
     REAL(KIND=dp) :: s1,s2
 
@@ -1710,9 +1710,10 @@ END FUNCTION PointFaceDistance
     !$OMP THREADPRIVATE(subcase, j, j2, j3, j4, mmax, s1, s2)
 
     ElemType = Element % TYPE % ElementCode
-    n = ElemType / 100
+    n = Element % TYPE % NumberOfNodes
+    ne = Element % Type % NumberOfEdges
 
-    n_split = COUNT( ElemCut(n+1:2*n) )
+    n_split = COUNT( ElemCut(n+1:n+ne) )
     n_cut = COUNT( ElemCut(1:n) )
 
     IsMore = .FALSE.
@@ -1848,7 +1849,6 @@ END FUNCTION PointFaceDistance
         END IF
       END IF
 
-
       IF( subcase == 1 ) THEN
         mmax = 2
 
@@ -1970,6 +1970,107 @@ END FUNCTION PointFaceDistance
         END IF
       END IF
 
+
+      
+    CASE( 70640, 70642 )
+      ! Triangle being cut on two edges.
+      IF( m == 1 ) THEN
+        ! Find the only edge that is not cut
+        DO j=1,3
+          IF( .NOT. ElemCut( n + j ) ) EXIT
+        END DO
+        j2 = MODULO(j,3)+1
+        j3 = MODULO(j+1,3)+1
+        mmax = 3
+
+        ! There are two ways to split the triangle.
+        ! Choose the one with shorter diameter.
+        s1 = (ElemNodes % x(j) - ElemNodes % x(n + j2))**2 + &
+            (ElemNodes % y(j) - ElemNodes % y(n + j2))**2 + &
+            (ElemNodes % z(j) - ElemNodes % z(n + j2))**2
+        s2 = (ElemNodes % x(j2) - ElemNodes % x(n + j3))**2 + &
+            (ElemNodes % y(j2) - ElemNodes % y(n + j3))**2 + &
+            (ElemNodes % z(j2) - ElemNodes % z(n + j3))**2
+
+        LocalInds(1) = j
+        LocalInds(2) = j2
+
+        IF( s1 < s2 ) THEN
+          LocalInds(3) = n + j2
+        ELSE
+          LocalInds(3) = n + j3
+        END IF
+
+        SgnNode = 1
+        iCase = 1
+      ELSE IF(m==2) THEN
+        IF( s1 < s2 ) THEN
+          LocalInds(1) = j
+        ELSE
+          LocalInds(1) = j2
+        END IF
+        LocalInds(2) = n + j2
+        LocalInds(3) = n + j3
+
+        SgnNode = 1
+        iCase = 2
+      ELSE IF(m==3) THEN
+        LocalInds(1) = n + j3
+        LocalInds(2) = n + j2
+        LocalInds(3) = j3
+
+        SgnNode = 3
+        iCase = 3
+      END IF
+
+      LocalInds(4:6) = LocalInds(1:3) + 3 
+        
+    CASE( 70622 )
+      ! Triangle being cut on one edge and one node.
+      IF( m == 1 ) THEN
+        ! Find the only edge that is cut
+        DO j=1,3
+          IF( ElemCut( n + j ) ) EXIT
+        END DO
+
+        
+        j2 = MODULO(j,3)+1
+        j3 = MODULO(j+1,3)+1
+      END IF
+      
+      ! One cut result to splitted elements only if the opposing node is cut through
+      IF( ElemCut(j3) ) THEN
+        IF(m==1) THEN
+          LocalInds(1) = n + j
+          LocalInds(2) = j2
+          LocalInds(3) = j3
+
+          SgnNode = 2
+          iCase = 4
+          mmax = 2
+        ELSE IF(m==2) THEN
+          LocalInds(1) = n + j
+          LocalInds(2) = j3
+          LocalInds(3) = j
+
+          sgnNode = 3
+          iCase = 5
+        END IF
+      ELSE IF(ElemCut(j) .OR. ElemCut(j2)) THEN
+        LocalInds(1:3) = [1,2,3]
+
+        iCase = 6
+        SgnNode = j3
+        mmax = 1
+      END IF
+
+      LocalInds(4:6) = LocalInds(1:3) + 3
+      
+    CASE (70624, 80824)
+      !triangle/quad split along edge
+      IsCut = .FALSE.
+
+      
     CASE DEFAULT
       PRINT *,'ElemCut:',ElemCut(1:2*n)
       CALL Warn('SplitSingleElement','Unknown split case in element divisions: '//I2S(SplitCase))      
