@@ -1,3 +1,47 @@
+# ELMER_HOME and ELMER_LIB are what point the binaries at the build tree being
+# tested rather than at whatever happens to be installed.  RUN_ELMER_TEST and
+# EXECUTE_ELMER_SOLVER set them, but they only do so when they are called, and
+# a test that drives ElmerGrid, ViewFactors or Radiators directly through
+# EXECUTE_PROCESS spawns those before any macro has run.  Such a child then
+# inherits an empty environment and falls back to the compiled in
+# ELMER_SOLVER_HOME, i.e. to the install tree; on Windows getsolverhome()
+# ignores that define and looks next to the running exe instead, which in a
+# build tree holds no elements.def at all and the run dies before it writes
+# anything.  Set them here, at include time, so every child of a runtest.cmake
+# sees the same environment the solver gets.  Same values RUN_ELMER_TEST uses.
+#
+# BINARY_DIR is only defined when this is included from a runtest.cmake driven
+# by ctest; at configure time, where the test CMakeLists.txt include it, there
+# is nothing to point at and nothing to spawn.
+#
+# PATH matters just as much, and for a reason that only bites on Windows:
+# there is no RPATH there, so a freshly linked ViewFactors.exe finds
+# libelmersolver, fhutiter, matc, arpack and the compiler's own runtime DLLs
+# through PATH alone.  A child spawned before any macro ran therefore does not
+# start at all -- the loader kills it with STATUS_DLL_NOT_FOUND before main(),
+# so it writes nothing, not even to the error log the test redirected.  The
+# older radiation tests hid this: their ViewFactors call quietly did nothing
+# and ElmerSolver, which does run with PATH set, recomputed the missing
+# factors itself.  A test that reads ViewFactors.dat before the solver runs
+# has nothing to fall back on and just reports a file that does not exist.
+IF(DEFINED BINARY_DIR)
+  IF(NOT DEFINED ENV{ELMER_HOME} OR "$ENV{ELMER_HOME}" STREQUAL "")
+    SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
+  ENDIF()
+  IF(NOT DEFINED ENV{ELMER_LIB} OR "$ENV{ELMER_LIB}" STREQUAL "")
+    SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
+  ENDIF()
+  IF(NOT DEFINED ENV{ELMER_MODULES_PATH} OR "$ENV{ELMER_MODULES_PATH}" STREQUAL "")
+    SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/Solvers/MeshAdaptation_2D:${BINARY_DIR}/elmerice/UserFunctions")
+  ENDIF()
+  IF(NOT(WIN32))
+    SET(ENV{PATH} "${BINARY_DIR}/meshgen2d/src/:${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Utils:${BINARY_DIR}/fem/src:$ENV{PATH}")
+  ELSE()
+    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
+    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/meshgen2d/src/;${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};${BINARY_DIR}/elmerice/Solvers;${BINARY_DIR}/elmerice/Utils;${BINARY_DIR}/fem/src;$ENV{PATH}")
+  ENDIF()
+ENDIF()
+
 MACRO(ADD_ELMERICE_LABEL test_name label_string)
   SET_PROPERTY(TEST ${test_name} APPEND PROPERTY LABELS ${label_string})
 ENDMACRO()
@@ -49,17 +93,6 @@ MACRO(ADD_ELMERICETEST_MODULE test_name module_name file_name)
 ENDMACRO()
 
 MACRO(RUN_ELMERICE_TEST)
-  MESSAGE(STATUS "BINARY_DIR = ${BINARY_DIR}")
-  SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
-  SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
-  SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/Solvers/MeshAdaptation_2D:${BINARY_DIR}/elmerice/UserFunctions")
-
-  IF(WIN32)
-    SET(ENV{PATH} "${BINARY_DIR}/elmerice/Solvers;${BINARY_DIR}/elmerice/Utils;${BINARY_DIR}/fem/src;$ENV{PATH}")
-    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
-  ENDIF(WIN32)
-
   # Query number of physical CPU cores of the host
   cmake_host_system_information(RESULT PHYS_CPU QUERY NUMBER_OF_PHYSICAL_CORES)
 
@@ -146,28 +179,6 @@ MACRO(RUN_ELMERICE_TEST)
 ENDMACRO()
 
 MACRO(EXECUTE_ELMER_SOLVER SIFNAME)
-  SET(ENV{ELMER_HOME} "${BINARY_DIR}/fem/src")
-  SET(ENV{ELMER_LIB} "${BINARY_DIR}/fem/src/modules")
-
-  # The same environment RUN_ELMERICE_TEST builds, and for the same reasons.
-  # This macro used to set only ELMER_HOME and ELMER_LIB, which is enough on
-  # Linux and not on Windows: there the solver finds its DLLs through PATH, so
-  # without this it starts and dies immediately, leaving no TEST.PASSED behind
-  # and failing whatever reads it. Any test calling this macro alongside
-  # RUN_ELMERICE_TEST would see the second run work and the first not.
-  #
-  # ELMER_MODULES_PATH belongs here too, for the same reason: a case loading
-  # ElmerIceSolvers works under RUN_ELMERICE_TEST and not under this macro.
-  SET(ENV{ELMER_MODULES_PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Solvers/GridDataReader:${BINARY_DIR}/elmerice/Solvers/ScatteredDataInterpolator:${BINARY_DIR}/elmerice/Solvers/MeshAdaptation_2D:${BINARY_DIR}/elmerice/UserFunctions")
-
-  IF(WIN32)
-    SET(ENV{PATH} "${BINARY_DIR}/elmerice/Solvers;${BINARY_DIR}/elmerice/Utils;${BINARY_DIR}/fem/src;$ENV{PATH}")
-    GET_FILENAME_COMPONENT(COMPILER_DIRECTORY ${CMAKE_Fortran_COMPILER} PATH)
-    SET(ENV{PATH} "$ENV{ELMER_HOME};$ENV{ELMER_LIB};${BINARY_DIR}/fhutiter/src;${BINARY_DIR}/matc/src;${BINARY_DIR}/mathlibs/src/arpack;${BINARY_DIR}/mathlibs/src/parpack;${COMPILER_DIRECTORY};$ENV{PATH}")
-  ELSE()
-    SET(ENV{PATH} "${BINARY_DIR}/elmerice/Solvers:${BINARY_DIR}/elmerice/Utils:${BINARY_DIR}/fem/src:$ENV{PATH}")
-  ENDIF(WIN32)
-
   EXECUTE_PROCESS(COMMAND ${ELMERSOLVER_BIN} ${SIFNAME} OUTPUT_FILE "${SIFNAME}-stdout.log"
     ERROR_FILE "${SIFNAME}-stderr.log")
 ENDMACRO()
