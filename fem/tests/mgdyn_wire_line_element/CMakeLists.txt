@@ -1,5 +1,5 @@
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
-CONFIGURE_FILE(sif/thinline.sif sif/thinline.sif COPYONLY) 
+CONFIGURE_FILE(sif/thinline.sif sif/thinline.sif COPYONLY)
 file(COPY ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 file(COPY cable1d DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 ADD_ELMER_TEST(mgdyn_wire_line_element LABELS 3D thin_region mgdyn)

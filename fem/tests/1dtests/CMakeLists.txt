@@ -1,7 +1,7 @@
 INCLUDE(test_macros)
 INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
 
-CONFIGURE_FILE( 1d.sif 1d.sif COPYONLY)
+CONFIGURE_FILE(1d.sif 1d.sif COPYONLY)
 ADD_ELMERTEST_MODULE(1dtests Poisson Poisson.f90)
 ADD_ELMERTEST_MODULE(1dtests Source Source.f90)
 

@@ -3,7 +3,7 @@ SET(CMAKE_Fortran_MODULE_DIRECTORY
 
 # --------------------------------------------------------------------- #
 # -- Compilation Scattered2DDataInterpolator with external libraries -- #
-#                          NETCDF, CSA , NN 
+#                          NETCDF, CSA , NN
 # --------------------------------------------------------------------- #
 MESSAGE(STATUS "Elmer/Ice package: Looking for [NN] & [CSA] libraries")
 #FIND_PACKAGE(NETCDF)

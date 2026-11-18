@@ -35,12 +35,12 @@ IF(WITH_QT6)
   FOREACH(_pkg ${QT6_PKG_LIST})
     FIND_PACKAGE(${_pkg} PATHS ${QT6_PATH} REQUIRED)
   ENDFOREACH()
-  
+
   ADD_DEFINITIONS(-DWITH_QT6)
   MESSAGE(STATUS "  [ElmerGUI] Qt6:               " ${Qt6_FOUND})
   MESSAGE(STATUS "  [ElmerGUI] Qt6 Libraries: ${Qt6OpenGL_LIBRARIES} ${Qt6OpenGLWidgets_LIBRARIES} ${Qt6Qml_LIBRARIES} ${Qt6Xml_LIBRARIES} ${Qt6Gui_LIBRARIES} ${Qt6Core_LIBRARIES}")
   MESSAGE(STATUS "------------------------------------------------")
-  set(WITH_QT5 FALSE CACHE BOOL "" FORCE)  
+  set(WITH_QT5 FALSE CACHE BOOL "" FORCE)
 ELSEIF(WITH_QT5)
   MESSAGE(STATUS "------------------------------------------------")
   IF(WIN32)
@@ -100,7 +100,7 @@ IF(WITH_QWT)
   if( (QWT_QT_OUT GREATER 0) AND (WITH_QT5 OR WITH_QT6))
     MESSAGE(WARNING "  [ElmerGUI] Qt version mismatch with Qwt")
     MESSAGE(STATUS "------------------------------------------------")
-  endif()  
+  endif()
 ENDIF()
 
 IF(WITH_OCC)
@@ -138,7 +138,7 @@ IF(WITH_OCC)
     MESSAGE(STATUS "------------------------------------------------")
     SET(OpenCASCADE_INCLUDE_DIR ${OCE_INCLUDE_DIRS} CACHE PATH "Include dir for OCCT or OCE")
   ENDIF()
-  
+
 ENDIF()
 
 IF(WITH_VTK)
