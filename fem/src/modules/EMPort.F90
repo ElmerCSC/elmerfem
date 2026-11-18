@@ -202,6 +202,7 @@ END SUBROUTINE EMPortSolver_Init0
 SUBROUTINE EMPortSolver(Model, Solver, dt, Transient)
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE GeneralUtils, ONLY : ComplexVariableValues
   USE LinearAlgebra, ONLY : ComplexInvertMatrix
   IMPLICIT NONE

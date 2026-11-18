@@ -267,6 +267,7 @@ SUBROUTINE StressSolverLegacy_Init0( Model,Solver,dt,Transient )
 SUBROUTINE StressSolverLegacy_Init( Model,Solver,dt,Transient )
 !------------------------------------------------------------------------------
     USE DefUtils
+    USE CoordinateSystems, ONLY : CoordinateSystemDimension
     USE StressLocal, ONLY: SymTensorComponents, StressFieldDefinition
     IMPLICIT NONE
 

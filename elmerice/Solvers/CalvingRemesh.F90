@@ -713,6 +713,7 @@ CONTAINS
   SUBROUTINE CalvingRemesh(Model, Solver, Mesh, NewMesh, Parallel, Transient)
 
     USE CalvingGeometry
+    USE CoordinateSystems, ONLY : CoordinateSystemDimension
     USE MainUtils
     USE InterpVarToVar
 
