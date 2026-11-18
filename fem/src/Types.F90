@@ -272,6 +272,15 @@ MODULE Types
   END TYPE MumpsSolPlan_t
 #endif
 
+#ifdef HAVE_CUDSS
+  TYPE Cudss_t
+    INTEGER(KIND=AddrInt) :: Handle = 0   !< pointer to the ElmerCUDSS C struct (0 = none)
+    INTEGER :: nOwnLoc = -1               !< owned rows of this rank (<0 = cache empty)
+    INTEGER :: gStartLoc = 0              !< 0-based global start of the owned block
+    INTEGER :: nGlob = 0                  !< total global DOFs
+  END TYPE Cudss_t
+#endif
+
   TYPE Matrix_t
     TYPE(Matrix_t), POINTER :: Child => NULL(), Parent => NULL(), CircuitMatrix => NULL(), &
         ConstraintMatrix=>NULL(), EMatrix=>NULL(), AddMatrix=>NULL(), CollectionMatrix=>NULL()
@@ -350,7 +359,7 @@ MODULE Types
     INTEGER(KIND=AddrInt) :: Cholmod=0
 #endif
 #ifdef HAVE_CUDSS
-    INTEGER(KIND=AddrInt) :: Cudss=0
+    TYPE(Cudss_t) :: Cudss
 #endif
 #ifdef HAVE_HYPRE
     INTEGER(KIND=C_INTPTR_T) :: Hypre=0

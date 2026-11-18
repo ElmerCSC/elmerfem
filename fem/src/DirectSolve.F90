@@ -690,9 +690,9 @@ CONTAINS
 
   IF ( PRESENT(Free_Fact) ) THEN
     IF ( Free_Fact ) THEN
-      IF ( A % Cudss/=0 ) THEN
-        CALL cudss_ffree(A % Cudss)
-        A % Cudss = 0
+      IF ( A % Cudss % Handle/=0 ) THEN
+        CALL cudss_ffree(A % Cudss % Handle)
+        A % Cudss % Handle = 0
       END IF
       RETURN
     END IF
@@ -724,10 +724,10 @@ CONTAINS
      'Linear System Refactorize', Found )
   IF ( .NOT. Found ) Factorize = .TRUE.
 
-  IF ( Factorize .OR. A % Cudss==0 ) THEN
-    IF ( A % Cudss/=0 ) THEN
-      CALL cudss_ffree(A % Cudss)
-      A % Cudss = 0
+  IF ( Factorize .OR. A % Cudss % Handle==0 ) THEN
+    IF ( A % Cudss % Handle/=0 ) THEN
+      CALL cudss_ffree(A % Cudss % Handle)
+      A % Cudss % Handle = 0
     END IF
 
     ! Linear System Matrix Type Positive Definite keyword (as Pardiso_SolveSystem),
@@ -800,10 +800,10 @@ CONTAINS
         ZRows(ip+1) = k + 1
       END DO
 
-      A % Cudss = cudss_zfactorize( n, nnz, ZRows, ZCols, ZVals, mtype )
+      A % Cudss % Handle = cudss_zfactorize( n, nnz, ZRows, ZCols, ZVals, mtype )
       DEALLOCATE( ZRows, ZCols, ZVals )
 
-      IF ( A % Cudss == 0 ) THEN
+      IF ( A % Cudss % Handle == 0 ) THEN
         CALL Fatal('CUDSS_SolveSystem','cuDSS analysis/factorization failed.')
       END IF
     ! real general system,
@@ -841,11 +841,11 @@ CONTAINS
 
     IF ( .NOT. A % Complex ) THEN
       nnz = Rows(A % NumberOfRows+1)-1
-      A % Cudss = cudss_ffactorize( A % NumberOfRows, nnz, Rows, Cols, Vals, mtype )
+      A % Cudss % Handle = cudss_ffactorize( A % NumberOfRows, nnz, Rows, Cols, Vals, mtype )
 
       IF ( mtype /= 0 ) DEALLOCATE( TRows, TCols, TVals )
 
-      IF ( A % Cudss == 0 ) THEN
+      IF ( A % Cudss % Handle == 0 ) THEN
         CALL Fatal('CUDSS_SolveSystem','cuDSS analysis/factorization failed.')
       END IF
     END IF
@@ -862,7 +862,7 @@ CONTAINS
       zb(i/2+1) = CMPLX( b(i), b(i+1), KIND=dp )
     END DO
 
-    CALL cudss_zsolve( A % Cudss, n, zx, zb, SolveOk )
+    CALL cudss_zsolve( A % Cudss % Handle, n, zx, zb, SolveOk )
     IF ( SolveOk == 0 ) THEN
       DEALLOCATE( zb, zx )
       CALL Fatal('CUDSS_SolveSystem','cuDSS solve failed.')
@@ -875,7 +875,7 @@ CONTAINS
 
     DEALLOCATE( zb, zx )
   ELSE
-    CALL cudss_fsolve( A % Cudss, A % NumberOfRows, x, b, SolveOk )
+    CALL cudss_fsolve( A % Cudss % Handle, A % NumberOfRows, x, b, SolveOk )
     IF ( SolveOk == 0 ) CALL Fatal('CUDSS_SolveSystem','cuDSS solve failed.')
   END IF
 
@@ -884,8 +884,8 @@ CONTAINS
   IF ( .NOT. Found ) FreeFactorize = .TRUE.
 
   IF ( Factorize .AND. FreeFactorize ) THEN
-    CALL cudss_ffree(A % Cudss)
-    A % Cudss = 0
+    CALL cudss_ffree(A % Cudss % Handle)
+    A % Cudss % Handle = 0
   END IF
 #else
    CALL Fatal( 'CUDSS_SolveSystem', 'cuDSS Solver has not been installed.' )
@@ -908,6 +908,7 @@ CONTAINS
 #  endif
 #endif
     LOGICAL, OPTIONAL :: Free_Fact
+    LOGICAL :: FreeFactorize
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp) :: x(*), b(*)
@@ -919,11 +920,14 @@ CONTAINS
     INTERFACE
       ! cudss is in/out: 0 on the first factorization (a context is created),
       ! the live context thereafter (reused handle, factors rebuilt), 0 on failure.
+      ! reuse_pivoting (0/1): on a value-only refactorization, run
+      ! CUDSS_PHASE_REFACTORIZATION (reuse the pivot pattern) instead of
+      ! CUDSS_PHASE_FACTORIZATION. Ignored on the first build / a rebuild.
       SUBROUTINE cudss_dfactorize_par(cudss,nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
-          rows,cols,vals,mtype,fcomm) BIND(c,NAME="cudss_dfactorize_par")
+          rows,cols,vals,mtype,reuse_pivoting,fcomm) BIND(c,NAME="cudss_dfactorize_par")
         USE Types
         INTEGER(KIND=AddrInt) :: cudss
-        INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,fcomm
+        INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,reuse_pivoting,fcomm
         INTEGER :: rows(*), cols(*)
         REAL(KIND=dp) :: vals(*)
       END SUBROUTINE cudss_dfactorize_par
@@ -936,9 +940,9 @@ CONTAINS
       END SUBROUTINE cudss_fsolve
     END INTERFACE
 
-    LOGICAL :: Factorize, FreeFactorize, Found
+    LOGICAL :: Factorize, Found
     INTEGER :: n, i, nOwnLoc, gStartLoc, nGlob, nnzLoc, nnzGlob
-    INTEGER :: first_row, last_row, mtype, SolveOk, ierr
+    INTEGER :: first_row, last_row, mtype, SolveOk, ierr, reuse_piv
     INTEGER, ALLOCATABLE :: Owner(:), Rloc(:), Cloc(:)
     REAL(KIND=dp), ALLOCATABLE :: Vloc(:), bsum(:), bloc(:), xloc(:)
 
@@ -952,8 +956,14 @@ CONTAINS
 
     n = A % NumberOfRows
 
-    ! Global continuous numbering
-    CALL CUDSS_GRenumberAndCount( A, Owner, nOwnLoc, gStartLoc, nGlob )
+    ! Global continuous numbering. Caching is checked in CUDSS_GRenumberAndCount 
+    CALL CUDSS_GRenumberAndCount( A )
+    nOwnLoc   = A % Cudss % nOwnLoc
+    gStartLoc = A % Cudss % gStartLoc
+    nGlob     = A % Cudss % nGlob
+
+    ALLOCATE( Owner(n) )
+    Owner = MERGE( 1, 0, A % Gorder > gStartLoc .AND. A % Gorder <= gStartLoc + nOwnLoc )
 
     first_row = gStartLoc                 ! 0-based, inclusive
     last_row  = gStartLoc + nOwnLoc - 1   ! empty rank: last_row = first_row-1
@@ -963,10 +973,16 @@ CONTAINS
     Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
     IF ( .NOT. Found ) Factorize = .TRUE.
 
-    IF ( Factorize .OR. A % Cudss==0 ) THEN
+    IF ( Factorize .OR. A % Cudss % Handle==0 ) THEN
       ! No full free here: cudss_dfactorize_par reuses the live handle/comm layer
-      ! when A % Cudss is set and only rebuilds the factors, which avoids the
+      ! when A % Cudss % Handle is set and only rebuilds the factors, which avoids the
       ! per-timestep comm-layer leak in the distributed path.
+
+      ! Reuse the pivot pattern on a value-only refactorization
+      ! when the user asks for it; the first build always full-factorizes.
+      reuse_piv = 0
+      IF ( ListGetLogical( Solver % Values, 'Linear System Reuse Pivoting', Found ) ) &
+          reuse_piv = 1
 
       ! Assemble the owned rows into one fully summed CSR with global column
       ! indices. This is where the shared interface rows are summed into their
@@ -975,11 +991,11 @@ CONTAINS
               Rloc, Cloc, Vloc, nnzLoc )
       CALL MPI_ALLREDUCE( nnzLoc, nnzGlob, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
 
-      CALL cudss_dfactorize_par( A % Cudss, nGlob, nnzGlob, nOwnLoc, nnzLoc, &
-              first_row, last_row, Rloc, Cloc, Vloc, mtype, A % Comm )
+      CALL cudss_dfactorize_par( A % Cudss % Handle, nGlob, nnzGlob, nOwnLoc, nnzLoc, &
+              first_row, last_row, Rloc, Cloc, Vloc, mtype, reuse_piv, A % Comm )
       DEALLOCATE( Rloc, Cloc, Vloc )
 
-      IF ( A % Cudss == 0 ) &
+      IF ( A % Cudss % Handle == 0 ) &
           CALL Fatal('CUDSS_SolveSystem','distributed cuDSS factorization failed.')
     END IF
 
@@ -994,7 +1010,7 @@ CONTAINS
     END DO
     DEALLOCATE( bsum )
 
-    CALL cudss_fsolve( A % Cudss, nOwnLoc, xloc, bloc, SolveOk )
+    CALL cudss_fsolve( A % Cudss % Handle, nOwnLoc, xloc, bloc, SolveOk )
     IF ( SolveOk == 0 ) &
         CALL Fatal('CUDSS_SolveSystem','distributed cuDSS solve failed.')
 
@@ -1011,11 +1027,8 @@ CONTAINS
 
     FreeFactorize = ListGetLogical( Solver % Values, &
         'Linear System Free Factorization', Found )
-    IF ( .NOT. Found ) FreeFactorize = .TRUE.
-    IF ( Factorize .AND. FreeFactorize ) THEN
-      ! Free the factors but keep the handle/comm layer alive for the next
-      ! refactorization (fully destroyed via Free_Fact at matrix teardown).
-      CALL CUDSS_ReleaseFactors( A )
+    IF( Found .and. FreeFactorize ) then
+      Call Warn('CUDSS_DistSolveReal','Freeing factorization of distributed cuDSS solver is not available.')
     END IF
 #else
     CALL Fatal( 'CUDSS_DistSolveReal', 'cuDSS Solver has not been installed.' )
@@ -1040,6 +1053,7 @@ CONTAINS
 #  endif
 #endif
     LOGICAL, OPTIONAL :: Free_Fact
+    LOGICAL :: FreeFactorize
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp) :: x(*), b(*)
@@ -1051,11 +1065,14 @@ CONTAINS
     INTERFACE
       ! cudss is in/out: 0 on the first factorization (a context is created),
       ! the live context thereafter (reused handle, factors rebuilt), 0 on failure.
+      ! reuse_pivoting (0/1): on a value-only refactorization, run
+      ! CUDSS_PHASE_REFACTORIZATION (reuse the pivot pattern) instead of
+      ! CUDSS_PHASE_FACTORIZATION. Ignored on the first build / a rebuild.
       SUBROUTINE cudss_zdfactorize_par(cudss,nglob,nnz_glob,nloc,nnzloc,first_row,last_row, &
-          rows,cols,vals,mtype,fcomm) BIND(c,NAME="cudss_zdfactorize_par")
+          rows,cols,vals,mtype,reuse_pivoting,fcomm) BIND(c,NAME="cudss_zdfactorize_par")
         USE Types
         INTEGER(KIND=AddrInt) :: cudss
-        INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,fcomm
+        INTEGER :: nglob,nnz_glob,nloc,nnzloc,first_row,last_row,mtype,reuse_pivoting,fcomm
         INTEGER :: rows(*), cols(*)
         COMPLEX(KIND=dp) :: vals(*)
       END SUBROUTINE cudss_zdfactorize_par
@@ -1068,10 +1085,10 @@ CONTAINS
       END SUBROUTINE cudss_zsolve
     END INTERFACE
 
-    LOGICAL :: Factorize, FreeFactorize, Found
+    LOGICAL :: Factorize, Found
     INTEGER :: n, i, lc, nOwnLoc, gStartLoc, nOwnC, gStartC, nGlob, nGlobC
     INTEGER :: nnzLoc, nnzLocC, nnzGlobC, first_row, last_row, mtype, SolveOk, ierr
-    INTEGER :: evenLoc, evenAll
+    INTEGER :: evenLoc, evenAll, reuse_piv
     INTEGER, ALLOCATABLE :: Owner(:), Rloc(:), Cloc(:), ZRloc(:), ZCloc(:)
     REAL(KIND=dp), ALLOCATABLE :: Vloc(:), bsum(:)
     COMPLEX(KIND=dp), ALLOCATABLE :: ZVloc(:), zbloc(:), zxloc(:)
@@ -1086,8 +1103,14 @@ CONTAINS
 
     n = A % NumberOfRows
 
-    ! Global continuous numbering
-    CALL CUDSS_GRenumberAndCount( A, Owner, nOwnLoc, gStartLoc, nGlob )
+    ! Global continuous numbering. Caching is checked in CUDSS_GRenumberAndCount.
+    CALL CUDSS_GRenumberAndCount( A )
+    nOwnLoc   = A % Cudss % nOwnLoc
+    gStartLoc = A % Cudss % gStartLoc
+    nGlob     = A % Cudss % nGlob
+
+    ALLOCATE( Owner(n) )
+    Owner = MERGE( 1, 0, A % Gorder > gStartLoc .AND. A % Gorder <= gStartLoc + nOwnLoc )
 
     ! Complex blocks need an even owned base and count on every rank; the choice
     ! must be unanimous or the collective factorize would diverge. If it does not
@@ -1116,10 +1139,16 @@ CONTAINS
     Factorize = ListGetLogical( Solver % Values, 'Linear System Refactorize', Found )
     IF ( .NOT. Found ) Factorize = .TRUE.
 
-    IF ( Factorize .OR. A % Cudss==0 ) THEN
+    IF ( Factorize .OR. A % Cudss % Handle==0 ) THEN
       ! No full free here: cudss_zdfactorize_par reuses the live handle/comm layer
-      ! when A % Cudss is set and only rebuilds the factors, which avoids the
+      ! when A % Cudss % Handle is set and only rebuilds the factors, which avoids the
       ! per-timestep comm-layer leak in the distributed path.
+
+      ! Reuse the pivot pattern on a value-only refactorization
+      ! when the user asks for it; the first build always full-factorizes.
+      reuse_piv = 0
+      IF ( ListGetLogical( Solver % Values, 'Linear System Reuse Pivoting', Found ) ) &
+          reuse_piv = 1
 
       ! Assemble the owned scalar rows (real, summed), then pack the 2x2 blocks
       ! into a complex CSR of order nOwnC.
@@ -1131,11 +1160,11 @@ CONTAINS
 
       CALL MPI_ALLREDUCE( nnzLocC, nnzGlobC, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
 
-      CALL cudss_zdfactorize_par( A % Cudss, nGlobC, nnzGlobC, nOwnC, nnzLocC, &
-              first_row, last_row, ZRloc, ZCloc, ZVloc, mtype, A % Comm )
+      CALL cudss_zdfactorize_par( A % Cudss % Handle, nGlobC, nnzGlobC, nOwnC, nnzLocC, &
+              first_row, last_row, ZRloc, ZCloc, ZVloc, mtype, reuse_piv, A % Comm )
       DEALLOCATE( ZRloc, ZCloc, ZVloc )
 
-      IF ( A % Cudss == 0 ) &
+      IF ( A % Cudss % Handle == 0 ) &
           CALL Fatal('CUDSS_SolveSystem','distributed complex cuDSS factorization failed.')
     END IF
 
@@ -1152,7 +1181,7 @@ CONTAINS
     END DO
     DEALLOCATE( bsum )
 
-    CALL cudss_zsolve( A % Cudss, nOwnC, zxloc, zbloc, SolveOk )
+    CALL cudss_zsolve( A % Cudss % Handle, nOwnC, zxloc, zbloc, SolveOk )
     IF ( SolveOk == 0 ) &
         CALL Fatal('CUDSS_SolveSystem','distributed complex cuDSS solve failed.')
 
@@ -1172,11 +1201,8 @@ CONTAINS
 
     FreeFactorize = ListGetLogical( Solver % Values, &
         'Linear System Free Factorization', Found )
-    IF ( .NOT. Found ) FreeFactorize = .TRUE.
-    IF ( Factorize .AND. FreeFactorize ) THEN
-      ! Free the factors but keep the handle/comm layer alive for the next
-      ! refactorization (fully destroyed via Free_Fact at matrix teardown).
-      CALL CUDSS_ReleaseFactors( A )
+    IF( Found .AND. FreeFactorize ) THEN
+      Call Warn('CUDSS_DistSolveComplex','Freeing factorization of distributed cuDSS solver is not available.')
     END IF
 #else
     CALL Fatal( 'CUDSS_DistSolveComplex', 'cuDSS Solver has not been installed.' )
@@ -1188,29 +1214,37 @@ CONTAINS
 
 #ifdef HAVE_CUDSS
 !------------------------------------------------------------------------------
-!> Global contiguous renumbering of dofs with ContinuousNumbering and counting global 
-!> dofs with MPI_ALLREDUCE for CUDSS MGMN. This rank is assigned to rows
+!> Global contiguous renumbering of dofs with ContinuousNumbering and counting
+!> global dofs with MPI_ALLREDUCE for CUDSS MGMN. This rank is assigned to rows
 !> [gStartLoc+1, gStartLoc+nOwnLoc] in the global system.
+!> Cached numbering is used if A % cudss % nOwnLoc >= 0 and A % Gorder is associated.
 !------------------------------------------------------------------------------
-  SUBROUTINE CUDSS_GRenumberAndCount( A, Owner, nOwnLoc, gStartLoc, nGlob )
+  SUBROUTINE CUDSS_GRenumberAndCount( A )
 !------------------------------------------------------------------------------
 #ifdef ELMER_HAVE_MPI_MODULE
     USE mpi
 #endif
     TYPE(Matrix_t) :: A
-    INTEGER, ALLOCATABLE :: Owner(:)
-    INTEGER :: nOwnLoc, gStartLoc, nGlob
 #ifdef ELMER_HAVE_MPIF_HEADER
     INCLUDE 'mpif.h'
 #endif
+    INTEGER, ALLOCATABLE :: Owner(:)
     INTEGER :: n, ierr
 !------------------------------------------------------------------------------
     n = A % NumberOfRows
+
+    ! Cache hit
+    IF ( A % Cudss % nOwnLoc >= 0 .AND. ASSOCIATED(A % Gorder) ) THEN
+      IF ( SIZE(A % Gorder) == n ) RETURN
+    END IF
+
     IF ( ASSOCIATED(A % Gorder) ) DEALLOCATE(A % Gorder)
     ALLOCATE( A % Gorder(n), Owner(n) )
     CALL ContinuousNumbering( A % ParallelInfo, A % Perm, A % Gorder, Owner, &
-            nOwn=nOwnLoc, gStart=gStartLoc )
-    CALL MPI_ALLREDUCE( SUM(Owner), nGlob, 1, MPI_INTEGER, MPI_SUM, A % Comm, ierr )
+            nOwn=A % Cudss % nOwnLoc, gStart=A % Cudss % gStartLoc )
+    CALL MPI_ALLREDUCE( SUM(Owner), A % Cudss % nGlob, 1, MPI_INTEGER, MPI_SUM, &
+            A % Comm, ierr )
+    DEALLOCATE( Owner )
 !------------------------------------------------------------------------------
   END SUBROUTINE CUDSS_GRenumberAndCount
 !------------------------------------------------------------------------------
@@ -1230,34 +1264,15 @@ CONTAINS
         INTEGER(KIND=AddrInt) :: cudss
       END SUBROUTINE cudss_ffree
     END INTERFACE
-    IF ( A % Cudss /= 0 ) THEN
-      CALL cudss_ffree( A % Cudss )
-      A % Cudss = 0
+    IF ( A % Cudss % Handle /= 0 ) THEN
+      CALL cudss_ffree( A % Cudss % Handle )
+      A % Cudss % Handle = 0
     END IF
+    ! Invalidate the cached MGMN renumbering; the next factorization recomputes
+    ! it. A % Gorder is left for FreeMatrix to release (it is shared storage).
+    A % Cudss % nOwnLoc = -1
 !------------------------------------------------------------------------------
   END SUBROUTINE CUDSS_FreeHandle
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-!> Release the stored cuDSS factors (data object, matrices, device buffers) but
-!> keep the handle and comm layer alive for the next refactorization. Used for
-!> the distributed drivers' post-solve "Linear System Free Factorization" so the
-!> comm layer is not torn down and recreated -- and leaked -- every timestep.
-!> A % Cudss is deliberately left set; CUDSS_FreeHandle does the full teardown.
-!------------------------------------------------------------------------------
-  SUBROUTINE CUDSS_ReleaseFactors( A )
-!------------------------------------------------------------------------------
-    TYPE(Matrix_t) :: A
-    INTERFACE
-      SUBROUTINE cudss_free_factors(cudss) BIND(c,NAME="cudss_free_factors")
-        USE Types
-        INTEGER(KIND=AddrInt) :: cudss
-      END SUBROUTINE cudss_free_factors
-    END INTERFACE
-    IF ( A % Cudss /= 0 ) CALL cudss_free_factors( A % Cudss )
-!------------------------------------------------------------------------------
-  END SUBROUTINE CUDSS_ReleaseFactors
 !------------------------------------------------------------------------------
 #endif
 
