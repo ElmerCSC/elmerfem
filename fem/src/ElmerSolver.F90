@@ -3921,6 +3921,7 @@
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
     CHARACTER(MAX_PATH_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
+    TYPE(Mesh_t), POINTER :: OrigMesh
 
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 
@@ -3938,6 +3939,9 @@
     IF ( ParEnv % PEs > 1 ) THEN
       PostFile = PostFile // '.' // i2s(ParEnv % MyPE)
     END IF
+
+    ! Remember the current mesh so that it can be restored after the loop.
+    OrigMesh => CurrentModel % Mesh
 
     ! Loop over all meshes
     !---------------------------------------------------
@@ -4082,6 +4086,10 @@
       END IF
       Mesh => Mesh % Next
     END DO
+
+    ! Restore the original mesh. Otherwise CurrentModel % Mesh is left pointing to the
+    ! last saved mesh which may be freed later (e.g. SplitFEM meshes).
+    IF( ASSOCIATED(OrigMesh) ) CALL SetCurrentMesh( CurrentModel, OrigMesh )
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveToPost
 !------------------------------------------------------------------------------

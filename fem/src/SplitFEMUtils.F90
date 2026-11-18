@@ -48,7 +48,7 @@ MODULE SplitFemUtils
   USE Interpolation, ONLY : CopyElementNodesFromMesh
   USE ElementDescription
   USE MatrixAssembly
-  USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams
+  USE MeshBasics, ONLY : AllocateMesh, FindMeshEdges, MeshStabParams, SetCurrentMesh
   USE ModelDescription, ONLY : FreeMesh
   USE SolverBasics, ONLY : GaussPointsAdapt, VectorValuesRange
   USE SolveCore, ONLY : SolveLinearSystem
@@ -2088,6 +2088,14 @@ CONTAINS
     CALL SetSplitFEMBodies(Model,Mesh,Revert=.TRUE.)
 
     IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
+      ! Output routines (ResultOutputSolver, SaveToPost) loop over all meshes and may
+      ! leave Model % Mesh pointing to one of the SplitFEM meshes freed below.
+      IF( ASSOCIATED(Model % Mesh, Solver % Mesh % Next) ) THEN
+        CALL SetCurrentMesh(Model, Mesh)
+      ELSE IF( ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
+        IF( ASSOCIATED(Model % Mesh, Solver % Mesh % Next % Next) ) &
+            CALL SetCurrentMesh(Model, Mesh)
+      END IF
       IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
         CALL FreeMesh(Solver % Mesh % Next % Next )
       END IF
