@@ -62,7 +62,7 @@ MODULE SplitFemUtils
   PRIVATE
   
   LOGICAL, ALLOCATABLE :: CutDof(:)
-  INTEGER, POINTER :: ExtendPerm(:) => NULL(), CutPerm(:) => NULL(), PhiPerm(:) => NULL(), XiPerm(:)
+  INTEGER, POINTER :: ExtendPerm(:) => NULL(), CutPerm(:) => NULL(), PhiPerm(:) => NULL(), XiPerm(:) => NULL()
   REAL(KIND=dp), POINTER :: ExtendValues(:) => NULL(), PhiValues(:) => NULL()
   INTEGER, POINTER :: AddActiveElements(:) => NULL(), UnsplitActiveElements(:) => NULL()
   REAL(KIND=dp), ALLOCATABLE, TARGET :: CutInterp(:)
@@ -104,13 +104,12 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(ValueList_t), POINTER :: Params
 
-    INTEGER :: i,i1,i2,j,j1,j2,k,nn,ne,body_in,body_out,body_cut,InsideCnt(3),dofs
+    INTEGER :: i,i1,i2,j,j1,j2,k,nn,ne,body_in,body_out,body_cut,InsideCnt(3)
     REAL(KIND=dp) :: h1,h2,hprod,NodeEps,EdgeEps,r
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(Variable_t), POINTER :: Var, PhiVar
-    TYPE(Element_t), POINTER :: Element, pElement
-    CHARACTER(:), ALLOCATABLE :: str       
-    LOGICAL :: Found, PassiveInside, PassiveOutside, isCut, isMore, UseAbsEps, Hit
+    TYPE(Element_t), POINTER :: Element
+    LOGICAL :: Found, PassiveInside, PassiveOutside, UseAbsEps, Hit
     REAL(KIND=dp), POINTER :: xtmp(:)    
     LOGICAL :: UpdateOrigCoords
     CHARACTER(*), PARAMETER :: Caller = 'CreateSplitFEMPerm'
@@ -623,8 +622,6 @@ CONTAINS
     TYPE(Variable_t) :: Var
 
     TYPE(Mesh_t), POINTER :: Mesh
-    TYPE(ValueList_t), POINTER :: Params
-
     INTEGER :: i,i1,i2,j,k,nn,ne,dofs,m
     REAL(KIND=dp) :: r
     INTEGER, POINTER :: Indexes(:), TmpPerm(:)
@@ -708,7 +705,7 @@ CONTAINS
 
     INTEGER :: body_in, body_out, body_cut
     TYPE(Element_t), POINTER :: Element
-    INTEGER :: i,j,k,ne,nn,t
+    INTEGER :: i,j,ne,nn,t
     INTEGER :: InsideCnt(3)
     INTEGER, POINTER :: NodeIndexes(:)
     LOGICAL :: Found
@@ -894,7 +891,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER, OPTIONAL :: MimicMat
 
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: i,j,k,l,t,m,n,dofs,nn,active
+    INTEGER :: i,j,t,m,n,dofs,nn
     INTEGER, ALLOCATABLE :: BlockInds(:),DofInds(:)
     TYPE(Element_t), POINTER :: Element
     INTEGER, SAVE :: AllocVecs(3)
@@ -1019,7 +1016,7 @@ CONTAINS
     INTEGER, POINTER, OPTIONAL :: ExtPerm(:)
 
     INTEGER, SAVE :: n_split, n_cut, n_act
-    INTEGER :: j,j2,j3,nn,ne
+    INTEGER :: nn
     LOGICAL :: Visited = .FALSE.
     INTEGER, POINTER :: Perm(:)
     TYPE(Mesh_t), POINTER :: Mesh
@@ -1065,7 +1062,6 @@ CONTAINS
     INTEGER :: SgnNode, i, n, m, nn, ElemType, body_out, body_in, CutCnt, PSweep
     LOGICAL :: Found
     REAL(KIND=dp), POINTER :: x(:), y(:), z(:)
-    CHARACTER(:), ALLOCATABLE :: str       
     TYPE(Variable_t), POINTER :: PhiVar !Var
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Solver_t), POINTER :: Solver => NULL()
@@ -1096,20 +1092,23 @@ CONTAINS
       z => Mesh % Nodes % z
 
       ! Create empty element skeletons that are filled when splitting elements. 
-      Elem303 % TYPE => GetElementType(303)
-      ALLOCATE(Elem303 % NodeIndexes(3))      
-      Elem303 % NodeIndexes = 0
+      ! These are saved, so allocate the node indexes only once.
+      IF(.NOT. ASSOCIATED(Elem303 % NodeIndexes)) THEN
+        Elem303 % TYPE => GetElementType(303)
+        ALLOCATE(Elem303 % NodeIndexes(3))      
       
-      Elem404 % TYPE => GetElementType(404)
-      ALLOCATE(Elem404 % NodeIndexes(4))      
-      Elem404 % NodeIndexes = 0
+        Elem404 % TYPE => GetElementType(404)
+        ALLOCATE(Elem404 % NodeIndexes(4))      
 
-      Elem706 % TYPE => GetElementType(706)
-      ALLOCATE(Elem706 % NodeIndexes(6))      
-      Elem706 % NodeIndexes = 0
+        Elem706 % TYPE => GetElementType(706)
+        ALLOCATE(Elem706 % NodeIndexes(6))      
       
-      Elem808 % TYPE => GetElementType(808)
-      ALLOCATE(Elem808 % NodeIndexes(8))      
+        Elem808 % TYPE => GetElementType(808)
+        ALLOCATE(Elem808 % NodeIndexes(8))      
+      END IF
+      Elem303 % NodeIndexes = 0
+      Elem404 % NodeIndexes = 0
+      Elem706 % NodeIndexes = 0
       Elem808 % NodeIndexes = 0
 
       PhiVar => VariableGet(Mesh % Variables, CutStr, ThisOnly=.TRUE.)
@@ -1689,7 +1688,7 @@ CONTAINS
     INTEGER :: nBulk, nBC
     
     TYPE(Mesh_t), POINTER :: Mesh
-    INTEGER :: Active, t, n, nBulk0, nBC0, t0
+    INTEGER :: t, nBulk0, nBC0, t0
     TYPE(Element_t), POINTER :: Element, pElement
     LOGICAL :: isCut, isMore, isActive
     
@@ -1799,6 +1798,7 @@ CONTAINS
 
     ! In the AddMesh all elements are active by construction.
     n = SplitFEMAddMesh % NumberOfBulkElements
+    IF(ASSOCIATED(AddActiveElements)) DEALLOCATE(AddActiveElements)
     ALLOCATE(AddActiveElements(n))
     DO i=1,n
       AddActiveElements(i) = i
@@ -1865,8 +1865,8 @@ CONTAINS
     REAL(KIND=dp) :: weight, dcoeff 
     REAL(KIND=dp) :: Basis(n),dBasisdx(n,3),DetJ
     REAL(KIND=dp) :: STIFF(n,n), FORCE(n), LOAD(n)
-    LOGICAL :: Stat,Found,CutElem
-    INTEGER :: i,j,t,p,q
+    LOGICAL :: Stat,CutElem
+    INTEGER :: t
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(Nodes_t) :: Nodes
 
@@ -1913,7 +1913,7 @@ CONTAINS
     TYPE(Matrix_t), POINTER :: B
     TYPE(Mesh_t), POINTER :: Mesh
     TYPE(Element_t), POINTER :: pElement, Element
-    INTEGER :: i,j,k,l,n,t,active,nn,ne,i1,i2,dofs
+    INTEGER :: i,j,k,l,n,t,nn,ne,i1,i2,dofs
     LOGICAL :: IsCut, IsMore, Found, CopyBack
     REAL(KIND=dp) :: s, r, dval, norm, norm0
     REAL(KIND=dp), ALLOCATABLE :: NodeWeigth(:)
@@ -2112,10 +2112,7 @@ CONTAINS
       TYPE(Model_t) :: Model
       TYPE(Solver_t) :: Solver
 
-      TYPE(Element_t), POINTER :: Element
       TYPE(Variable_t), POINTER :: Variable
-      INTEGER :: i,t 
-      LOGICAL :: Found
 
       IF( .NOT. Solver % SplitFEM ) RETURN
 
@@ -2173,14 +2170,13 @@ CONTAINS
     CHARACTER(*), OPTIONAL :: ProjectPrefix
     TYPE(Mesh_t), POINTER :: NewMesh
 !------------------------------------------------------------------------------
-    INTEGER :: i, j, k, n, t1, t2 
+    INTEGER :: i, j, k, t1, t2 
     INTEGER :: NodeCnt
     INTEGER :: nn, ne, nBC, nBulk, t, ntot, Sweep, InterfaceBC
     LOGICAL :: Found, isActive, isMore, isCut, Create1D
     TYPE(Element_t), POINTER :: pElement,Element,Edge
     REAL(KIND=dp) :: r
     INTEGER, POINTER :: MeshPerm(:) => NULL()
-    REAL(KIND=dp), POINTER :: Values(:)
     CHARACTER(:), ALLOCATABLE :: VarName
     TYPE(ValueList_t), POINTER :: Params
     INTEGER, ALLOCATABLE :: BulkMap(:), BulkCnt(:)
@@ -2488,7 +2484,7 @@ CONTAINS
     SUBROUTINE InterpolateLevelsetVariables()
 
       INTEGER :: iVar, dofs, l, j
-      TYPE(Variable_t), POINTER :: Var, pVar
+      TYPE(Variable_t), POINTER :: Var
       REAL(KIND=dp), POINTER :: Values(:)
       INTEGER, POINTER :: Perm(:)
       LOGICAL :: IsCutVar
@@ -2692,11 +2688,11 @@ CONTAINS
     TYPE(Mesh_t), POINTER :: IsoMesh => NULL()
     REAL(KIND=dp), POINTER :: x(:), y(:)
     REAL(KIND=dp) :: val, Vx, Vy, dt, VPhi, PhiMax, BW, cosphi0
-    REAL(KIND=dp), ALLOCATABLE :: NodeDiff(:),ValStore(:)
+    REAL(KIND=dp), ALLOCATABLE :: NodeDiff(:)
     CHARACTER(:), ALLOCATABLE :: str       
     LOGICAL :: Found, Nonzero, MovingLevelset, NormalMove, NodeHistory, Positive, CheckLS
     LOGICAL, ALLOCATABLE :: Trust(:), DoesElemIntersect(:)
-    INTEGER :: nVar,i,j,iAvoid,k,l,counter,NNeighbours,MyPE
+    INTEGER :: nVar,i,j,l,iAvoid,counter,NNeighbours,MyPE
     INTEGER, ALLOCATABLE :: LocalPerm(:),Neighbours(:),nSend(:),nRecv(:)
     INTEGER, POINTER :: NodeIndexes(:)
     TYPE(ValueList_t), POINTER :: Params
@@ -2906,7 +2902,7 @@ CONTAINS
     SUBROUTINE LevelsetNormalMove()
       !------------------------------------------------------------------------------      
       REAL(KIND=dp) :: x0,y0,x1,y1,ss,phi0,phi1,Normal(2),wei
-      INTEGER :: i,j,k,n,i0,i1
+      INTEGER :: i,n,i0,i1
       
       REAL(KIND=dp), ALLOCATABLE :: dx(:), dy(:), NodeWeight(:)
       
@@ -3141,7 +3137,7 @@ CONTAINS
       !TYPE(PolylineData_t), POINTER :: PolylineData
       LOGICAL :: DoesElemIntersect(:)
       !------------------------------------------------------------------------------
-      INTEGER :: i,j,k,nLines
+      INTEGER :: i,j,k
       INTEGER, POINTER :: NodeIndexes(:)
       REAL(KIND=dp) :: xmin_tri,xmax_tri,ymin_tri,ymax_tri,xmin_seg,xmax_seg,ymin_seg,ymax_seg,&
         a1(2),a2(2),intersect_p(2),x0,x1,y0,y1
@@ -3221,7 +3217,7 @@ CONTAINS
       INTEGER, ALLOCATABLE :: PL_local(:,:),NodeToElem(:,:),NodeElemCount(:),RecvElems(:,:),&
         rdisps(:),RecvFrom(:),Neighbours(:)
       TYPE(Variable_t), POINTER :: Var1D => NULL()
-      INTEGER :: iVar,MyPe,PEs,Phase,nLines,Next,counter,NInter,SharedCount,NextP,nMax,NPInter,Nexts(2)
+      INTEGER :: MyPe,PEs,Phase,nLines,Next,counter,NInter,SharedCount,NextP,nMax,NPInter,Nexts(2)
       LOGICAL, ALLOCATABLE :: Skip(:),RemoveLines(:,:)
       LOGICAL :: intersect
       TYPE(ValueList_t), POINTER :: Params
@@ -3270,7 +3266,7 @@ CONTAINS
       IF(PEs > 1) THEN
         BLOCK
           INTEGER, ALLOCATABLE :: SendCount(:),SendElems(:,:)
-          INTEGER :: comm, ierr, status(MPI_STATUS_SIZE)
+          INTEGER :: comm, ierr
 
           comm = Solver % Matrix % Comm
 
@@ -4182,7 +4178,7 @@ CONTAINS
       LOGICAL :: RemoveLines(:,:)
       !------------------------------
       TYPE(Element_t), POINTER :: Element,WorkElements(:)
-      INTEGER :: i,MyPE,n,m
+      INTEGER :: i,MyPE,n
 
       MyPE = ParEnv % MyPE + 1
 
@@ -4199,6 +4195,8 @@ CONTAINS
           IF ( ASSOCIATED( Element % NodeIndexes ) ) &
             DEALLOCATE( Element % NodeIndexes )
           Element % NodeIndexes => NULL()
+          IF ( ASSOCIATED( Element % BoundaryInfo ) ) &
+            DEALLOCATE( Element % BoundaryInfo )
         END IF
       END DO
 
@@ -4213,7 +4211,7 @@ CONTAINS
       LOGICAL :: RemoveLines(:,:)
       INTEGER :: nCol
       !------------------------------
-      INTEGER :: i,j,k,p,n,PEs,nMax,counter,nLines,NNeighbours,MyPE
+      INTEGER :: i,j,k,n,PEs,nMax,counter,nLines,NNeighbours,MyPE
       REAL(KIND=dp), ALLOCATABLE :: Vals(:,:)
       INTEGER, ALLOCATABLE :: WorkInt(:,:), WorkInt2(:,:),PToN(:),Neighbours(:),ns(:)
       LOGICAL, ALLOCATABLE :: WorkLogical(:)
@@ -4369,11 +4367,10 @@ CONTAINS
       LOGICAL, INTENT(out) :: trusted
       !-----------------------------------------------------------------------------
       REAL(KIND=dp) :: xp,yp,x0,y0,x1,y1,xm,ym,a,b,c,d,s,dir1,&
-          dist2,mindist2,dist,mindist,smin,ss,phim,cosphi,&
-          x2,x3,y2,y3,denom,ua,ub,xi,yi,dir_int,sgn_sum,seg_vx,seg_vy,&
-          dx,dy,dir_final,dir0
-      INTEGER :: i,i0,i1,j,k,n,sgn,m,imin,kmin,dofs,k2,count,next,nextp
-      TYPE(Variable_t), POINTER :: Var1D, Var2D
+          dist2,mindist2,dist,mindist,smin,phim,cosphi,&
+          dir_final,dir0
+      INTEGER :: i,i0,i1,j,k,sgn,m,imin,kmin,dofs,k2,next,nextp
+      TYPE(Variable_t), POINTER :: Var2D
       INTEGER :: nCol, nLines
       REAL(KIND=dp), POINTER :: pValues(:)
       TYPE(ValueList_t), POINTER :: Params
@@ -4644,6 +4641,8 @@ CONTAINS
         CALL MakeDirectory(TRIM(MeshDir) // CHAR(0))
         CALL WriteMeshToDisk2(Model, sMesh, MeshDir)
       END IF
+      ! If the mesh was not attached as Mesh % Next % Next nobody else will free it.
+      IF(.NOT. DoIt(1) ) CALL FreeMesh(sMesh)
     END IF
     
   END SUBROUTINE SplitFEMOutput
