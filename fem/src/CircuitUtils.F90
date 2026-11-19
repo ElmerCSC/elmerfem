@@ -344,6 +344,16 @@ CONTAINS
     IF( ASSOCIATED(ASolver) .AND. ASSOCIATED(Ckt % CircuitMatrix) ) THEN
       IF( ASSOCIATED(ASolver % Matrix) ) THEN
         OwnMatrix = ASSOCIATED(ASolver % Matrix % AddMatrix, Ckt % CircuitMatrix)
+        ! The AddMatrix may also be a copy of the circuit matrix merged with the
+        ! global dofs of "Constant" conditions (see BoundaryConditionUtils). The
+        ! copy has the circuit matrix as its Parent and is released here.
+        IF( .NOT. OwnMatrix .AND. ASSOCIATED(ASolver % Matrix % AddMatrix) ) THEN
+          IF( ASSOCIATED(ASolver % Matrix % AddMatrix % Parent, Ckt % CircuitMatrix) ) THEN
+            ASolver % Matrix % AddMatrix % Parent => NULL()
+            CALL FreeMatrix( ASolver % Matrix % AddMatrix )
+            OwnMatrix = .TRUE.
+          END IF
+        END IF
         IF( OwnMatrix ) ASolver % Matrix % AddMatrix => NULL()
       END IF
     END IF

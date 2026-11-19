@@ -661,6 +661,9 @@ CONTAINS
 
       n = Matrix % NumberOfRows
       IF ( Matrix % Complex ) n = n / 2
+      ! The matrix may have more rows than the stored vectors, e.g. a collection
+      ! matrix with the rows of constraints, which carry no mass.
+      n = MIN( n, SIZE( EigVectors, 2 ) )
 
       DO i = 1, NoEigen
 
@@ -680,11 +683,12 @@ CONTAINS
                 s = s + ABS( EigVectors(i,j) )**2 * Matrix % MassValues( Matrix % Diag(2*j-1) )
               END DO
             ELSE
-              DO j=1,Matrix % NumberOfRows,2
+              DO j=1,2*n,2
                 DO l=Matrix % Rows(j),Matrix % Rows(j+1)-1,2
                   mx = CMPLX( Matrix % MassValues(l), -Matrix % MassValues(l+1), KIND=DP )
                   mj  = (j-1)/2 + 1
                   mk  = (Matrix % Cols(l)-1)/2 + 1
+                  IF( mk > n ) CYCLE
                   s = s + mx * CONJG( EigVectors(i,mj) ) * EigVectors(i,mk)
                 END DO
               END DO
@@ -717,6 +721,7 @@ CONTAINS
             ELSE
               DO j=1,n
                 DO l=Matrix % Rows(j), Matrix % Rows(j+1)-1
+                  IF( Matrix % Cols(l) > n ) CYCLE
                   r = r +  CONJG(EigVectors(i,j)) * Matrix % MassValues(l) * EigVectors(i,Matrix % Cols(l))
                 END DO
               END DO

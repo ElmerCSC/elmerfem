@@ -46,6 +46,7 @@ Solver 1
   Variable = "Temperature"
   Procedure = File "HeatSolve" "HeatSolver"
 
+  Nonlinear System Consistent Norm = True
   Linear System Solver = "Iterative"
   Linear System Iterative Method = "bicgstab"
   Linear System Max Iterations = 500
@@ -61,6 +62,7 @@ End
 Solver 2
   Equation = "SaveScalars"
   Procedure = "SaveData" "SaveScalars"
+  Parallel Reduce = Logical True
   Filename = f.dat
   Variable 1 = Temperature
   Operator 1 = boundary min

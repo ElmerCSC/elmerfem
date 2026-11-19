@@ -768,7 +768,7 @@ CONTAINS
     SUBROUTINE BackScaleLinearSystemDiagonal()
 
       REAL(KIND=dp), POINTER :: Diag(:)
-      INTEGER :: i,j
+      INTEGER :: i,j,m
       LOGICAL :: doCM
       TYPE(Matrix_t), POINTER :: CM
 
@@ -802,16 +802,21 @@ CONTAINS
       IF( PRESENT( EigenScaling ) ) THEN
         IF( EigenScaling ) THEN
           ! TODO: Add threading
+          ! The matrix may have more rows than the variable, e.g. a collection
+          ! matrix with the rows of constraints, whose part is not stored.
+          m = SIZE( Solver % Variable % EigenVectors, 2 )
           DO i=1,Solver % NOFEigenValues
             !
             !           Solve x:  INV(D)x = y
             !           --------------------------
             IF ( Solver % Matrix % COMPLEX ) THEN
-              Solver % Variable % EigenVectors(i,1:n/2) = &
-                  Solver % Variable % EigenVectors(i,1:n/2) * Diag(1:n:2)
+              m = MIN( m, n/2 )
+              Solver % Variable % EigenVectors(i,1:m) = &
+                  Solver % Variable % EigenVectors(i,1:m) * Diag(1:2*m-1:2)
             ELSE
-              Solver % Variable % EigenVectors(i,1:n) = &
-                  Solver % Variable % EigenVectors(i,1:n) * Diag(1:n)
+              m = MIN( m, n )
+              Solver % Variable % EigenVectors(i,1:m) = &
+                  Solver % Variable % EigenVectors(i,1:m) * Diag(1:m)
             END IF
           END DO
         END IF

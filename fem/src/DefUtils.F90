@@ -6354,6 +6354,13 @@ CONTAINS
        END DO
      END IF
 
+     ! Start collecting "Constant"/"Profile" conditions eliminated using global dofs.
+     ! Only for the primary matrix and variable of the solver.
+     IF( Offset == 0 .AND. .NOT. PRESENT(OffDiagonalMatrix) .AND. &
+         ASSOCIATED( x, Solver % Variable ) ) THEN
+       CALL ConstantGlobalDofsBegin( A )
+     END IF
+
      IF ( x % DOFs > 1 ) THEN
        CALL SetDirichletBoundaries( CurrentModel,A, b, GetVarName(x),-1,x % DOFs,x % Perm )
      END IF
@@ -7134,6 +7141,9 @@ CONTAINS
      IF ( GetLogical(Params,'Constraint Modes Analysis',Found) ) THEN
        CALL SetConstraintModesBoundaries( CurrentModel, Solver, A, b, x % Name, x % DOFs, x % Perm )
      END IF
+
+     ! Attach the possible global dofs of "Constant"/"Profile" conditions to the system.
+     CALL ConstantGlobalDofsFinalize( Solver, A )
 
 #ifdef HAVE_FETI4I
      IF(C_ASSOCIATED(A % PermonMatrix)) THEN
