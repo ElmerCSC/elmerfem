@@ -69,6 +69,7 @@ MODULE SplitFemUtils
   INTEGER, POINTER :: TopPointer(:) => NULL(), BotPointer(:) => NULL()
   TYPE(Matrix_t), POINTER :: NodeMatrix => NULL()
   INTEGER :: SplitFemBody = -1
+  LOGICAL :: SplitFEMExtruded = .FALSE.
   CHARACTER(:), ALLOCATABLE :: CutStr
   INTEGER :: CutDofs = 0
   INTEGER :: nCase(20)
@@ -336,10 +337,31 @@ CONTAINS
     CALL Info(Caller,'Number of cut edges: '//I2S(i),Level=7)   
 
     
-    ! Assuming currently that for 3D meshes we have extruded structure and levelset
-    ! is given at the surface. Then inherit the interpolation from the top edges to
-    ! other edges as well. 
+    ! For extruded 3D meshes the levelset is given at the surface. Then inherit the
+    ! interpolation from the top edges to other edges as well. 
+    ! Other 3D meshes (e.g. tetrahedra) are cut directly as in 2D. 
+    SplitFEMExtruded = .FALSE.
     IF( Mesh % MeshDim == 3 ) THEN
+      SplitFEMExtruded = ListGetLogical( Params,'SplitFEM Extruded Mesh',Found )
+      IF(.NOT. Found) THEN
+        ! Extruded meshes consist of wedges and bricks only.
+        SplitFEMExtruded = .TRUE.
+        DO i=1,Mesh % NumberOfBulkElements
+          j = Mesh % Elements(i) % TYPE % ElementCode / 100
+          IF( j /= 7 .AND. j /= 8 ) THEN
+            SplitFEMExtruded = .FALSE.
+            EXIT
+          END IF
+        END DO
+      END IF
+      IF( SplitFEMExtruded ) THEN
+        CALL Info(Caller,'Assuming extruded 3D mesh with levelset given at the top',Level=7)
+      ELSE
+        CALL Info(Caller,'Cutting 3D mesh directly with the levelset',Level=7)
+      END IF
+    END IF
+    
+    IF( SplitFEMExtruded ) THEN
       CALL Info(Caller,'Inherint surface cuts and interpolation to 3D mesh!',Level=7)
       ALLOCATE(XiPerm(SIZE(PhiPerm)))
       XiPerm = PhiPerm
@@ -1057,7 +1079,7 @@ CONTAINS
     LOGICAL :: IsMore
     INTEGER, OPTIONAL :: Sweep
 
-    TYPE(Element_t), TARGET :: Elem303, Elem404, Elem706, Elem808
+    TYPE(Element_t), TARGET :: Elem303, Elem404, Elem504, Elem706, Elem808
     TYPE(Element_t), POINTER :: prevElement
     INTEGER :: SgnNode, i, n, m, nn, ElemType, body_out, body_in, CutCnt, PSweep
     LOGICAL :: Found
@@ -1072,7 +1094,7 @@ CONTAINS
     CHARACTER(*), PARAMETER :: Caller = 'CutInterfaceBulk'
     
         
-    SAVE Mesh, Solver, x, y, z, Elem303, Elem404, Elem706, Elem808, body_in, body_out, &
+    SAVE Mesh, Solver, x, y, z, Elem303, Elem404, Elem504, Elem706, Elem808, body_in, body_out, &
         nn, CutCnt, PhiVar, ElemNodes, ElemInds, ElemCut, ElemType, LocalInds, &
         prevElement, PSweep
     
@@ -1100,6 +1122,9 @@ CONTAINS
         Elem404 % TYPE => GetElementType(404)
         ALLOCATE(Elem404 % NodeIndexes(4))      
 
+        Elem504 % TYPE => GetElementType(504)
+        ALLOCATE(Elem504 % NodeIndexes(4))      
+
         Elem706 % TYPE => GetElementType(706)
         ALLOCATE(Elem706 % NodeIndexes(6))      
       
@@ -1108,6 +1133,7 @@ CONTAINS
       END IF
       Elem303 % NodeIndexes = 0
       Elem404 % NodeIndexes = 0
+      Elem504 % NodeIndexes = 0
       Elem706 % NodeIndexes = 0
       Elem808 % NodeIndexes = 0
 
@@ -1168,13 +1194,21 @@ CONTAINS
     CASE(3) 
       pElement => Elem303
     CASE(4)
-      pElement => Elem404
+      ! Pieces of a tetrahedron may be tetrahedra, pieces of 2D elements quads.
+      IF( Element % TYPE % DIMENSION == 3 ) THEN
+        pElement => Elem504
+      ELSE
+        pElement => Elem404
+      END IF
     CASE(6) 
       pElement => Elem706
     CASE(8)
       pElement => Elem808
-    CASE DEFAULT
-      CALL Fatal('CutInterfaceBulk','Impossible number of nodes!')
+    CASE DEFAULT      
+      CALL Warn('CutInterfaceBulk','Impossible number of nodes: '//I2S(i))
+
+      isCut = .FALSE.
+      RETURN
     END SELECT
 
     pElement % NodeIndexes(1:i) = ElemInds(LocalInds(1:i)) 
@@ -1187,7 +1221,7 @@ CONTAINS
         pElement % BodyId = body_out
       END IF
     ELSE
-      i = PhiVar % Perm(pElement % NodeIndexes(sgnNode))
+      i = XiPerm(pElement % NodeIndexes(sgnNode))
       IF( PhiVar % Values(i) > 0.0_dp ) THEN
         pElement % BodyId = body_out      
       ELSE
@@ -1211,10 +1245,10 @@ CONTAINS
 
     TYPE(Element_t), TARGET :: Elem202, Elem303, Elem404
     TYPE(Element_t), POINTER, SAVE :: prevElement
-    INTEGER :: m, n, n_split, n_cut, n_cut_min, i, j, j2, j3, j4, nn, SplitCase, PSweep
+    INTEGER :: m, n, n_split, n_cut, n_cut_min, i, j, j2, j3, nn, SplitCase, PSweep
     INTEGER, POINTER :: nIndexes(:), eIndexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
-    LOGICAL :: Visited = .FALSE., Found, VerticalCut
+    LOGICAL :: Visited = .FALSE., Found, VerticalCut, Failed
     REAL(KIND=dp), POINTER :: x(:), y(:), z(:)
     TYPE(Solver_t), POINTER :: Solver
     CHARACTER(*), PARAMETER :: Caller = 'CutInterfaceBC'
@@ -1269,13 +1303,6 @@ CONTAINS
     nIndexes => Element % NodeIndexes
     eIndexes => Element % EdgeIndexes
 
-    IF( Element % TYPE % ElementCode > 500 ) THEN
-      n_cut_min = 2
-    ELSE
-      n_cut_min = 1
-    END IF
-      
-    
     ! This is the counter for splitting.
     IF(.NOT. ASSOCIATED(prevElement,Element)) THEN
       m = 1
@@ -1295,6 +1322,12 @@ CONTAINS
 
     IsMore = .FALSE.
 
+    IF( Element % TYPE % ElementCode > 500 ) THEN
+      n_cut_min = 2
+    ELSE
+      n_cut_min = 1
+    END IF
+         
     IF( n_split == 0 .AND. n_cut <= n_cut_min ) THEN
       isCut = .FALSE.
       pElement => NULL()
@@ -1302,314 +1335,51 @@ CONTAINS
     END IF
     
     IsCut = .TRUE.
+
+    ! This allows use case to deal edge splits and node splits at the same time. 
+    SplitCase = 10 * n_split + n_cut
+    Failed = .FALSE.
     
+    ! The split routines set the node indexes, so they must be cleared before
+    ! and not after the calls. SplitTetraBC may also switch pElement to Elem404.
+    Elem202 % NodeIndexes = 0
+    Elem303 % NodeIndexes = 0
+    Elem404 % NodeIndexes = 0
+
     SELECT CASE( Element % TYPE % ElementCode )
-    CASE( 808 ) 
-      pElement => Elem404
-    CASE( 706 ) 
-      pElement => Elem404      
+    CASE( 303 ) 
+      pElement => Elem202
+      CALL SplitTriangleBC()
+    CASE( 404 ) 
+      pElement => Elem202
+      CALL SplitQuadBC()
     CASE( 504 )
       pElement => Elem303
-    CASE( 303, 404 ) 
-      pElement => Elem202      
+      CALL SplitTetraBC()
+    CASE( 706 )      
+      pElement => Elem404      
+      CALL SplitPrismBC()
+    CASE( 808 ) 
+      pElement => Elem404
+      CALL SplitHexBC()
     CASE DEFAULT
       CALL Fatal(Caller,'Unknown element type to split: '//I2S(Element % TYPE % ElementCode)//'!')
     END SELECT   
-    pElement % NodeIndexes = 0
     
-    
-    ! This allows use case to deal with element types, edge splits and node splits at the same time. 
-    SplitCase = 100 * Element % TYPE % ElementCode + 10 * n_split + n_cut
-    
-    
-    SELECT CASE( SplitCase ) 
-      
-    CASE( 30320 )    
-      ! Find the both cut edges
-      DO j=1,3
-        IF( CutDof( nn + eIndexes(j) ) ) EXIT
-      END DO
-      DO j2=1,3
-        IF(j2==j) CYCLE
-        IF( CutDof( nn + eIndexes(j2) ) ) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nn + eIndexes(j2)
-
-    CASE( 30321 )      
-      IF(m==1) THEN
-        DO j=1,3
-          IF( CutDof( nn + eIndexes(j) ) ) EXIT
-        END DO
-        DO j2=1,3
-          IF(j2==j) CYCLE
-          IF( CutDof( nn + eIndexes(j2) ) ) EXIT
-        END DO
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)
-        IsMore = .TRUE.
-      ELSE
-        DO j=1,3
-          IF(CutDof(nIndexes(j))) EXIT
-        END DO
-        j2 = j
-        IF( .NOT. CutDof(nn + eIndexes(j2) ) ) THEN
-          j2 = MODULO(j-2,3)+1          
-          IF(.NOT. CutDof(nn + eIndexes(j2))) THEN
-            CALL Fatal('Caller','Could not imagine this 303 case!')
-          END IF
-        END IF
-        pElement % NodeIndexes(1) = nIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)        
-        IsMore = .FALSE.        
-      END IF
-        
-    CASE( 30311 ) 
-      ! Find the edge and node that is cut
-      DO j=1,3
-        IF( CutDof( nn + eIndexes(j) ) ) EXIT
-      END DO
-      DO j2=1,3
-        IF( CutDof( nIndexes(j2) ) ) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nIndexes(j2)
-
-    CASE( 30302, 30312 )       
-      ! Find the two nodes that are cut.
-      DO j=1,3
-        IF( CutDof( nIndexes(j) ) ) EXIT
-      END DO
-      DO j2=1,3
-        IF(j2==j) CYCLE
-        IF( CutDof( nIndexes(j2) ) ) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nIndexes(j)
-      pElement % NodeIndexes(2) = nIndexes(j2)
-
-    CASE( 40420 )      
-      DO j=1,4
-        IF(CutDof( nn + eIndexes(j))) EXIT
-      END DO
-      DO j2=1,4
-        IF(j2==j) CYCLE
-        IF(CutDof( nn + eIndexes(j2))) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nn + eIndexes(j2)
-
-    CASE( 40421 )      
-
-      IF(m==1) THEN      
-        DO j=1,4
-          IF(CutDof( nn + eIndexes(j))) EXIT
-        END DO
-        DO j2=1,4
-          IF(j2==j) CYCLE
-          IF(CutDof( nn + eIndexes(j2))) EXIT
-        END DO
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)
-        IsMore = .TRUE.
-      ELSE
-        DO j=1,4
-          IF(CutDof(nIndexes(j))) EXIT
-        END DO
-        j2 = j
-        IF( .NOT. CutDof(nn + eIndexes(j2) ) ) THEN
-          j2 = MODULO(j-2,4)+1          
-          IF(.NOT. CutDof(nn + eIndexes(j2))) THEN
-            CALL Fatal('Caller','Could not imagine this 404 case!')
-          END IF
-        END IF
-        pElement % NodeIndexes(1) = nIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)        
-        IsMore = .FALSE.
-      END IF
-        
-    CASE( 40411 )      
-      DO j=1,4
-        IF(CutDof( nn + eIndexes(j))) EXIT
-      END DO
-      DO j2=1,4
-        IF(CutDof( nIndexes(j2))) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nIndexes(j2)
-
-    CASE( 40402, 40412 )      
-      DO j=1,4
-        IF(CutDof( nIndexes(j))) EXIT
-      END DO
-      DO j2=1,4
-        IF(j2==j) CYCLE
-        IF(CutDof( nIndexes(j2))) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nIndexes(j)
-      pElement % NodeIndexes(2) = nIndexes(j2)
-
-    CASE( 50440 )      
-      DO j=1,6
-        IF(CutDof( nn + eIndexes(j))) EXIT
-      END DO
-      DO j2=1,6
-        IF(j2==j) CYCLE
-        IF(CutDof( nn + eIndexes(j2))) EXIT
-      END DO
-      DO j3=1,6
-        IF(j3==j .OR. j3==j2) CYCLE
-        IF(CutDof( nn + eIndexes(j3))) EXIT
-      END DO
-      DO j4=1,6
-        IF(j4==j .OR. j4==j2 .OR. j4==j3) CYCLE
-        IF(CutDof( nn + eIndexes(j4))) EXIT
-      END DO
-
-      IF(m==1) THEN
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)
-        pElement % NodeIndexes(3) = nn + eIndexes(j3)
-        IsMore = .TRUE.
-      ELSE
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)
-        pElement % NodeIndexes(3) = nn + eIndexes(j4)
-        IsMore = .FALSE.        
-      END IF
-
-    CASE( 50430 )      
-      DO j=1,6
-        IF(CutDof( nn + eIndexes(j))) EXIT
-      END DO
-      DO j2=1,6
-        IF(j2==j) CYCLE
-        IF(CutDof( nn + eIndexes(j2))) EXIT
-      END DO
-      DO j3=1,6
-        IF(j3==j .OR. j3==j2) CYCLE
-        IF(CutDof( nn + eIndexes(j3))) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nn + eIndexes(j2)
-      pElement % NodeIndexes(3) = nn + eIndexes(j3)
-
-    CASE( 50421 )      
-      DO j=1,6
-        IF(CutDof( nn + eIndexes(j))) EXIT
-      END DO
-      DO j2=1,6
-        IF(j2==j) CYCLE
-        IF(CutDof( nn + eIndexes(j2))) EXIT
-      END DO
-      DO j3=1,4
-        IF(CutDof( nIndexes(j3))) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nn + eIndexes(j2)
-      pElement % NodeIndexes(3) = nIndexes(j3)
-
-    CASE( 50412 )      
-      DO j=1,6
-        IF(CutDof( nn + eIndexes(j))) EXIT
-      END DO
-      DO j2=1,4
-        IF(CutDof( nIndexes(j2))) EXIT
-      END DO
-      DO j3=1,4
-        IF(j3==j2) CYCLE
-        IF(CutDof( nIndexes(j3))) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nIndexes(j2)
-      pElement % NodeIndexes(3) = nIndexes(j3)
-
-    CASE( 50403 )      
-      i = 0
-      DO j=1,4
-        ! We cut all other edges expect "j"
-        IF(.NOT. CutDof( nIndexes(j))) EXIT
-        i = i+1
-        pElement % NodeIndexes(i) = nIndexes(j)
-      END DO
-      
-      
-    CASE( 70640, 70642 )      
-      ! For prisms we currently assumes that the field is cut vertically such that
-      ! we can split the bottom triangle and copy the same split in 3D.
-      ! This is the rule of 303 multiplied by two. I.e. 30320 -> 70640 etc.
-      DO j=1,3
-        IF( CutDof( nn + eIndexes(j) ) ) EXIT
-      END DO
-      DO j2=1,3
-        IF(j2==j) CYCLE
-        IF( CutDof( nn + eIndexes(j2) ) ) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nn + eIndexes(j2)
-      pElement % NodeIndexes(3) = nn + eIndexes(j2+3)
-      pElement % NodeIndexes(4) = nn + eIndexes(j+3)
-
-    CASE( 70622 ) 
-      ! Find the edge and node that is cut
-      DO j=1,3
-        IF( CutDof( nn + eIndexes(j) ) ) EXIT
-      END DO
-      DO j2=1,3
-        IF( CutDof( nIndexes(j2) ) ) EXIT
-      END DO
-      ! One cut result to splitted elements only if the opposing node is cut through
-      IF( MODULO(j+1,3)+1 == j2 ) THEN
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nIndexes(j2)
-        pElement % NodeIndexes(3) = nIndexes(j2+3)
-        pElement % NodeIndexes(4) = nn + eIndexes(j+3)
-      ELSE
-        IsCut = .FALSE.
-        IsMore = .FALSE.
-      END IF
-        
-    CASE( 70604, 70624 )       
-      ! Find the two nodes that are cut.
-      DO j=1,3
-        IF( CutDof( nIndexes(j) ) ) EXIT
-      END DO
-      DO j2=1,3
-        IF(j2==j) CYCLE
-        IF( CutDof( nIndexes(j2) ) ) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nIndexes(j)
-      pElement % NodeIndexes(2) = nIndexes(j2)
-      pElement % NodeIndexes(3) = nIndexes(j2+3)
-      pElement % NodeIndexes(4) = nIndexes(j+3)
-
-    CASE( 80830 )      
-      DO j=1,12
-        IF( CutDof( nn + eIndexes(j) ) ) EXIT
-      END DO
-      DO j2=1,12
-        IF(j2==j) CYCLE
-        IF( CutDof( nn + eIndexes(j2) ) ) EXIT
-      END DO
-      DO j3=1,12
-        IF(j3==j .OR. j3==j2) CYCLE
-        IF( CutDof( nn + eIndexes(j3) ) ) EXIT
-      END DO
-      pElement % NodeIndexes(1) = nn + eIndexes(j)
-      pElement % NodeIndexes(2) = nn + eIndexes(j2)
-      pElement % NodeIndexes(3) = nn + eIndexes(j3)
-
-    CASE DEFAULT
-      PRINT *,'Unknown SplitCase:',SplitCase
+    IF(Failed) THEN
+      PRINT *,'Unknown SplitCase for element:',SplitCase, Element % Type  % ElementCode
       PRINT *,'EdgeCut:',CutDof(nn + Element % EdgeIndexes) 
       PRINT *,'NodeCut:',CutDof(Element % NodeIndexes)
       PRINT *,'Phi:',PhiValues(XiPerm(Element % NodeIndexes))
       PRINT *,'CutInterp:',CutInterp(Element % EdgeIndexes)
       CALL Fatal(Caller,'Unknown split case in bc element divisions: '//I2S(SplitCase))
-    END SELECT
+    END IF
 
+    
 
     ! This is just a tentative routine where we orient the nodes of the segment such that
-    ! inside/outside is always consistently on left/right. 
+    ! inside/outside is always consistently on left/right.
+    !-------------------------------------------------------------------------------------
     IF(pElement % TYPE % ElementCode == 202 ) THEN
       BLOCK
         REAL(KIND=dp) :: pmax, p, x0, x1, xp, y0, y1, yp, dir1, dir2
@@ -1676,7 +1446,394 @@ CONTAINS
     
     pElement % BoundaryInfo % Left => NULL() ! Element
     pElement % BodyId = 0
+
+
+  CONTAINS
+
+    SUBROUTINE SplitTriangleBC()
+      SELECT CASE( SplitCase ) 
+
+      CASE( 20 )    
+        ! Find the both cut edges
+        DO j=1,3
+          IF( CutDof( nn + eIndexes(j) ) ) EXIT
+        END DO
+        DO j2=1,3
+          IF(j2==j) CYCLE
+          IF( CutDof( nn + eIndexes(j2) ) ) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+
+      CASE( 21 )      
+        IF(m==1) THEN
+          DO j=1,3
+            IF( CutDof( nn + eIndexes(j) ) ) EXIT
+          END DO
+          DO j2=1,3
+            IF(j2==j) CYCLE
+            IF( CutDof( nn + eIndexes(j2) ) ) EXIT
+          END DO
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)
+          IsMore = .TRUE.
+        ELSE
+          DO j=1,3
+            IF(CutDof(nIndexes(j))) EXIT
+          END DO
+          j2 = j
+          IF( .NOT. CutDof(nn + eIndexes(j2) ) ) THEN
+            j2 = MODULO(j-2,3)+1          
+            IF(.NOT. CutDof(nn + eIndexes(j2))) THEN
+              CALL Fatal('Caller','Could not imagine this 303 case!')
+            END IF
+          END IF
+          pElement % NodeIndexes(1) = nIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)        
+          IsMore = .FALSE.        
+        END IF
+
+      CASE( 11 ) 
+        ! Find the edge and node that is cut
+        DO j=1,3
+          IF( CutDof( nn + eIndexes(j) ) ) EXIT
+        END DO
+        DO j2=1,3
+          IF( CutDof( nIndexes(j2) ) ) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+
+      CASE( 02, 12 )       
+        ! Find the two nodes that are cut.
+        DO j=1,3
+          IF( CutDof( nIndexes(j) ) ) EXIT
+        END DO
+        DO j2=1,3
+          IF(j2==j) CYCLE
+          IF( CutDof( nIndexes(j2) ) ) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+
+      CASE DEFAULT
+        Failed = .TRUE.
+
+      END SELECT
+
+    END SUBROUTINE SplitTriangleBC
+
+
+    SUBROUTINE SplitQuadBC()
+      SELECT CASE( SplitCase ) 
+
+      CASE( 20 )      
+        DO j=1,4
+          IF(CutDof( nn + eIndexes(j))) EXIT
+        END DO
+        DO j2=1,4
+          IF(j2==j) CYCLE
+          IF(CutDof( nn + eIndexes(j2))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+
+      CASE( 21 )      
+
+        IF(m==1) THEN      
+          DO j=1,4
+            IF(CutDof( nn + eIndexes(j))) EXIT
+          END DO
+          DO j2=1,4
+            IF(j2==j) CYCLE
+            IF(CutDof( nn + eIndexes(j2))) EXIT
+          END DO
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)
+          IsMore = .TRUE.
+        ELSE
+          DO j=1,4
+            IF(CutDof(nIndexes(j))) EXIT
+          END DO
+          j2 = j
+          IF( .NOT. CutDof(nn + eIndexes(j2) ) ) THEN
+            j2 = MODULO(j-2,4)+1          
+            IF(.NOT. CutDof(nn + eIndexes(j2))) THEN
+              CALL Fatal('Caller','Could not imagine this 404 case!')
+            END IF
+          END IF
+          pElement % NodeIndexes(1) = nIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)        
+          IsMore = .FALSE.
+        END IF
+
+      CASE( 11 )      
+        DO j=1,4
+          IF(CutDof( nn + eIndexes(j))) EXIT
+        END DO
+        DO j2=1,4
+          IF(CutDof( nIndexes(j2))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+
+      CASE( 02, 12 )      
+        DO j=1,4
+          IF(CutDof( nIndexes(j))) EXIT
+        END DO
+        DO j2=1,4
+          IF(j2==j) CYCLE
+          IF(CutDof( nIndexes(j2))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+
+      CASE DEFAULT
+        Failed = .TRUE.
+        
+      END SELECT
+
+    END SUBROUTINE SplitQuadBC
+
+
+    SUBROUTINE SplitTetraBC()
+      SELECT CASE( SplitCase ) 
+      
+      CASE( 40 )      
+        ! Two vertices on each side: the interface is a planar quad whose corners are
+        ! the cut points of the four cut edges. The two uncut edges are opposite edges.
+        ! In the quad a cut edge is adjacent to the cut edges that share a vertex with it
+        ! and opposite to the one that does not. In the bulk the quad is the common face
+        ! of the two wedges, which SplitSingleElement further divides into tetrahedra.
+        ! Then the bulk sees the quad as two triangles while it is kept here as one 404.
+        BLOCK
+          INTEGER, PARAMETER :: OppEdge(6) = [6,4,5,2,3,1]
+          INTEGER :: CutEdges(4), k
+          k = 0
+          DO j=1,6
+            IF( CutDof( nn + eIndexes(j) ) ) THEN
+              k = k+1
+              CutEdges(k) = j
+            END IF
+          END DO
+          ! Order: e1, e2, opp(e1), opp(e2) where e2 is not opposite to e1.
+          j = CutEdges(1)
+          DO k=2,4
+            IF( CutEdges(k) /= OppEdge(j) ) EXIT
+          END DO
+          j2 = CutEdges(k)
+          pElement => Elem404
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)
+          pElement % NodeIndexes(3) = nn + eIndexes(OppEdge(j))
+          pElement % NodeIndexes(4) = nn + eIndexes(OppEdge(j2))
+        END BLOCK
+
+      CASE( 30 )      
+        DO j=1,6
+          IF(CutDof( nn + eIndexes(j))) EXIT
+        END DO
+        DO j2=1,6
+          IF(j2==j) CYCLE
+          IF(CutDof( nn + eIndexes(j2))) EXIT
+        END DO
+        DO j3=1,6
+          IF(j3==j .OR. j3==j2) CYCLE
+          IF(CutDof( nn + eIndexes(j3))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+        pElement % NodeIndexes(3) = nn + eIndexes(j3)
+
+      CASE( 21 )      
+        DO j=1,6
+          IF(CutDof( nn + eIndexes(j))) EXIT
+        END DO
+        DO j2=1,6
+          IF(j2==j) CYCLE
+          IF(CutDof( nn + eIndexes(j2))) EXIT
+        END DO
+        DO j3=1,4
+          IF(CutDof( nIndexes(j3))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+        pElement % NodeIndexes(3) = nIndexes(j3)
+
+      CASE( 12 )      
+        DO j=1,6
+          IF(CutDof( nn + eIndexes(j))) EXIT
+        END DO
+        DO j2=1,4
+          IF(CutDof( nIndexes(j2))) EXIT
+        END DO
+        DO j3=1,4
+          IF(j3==j2) CYCLE
+          IF(CutDof( nIndexes(j3))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+        pElement % NodeIndexes(3) = nIndexes(j3)
+
+      CASE( 03 )      
+        ! A face of the tetrahedron lies on the levelset: the three cut nodes.
+        i = 0
+        DO j=1,4
+          IF(.NOT. CutDof( nIndexes(j))) CYCLE
+          i = i+1
+          pElement % NodeIndexes(i) = nIndexes(j)
+        END DO
+      
+      CASE DEFAULT
+        Failed = .TRUE.
+
+      END SELECT
+
+    END SUBROUTINE SplitTetraBC
     
+
+    ! For prisms we currently assumes that the field is cut vertically such that
+    ! we can split the bottom triangle and copy the same split in 3D.
+    ! This is the rule of 303 multiplied by two. I.e. 303 and 20 -> 706 and 40 etc.
+    !--------------------------------------------------------------------------------
+    SUBROUTINE SplitPrismBC()
+      SELECT CASE( SplitCase ) 
+            
+      CASE( 40, 42 )      
+        DO j=1,3
+          IF( CutDof( nn + eIndexes(j) ) ) EXIT
+        END DO
+        DO j2=1,3
+          IF(j2==j) CYCLE
+          IF( CutDof( nn + eIndexes(j2) ) ) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+        pElement % NodeIndexes(3) = nn + eIndexes(j2+3)
+        pElement % NodeIndexes(4) = nn + eIndexes(j+3)
+
+      CASE( 22 ) 
+        ! Find the edge and node that is cut
+        DO j=1,3
+          IF( CutDof( nn + eIndexes(j) ) ) EXIT
+        END DO
+        DO j2=1,3
+          IF( CutDof( nIndexes(j2) ) ) EXIT
+        END DO
+        ! One cut result to splitted elements only if the opposing node is cut through
+        IF( MODULO(j+1,3)+1 == j2 ) THEN
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nIndexes(j2)
+          pElement % NodeIndexes(3) = nIndexes(j2+3)
+          pElement % NodeIndexes(4) = nn + eIndexes(j+3)
+        ELSE
+          IsCut = .FALSE.
+          IsMore = .FALSE.
+        END IF
+
+      CASE( 04, 24 )       
+        ! Find the two nodes that are cut.
+        DO j=1,3
+          IF( CutDof( nIndexes(j) ) ) EXIT
+        END DO
+        DO j2=1,3
+          IF(j2==j) CYCLE
+          IF( CutDof( nIndexes(j2) ) ) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+        pElement % NodeIndexes(3) = nIndexes(j2+3)
+        pElement % NodeIndexes(4) = nIndexes(j+3)
+
+      CASE DEFAULT
+        Failed = .TRUE.
+
+      END SELECT
+
+    END SUBROUTINE SplitPrismBC
+
+
+    SUBROUTINE SplitHexBC()
+      SELECT CASE( SplitCase ) 
+      
+      CASE( 40 )      
+        DO j=1,4
+          IF(CutDof( nn + eIndexes(j))) EXIT
+        END DO
+        DO j2=1,4
+          IF(j2==j) CYCLE
+          IF(CutDof( nn + eIndexes(j2))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nn + eIndexes(j2)
+        pElement % NodeIndexes(3) = nn + eIndexes(j2+4)
+        pElement % NodeIndexes(4) = nn + eIndexes(j+4)
+
+      CASE( 42 )      
+
+        IF(m==1) THEN      
+          DO j=1,4
+            IF(CutDof( nn + eIndexes(j))) EXIT
+          END DO
+          DO j2=1,4
+            IF(j2==j) CYCLE
+            IF(CutDof( nn + eIndexes(j2))) EXIT
+          END DO
+          pElement % NodeIndexes(1) = nn + eIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)
+          pElement % NodeIndexes(3) = nn + eIndexes(j2+4)
+          pElement % NodeIndexes(4) = nn + eIndexes(j+4)
+          IsMore = .TRUE.
+        ELSE
+          DO j=1,4
+            IF(CutDof(nIndexes(j))) EXIT
+          END DO
+          j2 = j
+          IF( .NOT. CutDof(nn + eIndexes(j2) ) ) THEN
+            j2 = MODULO(j-2,4)+1          
+            IF(.NOT. CutDof(nn + eIndexes(j2))) THEN
+              CALL Fatal('Caller','Could not imagine this 404 case!')
+            END IF
+          END IF
+          pElement % NodeIndexes(1) = nIndexes(j)
+          pElement % NodeIndexes(2) = nn + eIndexes(j2)        
+          pElement % NodeIndexes(3) = nn + eIndexes(j2+4)        
+          pElement % NodeIndexes(4) = nIndexes(j+4)
+          IsMore = .FALSE.
+        END IF
+
+      CASE( 22 )      
+        DO j=1,4
+          IF(CutDof( nn + eIndexes(j))) EXIT
+        END DO
+        DO j2=1,4
+          IF(CutDof( nIndexes(j2))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nn + eIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+        pElement % NodeIndexes(3) = nIndexes(j2+4)
+        pElement % NodeIndexes(4) = nn + eIndexes(j+4)
+        
+      CASE( 04, 24 )      
+        DO j=1,4
+          IF(CutDof( nIndexes(j))) EXIT
+        END DO
+        DO j2=1,4
+          IF(j2==j) CYCLE
+          IF(CutDof( nIndexes(j2))) EXIT
+        END DO
+        pElement % NodeIndexes(1) = nIndexes(j)
+        pElement % NodeIndexes(2) = nIndexes(j2)
+        pElement % NodeIndexes(1) = nIndexes(j2+4)
+        pElement % NodeIndexes(2) = nIndexes(j+4)
+
+      CASE DEFAULT
+        Failed = .TRUE.
+        
+      END SELECT
+
+    END SUBROUTINE SplitHexBC
+        
   END FUNCTION CutInterfaceBC
 
 
@@ -2660,7 +2817,7 @@ CONTAINS
           m = MAX(m, hits)
         END DO
         IF( .NOT. ASSOCIATED( Enew % BoundaryInfo % Left ) ) THEN
-          CALL Fatal('AddElementData','Could not find parent for boundary element!')
+          CALL Warn('AddElementData','Could not find parent for boundary element!')
         END IF
       END IF
       
@@ -2713,8 +2870,20 @@ CONTAINS
       LOGICAL, ALLOCATABLE :: Found(:,:)
     END TYPE Intersects_t
     TYPE(Intersects_t),  ALLOCATABLE, TARGET, SAVE :: Intersects(:)
-    
-    
+
+
+    ! The isoline mesh and the polyline based levelset update work in the xy-plane.
+    ! They apply to 2D meshes and to extruded 3D meshes where the levelset is given
+    ! at the top surface. For other 3D meshes the levelset is kept fixed.
+    IF( Mesh % MeshDim == 3 .AND. .NOT. SplitFEMExtruded ) THEN
+      IF( ListCheckPrefix( CurrentModel % Simulation,'Levelset Velocity') .OR. &
+          ListGetLogical( CurrentModel % Simulation,'SplitFEM normal move',Found ) ) THEN
+        CALL Warn('LevelSetUpdate','Moving levelset not available for non-extruded 3D meshes!')
+      END IF
+      CALL Info('LevelSetUpdate','Levelset is not updated for non-extruded 3D mesh',Level=10)
+      RETURN
+    END IF
+
     IsoMesh => CreateSplitFEMMesh(Solver,Mesh,CutPerm,&
         .TRUE.,.FALSE.,.FALSE.,CurrentModel % Simulation,'isoline variable')
     IsoMesh % Name = TRIM(Mesh % Name)//'-isomesh'
@@ -4634,7 +4803,12 @@ CONTAINS
       sMesh => CreateSplitFEMMesh(Solver,Solver % Mesh,CutPerm,&
           .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable') 
       IF( DoIt(1) ) THEN
-        Solver % Mesh % Next % Next => sMesh
+        ! Without an isoline mesh (non-extruded 3D) this becomes Mesh % Next.
+        IF( ASSOCIATED( Solver % Mesh % Next ) ) THEN
+          Solver % Mesh % Next % Next => sMesh
+        ELSE
+          Solver % Mesh % Next => sMesh
+        END IF
       END IF
       IF(DoIt(2) ) THEN
         MeshDir = TRIM(Solver % Mesh % Name)//'-split'           
