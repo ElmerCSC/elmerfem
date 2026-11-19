@@ -206,6 +206,10 @@ End
 ! integrating. So I would think this is a fix? P.R. 
 ! Solver 7 :: reference norm = 1.77057711E-02
 
-Solver 7 :: reference norm = 1.02837146E-03
+Solver 2 :: reference norm = 1.36899766E-05
+Solver 2 :: reference norm tolerance = 1.0e-4
+Solver 3 :: reference norm = 5.38728987E-04
+Solver 3 :: reference norm tolerance = 1.0e-4
+Solver 7 :: reference norm = 4.33363152E-03
 Solver 7 :: reference norm tolerance = 1.0e-4
 

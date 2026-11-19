@@ -1,12 +1,13 @@
-Elmer version: 8.3
-Elmer revision: 894c14d
-Elmer compilation date: 2018-04-16
+Metadata for SaveScalars file: 37/dat/37.dat
+Elmer version: 26.2
+Elmer revision: 2ba583144
+Elmer compilation date: 2026-11-19
 Solver input file: sif/37.sif
-File started at: 2018/05/15 09:11:38
+File started at: 2026/11/19 18:04:27
  
-Variables in columns of matrix: ./37/dat/37.dat
+Variables in columns of matrix: 
    1: res: eddy current power
-   2: res: magnetic field energy
+   2: res: electromagnetic field energy
    3: res: time
    4: res: i_s1
    5: res: v_s1
