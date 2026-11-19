@@ -3,25 +3,12 @@
 ! *  Email:   mika.malinen@csc.fi
 ! *  Original Date: March 8, 2019
 !  
-! Adds plastic behviour models bi-linear, hsk=bi 
-!bi_linear 
+! Adds plastic behviour models plastic (small strain) and fplastic (large strain)
 !
-!small strain 6 material constants nu strain1, stress1, strain2, stress2, ultimate strain
-!seven state vatiables max strain, mid strain, min strain,
-! max principal, mid principal, min principle, mises
-!
-!bi-linear stress strain curve, ultimate stress at final strain value
-!
-!hsk_bi
-!
-!large strain 6 material constants nu strain1, stress1, strain2, stress2, ultimate strain
-!seven state vatiables max strain, mid strain, min strain,
-! max principal, mid principal, min principle, mises
-!
-!bi-linear stress strain curve, ultimate stress at final strain value
 !
 ! plastic point wise stress strain curve  
-! nu, strain, stress pairs up to nprops  
+! nu, strain, stress pairs up to 100 points. See details in each subroutine
+! or latest contributed case regarding plasticity on the forum
 !  
 !------------------------------------------------------------------------------
 ! The template for including a material model definition written in the form of
@@ -925,10 +912,8 @@
   END SUBROUTINE hencky_stvenant_kirchhoff
 !------------------------------------------------------------------------------
 !------------------------------------------------------------------------------
-! UMATplastic_v2.F90  --  small-strain rate-independent J2 plasticity for Elmer
+! small-strain rate-independent J2 plasticity for Elmer
 !
-! Replaces the bi_linear and plastic routines of UMATplastic.F90 (hsk_bi is
-! NOT included here, keep it in its own file).
 !
 ! Model: additive strain split, von Mises yield, isotropic hardening, radial
 ! return (exact for a piecewise-linear hardening curve, no iteration needed),
@@ -1207,10 +1192,9 @@ SUBROUTINE plastic(STRESS, STATEV, DDSDDE, SSE, SPD, SCD, &
        stress, statev, stran, dstran, ddsdde, spd)
 END SUBROUTINE plastic
 !------------------------------------------------------------------------------
-! UMATplastic_finite.F90  --  finite-strain J2 plasticity for Elmer
+! finite-strain J2 plasticity for Elmer
 !
-! Entry points:  fbi_linear   (bilinear table, same 6 constants as bi_linear)
-!                fplastic     (table of up to 100 points, same layout as plastic)
+! Entry points: fplastic (table of up to 100 points, same layout as plastic)
 !
 ! Model (Eterovic-Bathe / Simo): multiplicative split F = Fe Fp, Hencky (log)
 ! elastic law on the elastic left Cauchy-Green tensor be, von Mises yield,
