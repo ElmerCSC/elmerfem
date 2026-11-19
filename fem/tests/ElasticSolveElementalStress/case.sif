@@ -1,0 +1,107 @@
+! Elemental (discontinuous) stress output of ElasticSolve.
+!
+! Two layers of different stiffness, side by side along the load, stretched by a
+! uniform axial strain eps = 1e-3. With Poisson ratio zero the displacement
+! u = (eps x, 0) is exact for any mesh, so the exact stress is piecewise constant:
+! sigma_xx = E1 eps = 1e6 in the lower layer and E2 eps = 2e6 in the upper one,
+! everything else zero. A continuous nodal fit smears the jump at y = 0.5; the
+! elemental fit ("Calculate Elemental Fields") reproduces both values exactly, up
+! to round-off, right up to the interface.
+!
+! Only the elemental fields are requested, so the global projection is skipped.
+! The norm is that of the SaveScalars values below, all exact:
+!   max/min Stress e_xx = 2e6 / 1e6, max vonMises e = 2e6, max Tresca e = 1e6,
+!   max Principal Stress e 1 = 2e6, max |Stress e_xy| = 0.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "layers"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Output Intervals = 1
+  Post File = case.vtu
+End
+
+Body 1
+  Name = "Soft"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Stiff"
+  Equation = 1
+  Material = 2
+End
+
+Material 1
+  Youngs Modulus = 1.0e9
+  Poisson Ratio = 0.0
+End
+
+Material 2
+  Youngs Modulus = 2.0e9
+  Poisson Ratio = 0.0
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Linear elasticity"
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Variable = -dofs 2 Displacement
+  Large Deflection = False
+
+  Calculate Stresses = True
+  Calculate Principal = True
+  Calculate PAngle = True
+  Calculate Elemental Fields = True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = Umfpack
+End
+
+Solver 2
+  Exec Solver = after timestep
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Stress e_xx
+  Operator 1 = max
+  Operator 2 = min
+  Variable 3 = vonMises e
+  Operator 3 = max
+  Variable 4 = Tresca e
+  Operator 4 = max
+  Variable 5 = Principal Stress e 1
+  Operator 5 = max
+  Variable 6 = Stress e_xy
+  Operator 6 = max abs
+  Show Norm Index = 1
+End
+
+Boundary Condition 1
+  Name = "Bottom"
+  Target Boundaries = 1
+  Displacement 2 = 0.0
+End
+
+Boundary Condition 2
+  Name = "Right"
+  Target Boundaries = 2
+  Displacement 1 = 1.0e-3
+End
+
+Boundary Condition 3
+  Name = "Left"
+  Target Boundaries = 3
+  Displacement 1 = 0.0
+End
+
+Solver 2 :: Reference Norm = 2.0e6

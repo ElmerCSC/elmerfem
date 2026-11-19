@@ -47,7 +47,8 @@ MODULE ProjectorUtils
   USE MortarUtils, ONLY : PeriodicProjector
   USE ElementUtils, ONLY : FreeMatrix, RotateMatrix
   USE MatrixAssembly, ONLY : AddToMatrixElement
-  USE CoordinateSystems, ONLY : CoordinateSystemDimension
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension, CurrentCoordinateSystem, &
+      Cylindric, CylindricSymmetric, AxisSymmetric
   USE Lists
   USE ListMatrix
   IMPLICIT NONE
@@ -300,6 +301,8 @@ CONTAINS
      LOGICAL :: Found
      INTEGER :: dofs
      TYPE(MortarBC_t), POINTER :: MortarBC
+     ! Axisymmetric correction, e.g, for the flux integral constraint
+     LOGICAL :: AxiCorrection
      CHARACTER(*), PARAMETER :: Caller="RobinProjector"
 
      IF(IsBodyForce) THEN
@@ -321,9 +324,18 @@ CONTAINS
      END IF
 
      Mesh => Solver % Mesh
-
+     
+     ! In axisymmetric case the standard constraint integrates r*Js instead of Js, and the
+     ! Lagrange multiplier is a constant offset in A_phi instead of a voltage Vcf/(2*pi*r).
+     ! The keyword below activates a corrected constraint (only for IBC 'Layer' BCs).
+     AxiCorrection = .FALSE.
+     IF( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+         CurrentCoordinateSystem() == CylindricSymmetric ) THEN
+       AxiCorrection = ListGetLogical( BC,'Flux Integral BC Axi Correction', Found )
+     END IF
+     
      CALL CreateRobinProjector()
-
+       
      IF(Proj % FORMAT == MATRIX_LIST ) THEN
        CALL List_toCRSMatrix(Proj)
      END IF
@@ -346,19 +358,18 @@ CONTAINS
        MortarBC % Diag = 1.0_dp
      END IF
 
-
    CONTAINS
 
      SUBROUTINE CreateRobinProjector()
 
-       INTEGER :: i,j,k,n,t,dofs,idof,t1,t2
-       REAL(KIND=dp) :: dval
+       INTEGER :: i,j,k,l,n,t,dofs,idof,t1,t2
+       REAL(KIND=dp) :: dval, rad, corr
        TYPE(Matrix_t), POINTER :: A
        TYPE(Variable_t), POINTER :: Var
        TYPE(Element_t), POINTER :: Element
        LOGICAL, ALLOCATABLE :: ActiveDof(:)
        INTEGER, POINTER :: Indexes(:)
-
+       
        A => Solver % Matrix
        Var => Solver % Variable
        n = A % NumberOfRows
@@ -375,7 +386,7 @@ CONTAINS
          t1 = Mesh % NumberOfBulkElements + 1
          t2 = (t1-1) + Mesh % NumberOfBoundaryElements
        END IF
-
+       
        ! Mark the dofs of the matrix that are on the boundary.
        ! ActiveDof table will directly refer to the indexes of the matrix.
        ALLOCATE(ActiveDof(n))
@@ -396,22 +407,35 @@ CONTAINS
          END DO
        END DO
 
-       DO i=1, n / dofs
+       corr = 1.0_dp
+       DO l=1,Mesh % NumberOfNodes
+         i = Var % Perm(l) 
+         IF(i==0) CYCLE
+
+         ! This fix is not exact since the condition is multiplied by radius in a weak manner
+         ! and should be divided by the weakly integrated radius, not nodal one!
+         ! Small crime, we may fix it later...
+         IF( AxiCorrection ) THEN
+           rad = Mesh % Nodes % x(l)
+           IF(rad < EPSILON(rad)) CYCLE
+           corr = 1.0_dp / rad
+         END IF
+                    
          DO idof = 1, dofs
            j = dofs*(i-1)+idof
            IF(.NOT. ActiveDof(j)) CYCLE
-
+           
            DO k=A % Rows(j),A % Rows(j+1)-1
              IF(.NOT. ActiveDof(A % Cols(k))) CYCLE
              dval = A % Values(k) - A % BulkValues(k)
              ! We use the negative sign so that we get desired sign for the lagrange multiplier!
-             CALL AddToMatrixElement(Proj, idof, A % Cols(k), -dval )
+             CALL AddToMatrixElement(Proj, idof, A % Cols(k), -corr * dval )
            END DO
          END DO
        END DO
 
      END SUBROUTINE CreateRobinProjector
-
+     
    END SUBROUTINE RobinProjector
 
 

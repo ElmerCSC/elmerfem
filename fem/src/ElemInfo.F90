@@ -444,25 +444,26 @@ CONTAINS
        INTEGER :: ip, tid
        tid = 1
        !$ tid = omp_get_thread_num() + 1
-       IF ( ip_slot > 0 ) THEN
-         ! O(1) direct slot lookup
-         IF ( ip_slot <= Element % TYPE % BasisCacheCount(tid) ) THEN
-           Basis(1:n)       = Element % Type % BasisCache(ip_slot, 1:n, tid)
-           dLBasisdx(1:n,:) = Element % Type % dBasisCache(ip_slot, 1:n, :, tid)
+       ! Check the key too: another rule on this element type may have filled the slot.
+       IF ( ip_slot > 0 .AND. ip_slot <= Element % TYPE % BasisCacheCount(tid) .AND. &
+            Element % Type % BasisCacheU(ip_slot, tid) == u .AND. &
+            Element % Type % BasisCacheV(ip_slot, tid) == v .AND. &
+            Element % Type % BasisCacheW(ip_slot, tid) == w ) THEN
+         Basis(1:n)       = Element % Type % BasisCache(ip_slot, 1:n, tid)
+         dLBasisdx(1:n,:) = Element % Type % dBasisCache(ip_slot, 1:n, :, tid)
+         EXIT RefBasisBlock
+       END IF
+
+       ! Linear scan by (u,v,w) coordinates
+       DO ip = 1, Element % TYPE % BasisCacheCount(tid)
+         IF ( Element % Type % BasisCacheU(ip, tid) == u .AND. &
+              Element % Type % BasisCacheV(ip, tid) == v .AND. &
+              Element % Type % BasisCacheW(ip, tid) == w ) THEN
+           Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n, tid)
+           dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :, tid)
            EXIT RefBasisBlock
          END IF
-       ELSE
-         ! Linear scan by (u,v,w) coordinates
-         DO ip = 1, Element % TYPE % BasisCacheCount(tid)
-           IF ( Element % Type % BasisCacheU(ip, tid) == u .AND. &
-                Element % Type % BasisCacheV(ip, tid) == v .AND. &
-                Element % Type % BasisCacheW(ip, tid) == w ) THEN
-             Basis(1:n)       = Element % TYPE % BasisCache(ip, 1:n, tid)
-             dLBasisdx(1:n,:) = Element % TYPE % dBasisCache(ip, 1:n, :, tid)
-             EXIT RefBasisBlock
-           END IF
-         END DO
-       END IF
+       END DO
 
        CALL NodalBasisFunctions(n, Basis, element, u, v, w, pSolver)
        CALL NodalFirstDerivatives(n, dLBasisdx, element, u, v, w, pSolver)
@@ -1747,10 +1748,15 @@ CONTAINS
        cdim = CoordinateSystemDimension()
 
        IF (nc <= VECTOR_SMALL_THRESH) THEN
-         DO l=1,nc
-           CALL NodalBasisFunctions(n, BasisWrk(l,:), Element, u(l), v(l), w(l))
-           CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), Element, u(l), v(l), w(l))
-         END DO
+         IF ( .NOT. ElementInfoVec_BasisCacheLookup(Element % TYPE, n, nc, 1, &
+                 u, v, w, 1, BasisWrk, dBasisdxWrk) ) THEN
+           DO l=1,nc
+             CALL NodalBasisFunctions(n, BasisWrk(l,:), Element, u(l), v(l), w(l))
+             CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), Element, u(l), v(l), w(l))
+           END DO
+           CALL ElementInfoVec_BasisCacheStore(Element % TYPE, n, nc, 1, &
+               u, v, w, 1, BasisWrk, dBasisdxWrk)
+         END IF
          elem = ElementMetricVec(Element, Nodes, nc, n, DetJ(1:nc), &
                nbmax, dBasisdxWrk, LtoGMapsWrk)
          IF (.NOT. elem) THEN; retval = .FALSE.; RETURN; END IF
@@ -1777,6 +1783,8 @@ CONTAINS
          ! H1Basis vectorized dispatch: only safe for minimum-node (linear) elements
          ! (type >= nodes means no higher-order nodes to fill).
          ! Higher-order elements fall through to the scalar loop.
+         IF ( .NOT. ElementInfoVec_BasisCacheLookup(Element % TYPE, n, ncl, ll, &
+                 u, v, w, ll, BasisWrk, dBasisdxWrk) ) THEN
          IF (Element % TYPE % ElementCode/100 >= MODULO(Element % TYPE % ElementCode, 100)) THEN
            SELECT CASE(Element % TYPE % ElementCode / 100)
            CASE(2)
@@ -1809,6 +1817,9 @@ CONTAINS
              CALL NodalFirstDerivatives(n, dBasisdxWrk(l,:,:), element, uWrk(l), vWrk(l), wWrk(l))
            END DO
          END IF
+         CALL ElementInfoVec_BasisCacheStore(Element % TYPE, n, ncl, ll, &
+             u, v, w, ll, BasisWrk, dBasisdxWrk)
+         END IF  ! .NOT. ElementInfoVec_BasisCacheLookup
          Basis(ll:lln, 1:n) = BasisWrk(1:ncl, 1:n)
 
          ! Element (contravariant) metric and square root of determinant
@@ -1836,6 +1847,74 @@ CONTAINS
        END DO
      END IF
    END FUNCTION ElementInfoVec
+
+!------------------------------------------------------------------------------
+!>  Copy reference basis values for points slot0..slot0+npts-1 from the
+!>  per-type cache. Returns .FALSE. unless every key in the block matches.
+!------------------------------------------------------------------------------
+   FUNCTION ElementInfoVec_BasisCacheLookup( EType, n, npts, slot0, &
+       u, v, w, uoff, BasisWrk, dBasisdxWrk ) RESULT(hit)
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE(ElementType_t), POINTER, INTENT(IN) :: EType
+     INTEGER, INTENT(IN) :: n, npts, slot0, uoff
+     REAL(KIND=dp) CONTIG, INTENT(IN) :: u(:), v(:), w(:)
+     REAL(KIND=dp) CONTIG :: BasisWrk(:,:), dBasisdxWrk(:,:,:)
+     LOGICAL :: hit
+     INTEGER :: i, slot, tid
+!------------------------------------------------------------------------------
+     tid = 1
+     !$ tid = omp_get_thread_num() + 1
+     hit = .FALSE.
+     IF ( slot0 + npts - 1 > ELEM_BASIS_CACHE_SIZE ) RETURN
+     IF ( EType % BasisCacheCount(tid) < slot0 + npts - 1 ) RETURN
+
+     DO i=1,npts
+       slot = slot0 + i - 1
+       IF ( EType % BasisCacheU(slot, tid) /= u(uoff+i-1) .OR. &
+            EType % BasisCacheV(slot, tid) /= v(uoff+i-1) .OR. &
+            EType % BasisCacheW(slot, tid) /= w(uoff+i-1) ) RETURN
+     END DO
+
+     DO i=1,npts
+       slot = slot0 + i - 1
+       BasisWrk(i,1:n)       = EType % BasisCache(slot, 1:n, tid)
+       dBasisdxWrk(i,1:n,:)  = EType % dBasisCache(slot, 1:n, :, tid)
+     END DO
+     hit = .TRUE.
+!------------------------------------------------------------------------------
+   END FUNCTION ElementInfoVec_BasisCacheLookup
+
+!------------------------------------------------------------------------------
+!>  Store a computed block in slots slot0..slot0+npts-1. Reads check the
+!>  keys, so overwriting another rule's slots is safe.
+!------------------------------------------------------------------------------
+   SUBROUTINE ElementInfoVec_BasisCacheStore( EType, n, npts, slot0, &
+       u, v, w, uoff, BasisWrk, dBasisdxWrk )
+!------------------------------------------------------------------------------
+     IMPLICIT NONE
+     TYPE(ElementType_t), POINTER, INTENT(IN) :: EType
+     INTEGER, INTENT(IN) :: n, npts, slot0, uoff
+     REAL(KIND=dp) CONTIG, INTENT(IN) :: u(:), v(:), w(:)
+     REAL(KIND=dp) CONTIG :: BasisWrk(:,:), dBasisdxWrk(:,:,:)
+     INTEGER :: i, slot, tid
+!------------------------------------------------------------------------------
+     tid = 1
+     !$ tid = omp_get_thread_num() + 1
+
+     IF ( slot0 + npts - 1 > ELEM_BASIS_CACHE_SIZE ) RETURN
+
+     DO i=1,npts
+       slot = slot0 + i - 1
+       EType % BasisCacheU(slot, tid) = u(uoff+i-1)
+       EType % BasisCacheV(slot, tid) = v(uoff+i-1)
+       EType % BasisCacheW(slot, tid) = w(uoff+i-1)
+       EType % BasisCache(slot, 1:n, tid)     = BasisWrk(i,1:n)
+       EType % dBasisCache(slot, 1:n, :, tid) = dBasisdxWrk(i,1:n,:)
+     END DO
+     EType % BasisCacheCount(tid) = MAX( EType % BasisCacheCount(tid), slot0 + npts - 1 )
+!------------------------------------------------------------------------------
+   END SUBROUTINE ElementInfoVec_BasisCacheStore
 
    FUNCTION ElementInfoVec_ComputePElementBasis(Element, Nodes, nc, u, v, w, DetJ, nbmax, Basis, &
       uWrk, vWrk, wWrk, BasisWrk, dBasisdxWrk, DetJWrk, LtoGmapsWrk, dBasisdx, USolver) RESULT(retval)
@@ -4530,9 +4609,10 @@ END SUBROUTINE PickActiveFace
          IF (n==13) THEN
            ! Here the background mesh is supposed to be of type 613. The difference between the standard
            ! reference element and the p-reference element can be taken into account by a simple scaling:
-           CALL NodalBasisFunctions3D(Basis, Element, u, v, sqrt(2.0d0)*w)
-           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, sqrt(2.0d0)*w)
-           dLBasisdx(1:n,3) = sqrt(2.0d0) * dLBasisdx(1:n,3)
+           ! the apex of the p-reference pyramid is at w = sqrt(2), that of the standard one at w = 1.
+           CALL NodalBasisFunctions3D(Basis, Element, u, v, w/sqrt(2.0d0))
+           CALL NodalFirstDerivatives(n, dLBasisdx, Element, u, v, w/sqrt(2.0d0))
+           dLBasisdx(1:n,3) = dLBasisdx(1:n,3) / sqrt(2.0d0)
          ELSE
            ! Background mesh elements of the type 605:
            DO q=1,n
@@ -4550,8 +4630,8 @@ END SUBROUTINE PickActiveFace
            DOFs = 15
          END IF
 
-         IF (n==15) THEN
-           ! Here the background mesh is of type 715.
+         IF (n==15 .OR. n==18) THEN
+           ! Here the background mesh is of type 715 or 718.
            ! The Lagrange interpolation basis on the p-approximation reference element:
 
            h1 = -0.5d0*w + 0.5d0*w**2
@@ -4600,10 +4680,14 @@ END SUBROUTINE PickActiveFace
            dLBasisdx(15,1:2) = grad(1:2) * h3
            dLBasisdx(15,3) = WorkBasis(1,1) * dh3
 
-           h1 = 0.5d0 * (1.0d0 - w)
-           dh1 = -0.5d0
-           h2 = 0.5d0 * (1.0d0 + w)
-           dh2 = 0.5d0
+           ! For 715 the midside nodes of the triangles vary linearly in w; for 718
+           ! they are quadratic in w, completed by the quad face center nodes 16-18.
+           IF (n==15) THEN
+             h1 = 0.5d0 * (1.0d0 - w)
+             dh1 = -0.5d0
+             h2 = 0.5d0 * (1.0d0 + w)
+             dh2 = 0.5d0
+           END IF
 
            WorkBasis(1,1) = (3.0d0 - 3.0d0*u**2 - 2.0d0*Sqrt(3.0d0)*v + v**2)/3.0d0
            grad(1) = -2.0d0*u
@@ -4614,6 +4698,11 @@ END SUBROUTINE PickActiveFace
            Basis(10) = WorkBasis(1,1) * h2
            dLBasisdx(10,1:2) = grad(1:2) * h2
            dLBasisdx(10,3) = WorkBasis(1,1) * dh2
+           IF (n==18) THEN
+             Basis(16) = WorkBasis(1,1) * h3
+             dLBasisdx(16,1:2) = grad(1:2) * h3
+             dLBasisdx(16,3) = WorkBasis(1,1) * dh3
+           END IF
 
            WorkBasis(1,1) = (2.0d0*(Sqrt(3.0d0) + Sqrt(3.0d0)*u - v)*v)/3.0d0
            grad(1) = (2.0d0*v)/Sqrt(3.0d0)
@@ -4624,6 +4713,11 @@ END SUBROUTINE PickActiveFace
            Basis(11) = WorkBasis(1,1) * h2
            dLBasisdx(11,1:2) = grad(1:2) * h2
            dLBasisdx(11,3) = WorkBasis(1,1) * dh2
+           IF (n==18) THEN
+             Basis(17) = WorkBasis(1,1) * h3
+             dLBasisdx(17,1:2) = grad(1:2) * h3
+             dLBasisdx(17,3) = WorkBasis(1,1) * dh3
+           END IF
 
            WorkBasis(1,1) = (-2.0d0*v*(-Sqrt(3.0d0) + Sqrt(3.0d0)*u + v))/3.0d0
            grad(1) = (-2.0d0*v)/Sqrt(3.0d0)
@@ -4634,6 +4728,11 @@ END SUBROUTINE PickActiveFace
            Basis(12) = WorkBasis(1,1) * h2
            dLBasisdx(12,1:2) = grad(1:2) * h2
            dLBasisdx(12,3) = WorkBasis(1,1) * dh2
+           IF (n==18) THEN
+             Basis(18) = WorkBasis(1,1) * h3
+             dLBasisdx(18,1:2) = grad(1:2) * h3
+             dLBasisdx(18,3) = WorkBasis(1,1) * dh3
+           END IF
          ELSE
            ! Here the background mesh is of type 706
            DO q=1,n

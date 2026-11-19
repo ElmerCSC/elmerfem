@@ -4198,7 +4198,7 @@ CONTAINS
 
     INTEGER, POINTER :: FaceMap(:,:)
     INTEGER, TARGET  :: TetraFaceMap(4,6), BrickFaceMap(6,9), &
-         WedgeFaceMap(5,8), PyramidFaceMap(5,8), TriFaceMap(1,3), QuadFaceMap(1,4)
+         WedgeFaceMap(5,9), PyramidFaceMap(5,8), TriFaceMap(1,3), QuadFaceMap(1,4)
 
     INTEGER :: nf(4)
 !------------------------------------------------------------------------------
@@ -4215,11 +4215,12 @@ CONTAINS
     TetraFaceMap(3,:) = [ 2, 3, 4, 6, 10, 9 ]
     TetraFaceMap(4,:) = [ 3, 1, 4, 7, 8,10 ]
 
-    WedgeFaceMap(1,:) = [ 1, 2, 3, 7, 8, 9, -1, -1 ]
-    WedgeFaceMap(2,:) = [ 4, 5, 6, 10, 11, 12, -1, -1 ]
-    WedgeFaceMap(3,:) = [ 1, 2, 5, 4, 7, 14, 10, 13 ]
-    WedgeFaceMap(4,:) = [ 3, 2, 5, 6, 8, 14, 11, 15 ]
-    WedgeFaceMap(5,:) = [ 3, 1, 4, 6, 9, 13, 12, 15 ]
+    ! The 9th entry is the center node of a quad face of a 718 wedge
+    WedgeFaceMap(1,:) = [ 1, 2, 3, 7, 8, 9, -1, -1, -1 ]
+    WedgeFaceMap(2,:) = [ 4, 5, 6, 10, 11, 12, -1, -1, -1 ]
+    WedgeFaceMap(3,:) = [ 1, 2, 5, 4, 7, 14, 10, 13, 16 ]
+    WedgeFaceMap(4,:) = [ 3, 2, 5, 6, 8, 14, 11, 15, 17 ]
+    WedgeFaceMap(5,:) = [ 3, 1, 4, 6, 9, 13, 12, 15, 18 ]
 
     PyramidFaceMap(1,:) = [ 1, 2, 3, 4,  6,  7,  8,  9 ]
     PyramidFaceMap(2,:) = [ 1, 2, 5, 6, 11, 10, -1, -1 ]
@@ -4488,13 +4489,14 @@ CONTAINS
               END IF
 
             CASE(7)
-               ! for wedges, 706 and 715 supported:
+               ! for wedges, 706, 715 and 718 supported:
                !-------------------------------
               IF ( k <= 2 ) THEN
                 n1 = Degree * 3
                 Faces(Face) % TYPE => GetElementType( 300+n1, .FALSE. )
               ELSE
                 n1 = Degree * 4
+                IF ( Element % TYPE % NumberOfNodes == 18 ) n1 = 9
                 Faces(Face) % TYPE => GetElementType( 400+n1, .FALSE. )
               END IF
 
@@ -4659,14 +4661,15 @@ CONTAINS
     TetraEdgeMap(5,:) = [ 2,4,9 ]
     TetraEdgeMap(6,:) = [ 3,4,10 ]
 
-    PyramidEdgeMap(1,:) = [ 1,2,1 ]
-    PyramidEdgeMap(2,:) = [ 2,3,1 ]
-    PyramidEdgeMap(3,:) = [ 3,4,1 ]
-    PyramidEdgeMap(4,:) = [ 4,1,1 ]
-    PyramidEdgeMap(5,:) = [ 1,5,1 ]
-    PyramidEdgeMap(6,:) = [ 2,5,1 ]
-    PyramidEdgeMap(7,:) = [ 3,5,1 ]
-    PyramidEdgeMap(8,:) = [ 4,5,1 ]
+    ! Midside nodes of 613 (see elements.def and PyramidFaceMap)
+    PyramidEdgeMap(1,:) = [ 1,2,6 ]
+    PyramidEdgeMap(2,:) = [ 2,3,7 ]
+    PyramidEdgeMap(3,:) = [ 3,4,8 ]
+    PyramidEdgeMap(4,:) = [ 4,1,9 ]
+    PyramidEdgeMap(5,:) = [ 1,5,10 ]
+    PyramidEdgeMap(6,:) = [ 2,5,11 ]
+    PyramidEdgeMap(7,:) = [ 3,5,12 ]
+    PyramidEdgeMap(8,:) = [ 4,5,13 ]
 
     PyramidFaceEdgeMap(1,:) = [ 1,2,3,4 ]
     PyramidFaceEdgeMap(2,:) = [ 1,6,5,0 ]
@@ -4674,15 +4677,16 @@ CONTAINS
     PyramidFaceEdgeMap(4,:) = [ 3,8,7,0 ]
     PyramidFaceEdgeMap(5,:) = [ 4,5,8,0 ]
 
-    WedgeEdgeMap(1,:) = [ 1, 2, 1 ]
-    WedgeEdgeMap(2,:) = [ 2, 3, 1 ]
-    WedgeEdgeMap(3,:) = [ 1, 3, 1 ]
-    WedgeEdgeMap(4,:) = [ 4, 5, 1 ]
-    WedgeEdgeMap(5,:) = [ 5, 6, 1 ]
-    WedgeEdgeMap(6,:) = [ 6, 4, 1 ]
-    WedgeEdgeMap(7,:) = [ 1, 4, 1 ]
-    WedgeEdgeMap(8,:) = [ 2, 5, 1 ]
-    WedgeEdgeMap(9,:) = [ 3, 6, 1 ]
+    ! Midside nodes of 715/718 (see elements.def and WedgeCenterMap)
+    WedgeEdgeMap(1,:) = [ 1, 2, 7 ]
+    WedgeEdgeMap(2,:) = [ 2, 3, 8 ]
+    WedgeEdgeMap(3,:) = [ 1, 3, 9 ]
+    WedgeEdgeMap(4,:) = [ 4, 5, 10 ]
+    WedgeEdgeMap(5,:) = [ 5, 6, 11 ]
+    WedgeEdgeMap(6,:) = [ 6, 4, 12 ]
+    WedgeEdgeMap(7,:) = [ 1, 4, 13 ]
+    WedgeEdgeMap(8,:) = [ 2, 5, 14 ]
+    WedgeEdgeMap(9,:) = [ 3, 6, 15 ]
 
     WedgeFaceEdgeMap(1,:) = [ 1,2,3,0 ]
     WedgeFaceEdgeMap(2,:) = [ 4,5,6,0 ]
@@ -4694,14 +4698,16 @@ CONTAINS
     BrickEdgeMap(2,:) = [ 2, 3,  10 ]
     BrickEdgeMap(3,:) = [ 4, 3,  11 ]
     BrickEdgeMap(4,:) = [ 1, 4,  12 ]
-    BrickEdgeMap(5,:) = [ 5, 6,  13 ]
-    BrickEdgeMap(6,:) = [ 6, 7,  14 ]
-    BrickEdgeMap(7,:) = [ 8, 7,  15 ]
-    BrickEdgeMap(8,:) = [ 5, 8,  16 ]
-    BrickEdgeMap(9,:) = [ 1, 5,  17 ]
-    BrickEdgeMap(10,:) = [ 2, 6, 18 ]
-    BrickEdgeMap(11,:) = [ 3, 7, 19 ]
-    BrickEdgeMap(12,:) = [ 4, 8, 20 ]
+    ! Midside nodes of 820/827: 13-16 on the vertical edges, 17-20 on the top edges
+    ! (see elements.def and BrickCenterMap)
+    BrickEdgeMap(5,:) = [ 5, 6,  17 ]
+    BrickEdgeMap(6,:) = [ 6, 7,  18 ]
+    BrickEdgeMap(7,:) = [ 8, 7,  19 ]
+    BrickEdgeMap(8,:) = [ 5, 8,  20 ]
+    BrickEdgeMap(9,:) = [ 1, 5,  13 ]
+    BrickEdgeMap(10,:) = [ 2, 6, 14 ]
+    BrickEdgeMap(11,:) = [ 3, 7, 15 ]
+    BrickEdgeMap(12,:) = [ 4, 8, 16 ]
 
     BrickFaceEdgeMap(1,:) = [ 1,2,3,4   ]
     BrickFaceEdgeMap(2,:) = [ 5,6,7,8   ]
