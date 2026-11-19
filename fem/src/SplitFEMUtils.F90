@@ -69,7 +69,7 @@ MODULE SplitFemUtils
   INTEGER, POINTER :: TopPointer(:) => NULL(), BotPointer(:) => NULL()
   TYPE(Matrix_t), POINTER :: NodeMatrix => NULL()
   INTEGER :: SplitFemBody = -1
-  LOGICAL :: SplitFEMExtruded = .FALSE.
+  LOGICAL :: SplitFEMExtruded = .FALSE., SplitFEM3D = .FALSE.
   CHARACTER(:), ALLOCATABLE :: CutStr
   INTEGER :: CutDofs = 0
   INTEGER :: nCase(20)
@@ -316,10 +316,6 @@ CONTAINS
         CutDof(nn+i) = .TRUE.
 
         ! The interpolation weight should always be [0,1]
-        IF(r < 0.0 .OR. r > 1.0) THEN
-          PRINT *,'Invalid cutinterp:',i,j,r
-        END IF    
-        
         CutInterp(i) = r
 
         ! We update nodes so that the element on-the-fly can point to then using NodeIndexes. 
@@ -341,6 +337,7 @@ CONTAINS
     ! interpolation from the top edges to other edges as well. 
     ! Other 3D meshes (e.g. tetrahedra) are cut directly as in 2D. 
     SplitFEMExtruded = .FALSE.
+    SplitFEM3D = .FALSE.
     IF( Mesh % MeshDim == 3 ) THEN
       SplitFEMExtruded = ListGetLogical( Params,'SplitFEM Extruded Mesh',Found )
       IF(.NOT. Found) THEN
@@ -359,6 +356,7 @@ CONTAINS
       ELSE
         CALL Info(Caller,'Cutting 3D mesh directly with the levelset',Level=7)
       END IF
+      SplitFEM3D = .NOT. SplitFEMExtruded 
     END IF
     
     IF( SplitFEMExtruded ) THEN
@@ -484,64 +482,9 @@ CONTAINS
       PRINT *,'Nodes split',COUNT(CutDof(1:nn))
       PRINT *,'Edges cut',COUNT(CutDof(nn+1:nn+ne))
     END IF
-      
-    ! Set the material for inside/outside or interface material.
-    ! This way we do not need to have too complicated material sections.
-    SplitFEMBody = 0
-    DO i=1,Mesh % NumberOfBulkElements
-      Element => Mesh % Elements(i)
 
-      NodeIndexes => Element % NodeIndexes
-      IF(ANY(XiPerm(NodeIndexes) == 0)) CYCLE
-
-      ! So far we assume that there is only one body index used to define the SplitFEM region.
-      ! We are tampering with the index, so we need to store it. 
-      IF(SplitFEMBody == 0) THEN
-        SplitFEMBody = Element % BodyId
-      ELSE
-        IF(SplitFemBody /= Element % BodyId ) THEN
-          CALL Fatal(Caller,'Modify code to deal with several bodies!')
-        END IF
-      END IF
-      
-      j = -1
-      IF(ANY(CutDof(nn + Element % EdgeIndexes)) ) THEN
-        ! Some edge is split => interface element
-        j = body_cut        
-        InsideCnt(3) = InsideCnt(3)+1
-      ELSE
-        ! Also at interface element if we have diagonal split in a quad. 
-        IF(Element % TYPE % ElementCode / 100 == 4 ) THEN
-          IF(ALL(CutDof(NodeIndexes([1,3])))) THEN
-            j = body_cut            
-          ELSE IF(ALL(CutDof(NodeIndexes([2,4])))) THEN
-            j = body_cut
-          END IF
-        END IF
-
-        ! Ok, no interface. Use the min/max value to indicate whether this is inside/outside. 
-        IF(j<0) THEN
-          h1 = MAXVAL(PhiValues(XiPerm(NodeIndexes)))
-          h2 = MINVAL(PhiValues(XiPerm(NodeIndexes)))
-          IF(h1 > -h2) THEN
-            InsideCnt(2) = InsideCnt(2)+1
-            j = body_out
-          ELSE
-            InsideCnt(1) = InsideCnt(1)+1
-            j = body_in
-          END IF
-        ELSE
-          InsideCnt(3) = InsideCnt(3)+1
-        END IF
-      END IF
-
-      Element % BodyId = j
-    END DO
-
-    IF(InfoActive(25)) THEN
-      PRINT *,'Inside/Outside count:',InsideCnt
-    END IF
-          
+    CALL SetSplitFEMBodies(Model, Mesh, .FALSE.) 
+    
     ! CutPerm is the reordered dofs for the SplitFEM mesh. 
     IF(.NOT. ASSOCIATED(CutPerm)) THEN
       ALLOCATE(CutPerm(nn+ne))
@@ -811,6 +754,10 @@ CONTAINS
 
       Element % BodyId = j
     END DO
+
+    WRITE(Message,'(A,3I9)') 'Inside/outside element counts: ',InsideCnt
+    CALL Info('SetSplitFEMBodies',Message,Level=25)
+              
   END SUBROUTINE SetSplitFEMBodies
 
   
@@ -943,7 +890,7 @@ CONTAINS
     
     CALL List_AddToMatrixElement(A % ListMatrix, n, n, 0.0_dp ) 
 
-    n = 2*Mesh % MaxElementNodes
+    n = 2 * Mesh % MaxElementNodes 
     ALLOCATE(BlockInds(n),DofInds(n*dofs))
     BlockInds = 0
 
@@ -1265,25 +1212,17 @@ CONTAINS
       y => Mesh % Nodes % y
       z => Mesh % Nodes % z                 
 
-      n = ListGetInteger( Solver % Values,'SplitFem Interface BC',Found )
-
       Elem303 % TYPE => GetElementType(303)
       ALLOCATE(Elem303 % NodeIndexes(3))      
       Elem303 % NodeIndexes = 0
-      ALLOCATE( Elem303 % BoundaryInfo )      
-      Elem303 % BoundaryInfo % Constraint = n
 
       Elem404 % TYPE => GetElementType(404)
       ALLOCATE(Elem404 % NodeIndexes(4))      
       Elem404 % NodeIndexes = 0
-      ALLOCATE( Elem404 % BoundaryInfo )      
-      Elem404 % BoundaryInfo % Constraint = n
 
       Elem202 % TYPE => GetElementType(202)
       ALLOCATE(Elem202 % NodeIndexes(2))      
       Elem202 % NodeIndexes = 0
-      ALLOCATE( Elem202 % BoundaryInfo )      
-      Elem202 % BoundaryInfo % Constraint = n
       
       PSweep=0
       Visited = .TRUE.
@@ -1295,9 +1234,6 @@ CONTAINS
         prevElement => NULL()
       END IF
     END IF
-
-    ! Not activated
-    VerticalCut = .FALSE.
 
 
     n = Element % Type % NumberOfNodes
@@ -1340,6 +1276,7 @@ CONTAINS
     Elem303 % NodeIndexes = 0
     Elem404 % NodeIndexes = 0
     LocalInds = 0
+    VerticalCut = .FALSE.
     
     ! For prisms and hexas we currently assume that the field is cut vertically such that
     ! we can split the bottom/top triangle and copy the same split in 3D.
@@ -1474,9 +1411,6 @@ CONTAINS
       END BLOCK
     END IF
     
-    pElement % BoundaryInfo % Left => NULL() ! Element
-    pElement % BodyId = 0
-
 
   CONTAINS
 
@@ -2771,7 +2705,7 @@ CONTAINS
     ! The isoline mesh and the polyline based levelset update work in the xy-plane.
     ! They apply to 2D meshes and to extruded 3D meshes where the levelset is given
     ! at the top surface. For other 3D meshes the levelset is kept fixed.
-    IF( Mesh % MeshDim == 3 .AND. .NOT. SplitFEMExtruded ) THEN
+    IF( SplitFEM3D ) THEN
       IF( ListCheckPrefix( CurrentModel % Simulation,'Levelset Velocity') .OR. &
           ListGetLogical( CurrentModel % Simulation,'SplitFEM normal move',Found ) ) THEN
         CALL Warn('LevelSetUpdate','Moving levelset not available for non-extruded 3D meshes!')
@@ -2838,7 +2772,6 @@ CONTAINS
       DO i=1, Mesh % NumberOfNodes
         j = PhiVar2D % Perm(i)
         IF(j==0 .AND. .NOT. NonZero) CYCLE
-        IF(j==0) STOP
 
         val = SignedDistance(i, Trust(i))
 
@@ -3267,7 +3200,6 @@ CONTAINS
           IF(Intersect) EXIT
         END DO
       END DO
-
 
     END SUBROUTINE GetElemIntersectLogical
 
@@ -3775,11 +3707,12 @@ CONTAINS
               y2 = PolylineData(k) % Vals(j,3)
               y3 = PolylineData(k) % Vals(j,4)
 
-              !need to discount if either node is the same
-              IF(ABS(x0-x2) > AEPS .OR. ABS(x0-x3) <  AEPS) CYCLE
-              IF(ABS(x1-x2) > AEPS .OR. ABS(x1-x3) <  AEPS) CYCLE
-              IF(ABS(y0-y2) > AEPS .OR. ABS(y0-y3) <  AEPS) CYCLE
-              IF(ABS(y1-y2) > AEPS .OR. ABS(y1-y3) <  AEPS) CYCLE
+              ! need to discount if either node is the same
+              ! Note: there was ">" before!
+              IF(ABS(x0-x2) < AEPS .OR. ABS(x0-x3) <  AEPS) CYCLE
+              IF(ABS(x1-x2) < AEPS .OR. ABS(x1-x3) <  AEPS) CYCLE
+              IF(ABS(y0-y2) < AEPS .OR. ABS(y0-y3) <  AEPS) CYCLE
+              IF(ABS(y1-y2) < AEPS .OR. ABS(y1-y3) <  AEPS) CYCLE
 
               xmax1 = MAX(x2,x3); xmin1 = MIN(x2,x3)
               ymax1 = MAX(y2,y3); ymin1 = MIN(y2,y3)
@@ -4402,15 +4335,13 @@ CONTAINS
       REAL(KIND=dp) :: Point(3),val
       LOGICAL :: Found
       !----------------------------------------
-      REAL(KIND=dp) :: LocalCoords(3),ElementValues(3)
+      REAL(KIND=dp) :: LocalCoords(3),ElementValues(4)
       TYPE(Element_t), POINTER :: HitElement
       LOGICAL :: FirstTime=.TRUE.
 
       SAVE :: FirstTime
 
-      Found = PointInMesh(Solver, Point, LocalCoords, HitElement, ExtInitialize=FirstTime)!, &
-          !CandElement, ExtInitialize )
-
+      Found = PointInMesh(Solver, Point, LocalCoords, HitElement, ExtInitialize=FirstTime)
       IF(.NOT. Found) RETURN
 
       ElementValues = PhiVar2D % Values(PhiVar2D % Perm(HitElement % NodeIndexes))
