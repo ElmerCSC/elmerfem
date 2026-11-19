@@ -1086,13 +1086,15 @@ SUBROUTINE DriveHysteresis(model, solver) ! {{{
 
 
 drivehystblock: block
-    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ, B_ip(3), POT(nd), Agrad(3)
-    LOGICAL :: einfostat
+    REAL(KIND=dp) :: Basis(nd),dBasisdx(nd,3),DetJ, B_ip(3), POT(nd), Agrad(3), Alocal, x
+    LOGICAL :: einfostat, CSymmetry
     REAL(kind=dp), parameter :: zstab=1.0d-5
     integer :: counter, t, n_dir
 
     CALL GetLocalSolution(POT,UElement=Element,USolver=Solver)
     CALL GetElementNodes(Nodes)
+    CSymmetry = ( CurrentCoordinateSystem() == AxisSymmetric .OR. &
+        CurrentCoordinateSystem() == CylindricSymmetric )
 
     counter = 0
     do t = 1, ip%N
@@ -1117,6 +1119,15 @@ drivehystblock: block
       B_ip(1) = Agrad(2)
       B_ip(2) = -Agrad(1)
       b_ip(3) = 0.0_dp
+      ! In axisymmetry use the same B as the assembly in MagnetoDynamics2D and as
+      ! GetHystereticMFS: B_r = -dA/dz, B_z = dA/dr + A/r. Without this the
+      ! hysteresis history is driven with the Cartesian B (wrong sign, missing A/r).
+      IF( CSymmetry ) THEN
+        Alocal = SUM( POT(1:nd) * Basis(1:nd) )
+        x = SUM( Basis(1:n) * Nodes % x(1:n) )
+        B_ip = -B_ip
+        B_ip(2) = B_ip(2) + Alocal/x
+      END IF
 #if DEBUG>0
       if (printed < 2) then ! DEBUG
         print *, 'B_ip = ', B_ip, printed
