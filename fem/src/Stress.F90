@@ -61,9 +61,13 @@ MODULE StressLocal
 !> solvers declare exactly this set, so ElasticityStoreEigenmode can walk it
 !> without being told which of them are in play: one a solver did not declare is
 !> simply not on the mesh, and is skipped.
-  CHARACTER(LEN=16), PARAMETER :: STRESS_OUTPUT_FIELDS(7) = &
-      [ CHARACTER(LEN=16) :: 'Stress', 'vonMises', 'Principal Stress', 'Strain', &
-        'Principal Strain', 'Principal Angle', 'Tresca' ]
+!> The trailing " e" names are the elemental (-dg) counterparts that ElasticSolve
+!> writes under "Calculate Elemental Fields".
+  CHARACTER(LEN=20), PARAMETER :: STRESS_OUTPUT_FIELDS(14) = &
+      [ CHARACTER(LEN=20) :: 'Stress', 'vonMises', 'Principal Stress', 'Strain', &
+        'Principal Strain', 'Principal Angle', 'Tresca', &
+        'Stress e', 'vonMises e', 'Principal Stress e', 'Strain e', &
+        'Principal Strain e', 'Principal Angle e', 'Tresca e' ]
 
 !------------------------------------------------------------------------------
 !> Persistent state of a nodal projection. Stress and strain fields are recovered
@@ -1787,6 +1791,106 @@ CONTAINS
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE OutputVector2Tensor
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The scalar and principal measures of a recovered stress field: von Mises, and
+!> optionally the principal stresses (descending), their directions and Tresca.
+!> Point by point over whatever Perm indexes -- a nodal field's permutation or a
+!> DG field's -- so the nodal and the elemental outputs share one definition.
+!> All the target fields are on the same permutation as S.
+!------------------------------------------------------------------------------
+   SUBROUTINE StressInvariantFields( Perm, ncomp, S, VonMises, DoPrincipal, DoAngle, &
+       Principal, Tresca, PAngle )
+!------------------------------------------------------------------------------
+     INTEGER, POINTER :: Perm(:)
+     INTEGER :: ncomp
+     REAL(KIND=dp), POINTER :: S(:), VonMises(:), Principal(:), Tresca(:), PAngle(:)
+     LOGICAL :: DoPrincipal, DoAngle
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: T(3,3), Identity(3,3), W(3), Work(102), Tmp
+     INTEGER :: i, j, k, l, q, Info
+!------------------------------------------------------------------------------
+     Identity = 0.0_dp
+     DO i=1,3
+       Identity(i,i) = 1.0_dp
+     END DO
+
+     VonMises = 0.0_dp
+     DO i=1,SIZE( Perm )
+       IF ( Perm(i) <= 0 ) CYCLE
+       q = ncomp * (Perm(i)-1)
+       CALL OutputVector2Tensor( S(q+1:q+ncomp), ncomp, T )
+       T = T - TRACE(T,3) * Identity/3
+       DO j=1,3
+         DO k=1,3
+           VonMises(Perm(i)) = VonMises(Perm(i)) + T(j,k)**2
+         END DO
+       END DO
+     END DO
+     VonMises = SQRT( 3.0_dp * VonMises / 2.0_dp )
+
+     IF ( .NOT. DoPrincipal ) RETURN
+
+     DO i=1,SIZE( Perm )
+       IF ( Perm(i) <= 0 ) CYCLE
+       q = ncomp * (Perm(i)-1)
+       CALL OutputVector2Tensor( S(q+1:q+ncomp), ncomp, T )
+
+       CALL DSYEV( 'V', 'U', 3, T, 3, W, Work, 102, Info )
+       IF ( Info /= 0 ) CALL Fatal( 'StressInvariantFields', 'DSYEV cannot generate eigen basis' )
+
+       ! The eigenvalues are returned in ascending order:
+       DO l=1,3
+         Principal(3*(Perm(i)-1)+l) = W(4-l)
+       END DO
+
+       IF ( DoAngle ) THEN
+         DO k=1,3
+           PAngle(9*(Perm(i)-1) + 3*(k-1) + 1) = ACOS(T(1,4-k))
+           PAngle(9*(Perm(i)-1) + 3*(k-1) + 2) = ACOS(T(2,4-k))
+           PAngle(9*(Perm(i)-1) + 3*(k-1) + 3) = ACOS(T(3,4-k))
+         END DO
+       END IF
+
+       q = 3*(Perm(i)-1)
+       Tresca(Perm(i)) = ( Principal(q+1) - Principal(q+2) ) / 2
+       Tmp = ( Principal(q+2) - Principal(q+3) ) / 2
+       IF ( Tmp > Tresca(Perm(i)) ) Tresca(Perm(i)) = Tmp
+       Tmp = ( Principal(q+1) - Principal(q+3) ) / 2
+       IF ( Tmp > Tresca(Perm(i)) ) Tresca(Perm(i)) = Tmp
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE StressInvariantFields
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The principal strains (descending) of a recovered strain field, point by point
+!> over Perm as in StressInvariantFields.
+!------------------------------------------------------------------------------
+   SUBROUTINE PrincipalStrainField( Perm, ncomp, E, Principal )
+!------------------------------------------------------------------------------
+     INTEGER, POINTER :: Perm(:)
+     INTEGER :: ncomp
+     REAL(KIND=dp), POINTER :: E(:), Principal(:)
+!------------------------------------------------------------------------------
+     REAL(KIND=dp) :: T(3,3), W(3), Work(102)
+     INTEGER :: i, l, q, Info
+!------------------------------------------------------------------------------
+     DO i=1,SIZE( Perm )
+       IF ( Perm(i) <= 0 ) CYCLE
+       q = ncomp * (Perm(i)-1)
+       CALL OutputVector2Tensor( E(q+1:q+ncomp), ncomp, T )
+       CALL DSYEV( 'N', 'U', 3, T, 3, W, Work, 102, Info )
+       IF ( Info /= 0 ) CALL Fatal( 'PrincipalStrainField', 'DSYEV cannot generate eigen basis' )
+       DO l=1,3
+         Principal(3*(Perm(i)-1)+l) = W(4-l)
+       END DO
+     END DO
+!------------------------------------------------------------------------------
+   END SUBROUTINE PrincipalStrainField
 !------------------------------------------------------------------------------
 
 

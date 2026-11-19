@@ -9365,6 +9365,8 @@ END SUBROUTINE DerivateExportedVariables
        IF( allocstat /= 0 ) CALL Fatal(Caller,'Allocation error for TmpVar % Values')
      END IF
      TmpVar % Values = 0.0_dp
+     ! A reused target keeps the flag from its last body average.
+     TmpVar % DgAveraged = .FALSE.
 
      IF( NodalField ) THEN
        ALLOCATE( NodeHits(varsize) )
