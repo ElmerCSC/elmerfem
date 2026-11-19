@@ -1775,7 +1775,7 @@ END FUNCTION PointFaceDistance
 
       SELECT CASE( SplitCase ) 
 
-      CASE( 20, 21 )
+      CASE( 20 )
         ! Triangle being cut on two edges.
         IF( m == 1 ) THEN
           ! Find the only edge that is not cut
@@ -1820,7 +1820,53 @@ END FUNCTION PointFaceDistance
 
           SgnNode = 3
         END IF
+        
+      CASE( 21 )
+        ! Triangle being cut on two edges.
+        IF( m == 1 ) THEN
+          ! Find the only edge that is not cut
+          DO j=1,3
+            IF( .NOT. ElemCut( n + j ) ) EXIT
+          END DO
+          j2 = MODULO(j,3)+1
+          j3 = MODULO(j+1,3)+1
+          mmax = 3
 
+          ! There are two ways to split the triangle.
+          ! Choose the one with shorter diameter.
+          s1 = (ElemNodes % x(j) - ElemNodes % x(n + j2))**2 + &
+              (ElemNodes % y(j) - ElemNodes % y(n + j2))**2 + &
+              (ElemNodes % z(j) - ElemNodes % z(n + j2))**2
+          s2 = (ElemNodes % x(j2) - ElemNodes % x(n + j3))**2 + &
+              (ElemNodes % y(j2) - ElemNodes % y(n + j3))**2 + &
+              (ElemNodes % z(j2) - ElemNodes % z(n + j3))**2
+
+          LocalInds(1) = j
+          LocalInds(2) = j2
+          IF( s1 < s2 ) THEN
+            LocalInds(3) = n + j2
+          ELSE
+            LocalInds(3) = n + j3
+          END IF
+          SgnNode = 1
+        ELSE IF(m==2) THEN
+          IF( s1 < s2 ) THEN
+            LocalInds(1) = j
+          ELSE
+            LocalInds(1) = j2
+          END IF
+          LocalInds(2) = n + j2
+          LocalInds(3) = n + j3
+
+          SgnNode = 1
+        ELSE IF(m==3) THEN
+          LocalInds(1) = n + j3
+          LocalInds(2) = n + j2
+          LocalInds(3) = j3
+
+          SgnNode = 3
+        END IF
+        
       CASE( 11 )
         ! Triangle being cut on one edge and one node.
         IF( m == 1 ) THEN
