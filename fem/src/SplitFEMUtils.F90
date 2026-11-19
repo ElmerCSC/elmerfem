@@ -1245,7 +1245,7 @@ CONTAINS
 
     TYPE(Element_t), TARGET :: Elem202, Elem303, Elem404
     TYPE(Element_t), POINTER, SAVE :: prevElement
-    INTEGER :: m, n, n_split, n_cut, n_cut_min, i, j, j2, j3, nn, SplitCase, PSweep
+    INTEGER :: m, n, n_split, n_cut, n_cut_min, i, j, j2, nn, SplitCase, PSweep
     INTEGER, POINTER :: nIndexes(:), eIndexes(:)
     TYPE(Mesh_t), POINTER :: Mesh
     LOGICAL :: Visited = .FALSE., Found, VerticalCut, Failed
@@ -1365,6 +1365,13 @@ CONTAINS
     CASE DEFAULT
       CALL Fatal(Caller,'Unknown element type to split: '//I2S(Element % TYPE % ElementCode)//'!')
     END SELECT   
+
+    ! The split routine may conclude that there is no interface after all.
+    IF(.NOT. IsCut) THEN
+      pElement => NULL()
+      IsMore = .FALSE.
+      RETURN
+    END IF
     
     IF(Failed) THEN
       PRINT *,'Unknown SplitCase for element:',SplitCase, Element % Type  % ElementCode
@@ -1596,100 +1603,107 @@ CONTAINS
     END SUBROUTINE SplitQuadBC
 
 
+    ! Interface elements of a tetrahedron. The boundary elements must be faces of the
+    ! bulk pieces, otherwise their parents cannot be found. Therefore the interface
+    ! triangles are not constructed here independently but taken from the tetrahedra
+    ! that SplitSingleElement creates. A face of a piece is on the interface if all its
+    ! points are cut points of edges or vertices lying on the levelset. The latter are
+    ! vertices that are cut while none of their edges are cut, as in SplitSingleElement.
+    ! Each interface triangle is a face of a piece on both sides, so duplicates are dropped.
+    ! In the case with two vertices on each side the interface quad is thus returned as
+    ! the two triangles using the same diagonal as the bulk tetrahedra.
+    !---------------------------------------------------------------------------------
     SUBROUTINE SplitTetraBC()
-      SELECT CASE( SplitCase ) 
-      
-      CASE( 40 )      
-        ! Two vertices on each side: the interface is a planar quad whose corners are
-        ! the cut points of the four cut edges. The two uncut edges are opposite edges.
-        ! In the quad a cut edge is adjacent to the cut edges that share a vertex with it
-        ! and opposite to the one that does not. In the bulk the quad is the common face
-        ! of the two wedges, which SplitSingleElement further divides into tetrahedra.
-        ! Then the bulk sees the quad as two triangles while it is kept here as one 404.
-        BLOCK
-          INTEGER, PARAMETER :: OppEdge(6) = [6,4,5,2,3,1]
-          INTEGER :: CutEdges(4), k
-          k = 0
-          DO j=1,6
-            IF( CutDof( nn + eIndexes(j) ) ) THEN
-              k = k+1
-              CutEdges(k) = j
+      INTEGER, PARAMETER :: TetEdge(4,4) = RESHAPE( [0,1,3,4, 1,0,2,5, 3,2,0,6, 4,5,6,0], [4,4] )
+      INTEGER :: FaceInds(3,8), nFaces, ElemInds(10), LocalInds(8), Tri(3), SgnNode, cnt, k, f, l
+      LOGICAL :: ElemCut(10), OnLevel(10), PieceCut, PieceMore, Dupl
+      TYPE(Nodes_t) :: ElemNodes
+      SAVE FaceInds, nFaces
+
+      IF( n_split == 0 ) THEN
+        ! The levelset passes through vertices only. The bulk element is not split.
+        IF( n_cut == 3 ) THEN
+          ! A face of the tetrahedron lies on the levelset: the three cut nodes.
+          i = 0
+          DO j=1,4
+            IF(.NOT. CutDof( nIndexes(j))) CYCLE
+            i = i+1
+            pElement % NodeIndexes(i) = nIndexes(j)
+          END DO
+        ELSE
+          Failed = .TRUE.
+        END IF
+        RETURN
+      END IF
+
+      ElemInds(1:4) = nIndexes(1:4)
+      ElemInds(5:10) = nn + eIndexes(1:6)
+
+      IF( m == 1 ) THEN
+        ElemCut = CutDof( ElemInds )
+
+        ! Points lying on the levelset.
+        OnLevel = ElemCut
+        DO j=1,4
+          DO k=1,4
+            IF( j /= k ) THEN
+              IF( ElemCut( 4 + TetEdge(j,k) ) ) OnLevel(j) = .FALSE.
             END IF
           END DO
-          ! Order: e1, e2, opp(e1), opp(e2) where e2 is not opposite to e1.
-          j = CutEdges(1)
-          DO k=2,4
-            IF( CutEdges(k) /= OppEdge(j) ) EXIT
+        END DO
+
+        ALLOCATE( ElemNodes % x(10), ElemNodes % y(10), ElemNodes % z(10) )
+        ElemNodes % x = x(ElemInds)
+        ElemNodes % y = y(ElemInds)
+        ElemNodes % z = z(ElemInds)
+
+        nFaces = 0
+        DO cnt = 1, 10
+          LocalInds = 0
+          CALL SplitSingleElement(Element, ElemCut, ElemNodes, cnt, &
+              PieceCut, PieceMore, LocalInds, SgnNode )
+          IF(.NOT. PieceCut) EXIT
+          IF( COUNT( LocalInds > 0 ) /= 4 ) THEN
+            CALL Fatal(Caller,'Expected tetrahedra only from the split of a tetrahedron!')
+          END IF
+
+          ! Faces of the piece opposite to each of its vertices.
+          DO f=1,4
+            Tri = PACK( LocalInds(1:4), [ (l /= f, l=1,4) ] )
+            IF( .NOT. ALL( OnLevel(Tri) ) ) CYCLE
+            Tri = SortTri( Tri )
+            Dupl = .FALSE.
+            DO l=1,nFaces
+              IF( ALL( FaceInds(:,l) == Tri ) ) Dupl = .TRUE.
+            END DO
+            IF( Dupl ) CYCLE
+            nFaces = nFaces + 1
+            FaceInds(:,nFaces) = Tri
           END DO
-          j2 = CutEdges(k)
-          pElement => Elem404
-          pElement % NodeIndexes(1) = nn + eIndexes(j)
-          pElement % NodeIndexes(2) = nn + eIndexes(j2)
-          pElement % NodeIndexes(3) = nn + eIndexes(OppEdge(j))
-          pElement % NodeIndexes(4) = nn + eIndexes(OppEdge(j2))
-        END BLOCK
+          IF(.NOT. PieceMore) EXIT
+        END DO
 
-      CASE( 30 )      
-        DO j=1,6
-          IF(CutDof( nn + eIndexes(j))) EXIT
-        END DO
-        DO j2=1,6
-          IF(j2==j) CYCLE
-          IF(CutDof( nn + eIndexes(j2))) EXIT
-        END DO
-        DO j3=1,6
-          IF(j3==j .OR. j3==j2) CYCLE
-          IF(CutDof( nn + eIndexes(j3))) EXIT
-        END DO
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)
-        pElement % NodeIndexes(3) = nn + eIndexes(j3)
+        DEALLOCATE( ElemNodes % x, ElemNodes % y, ElemNodes % z )
+      END IF
 
-      CASE( 21 )      
-        DO j=1,6
-          IF(CutDof( nn + eIndexes(j))) EXIT
-        END DO
-        DO j2=1,6
-          IF(j2==j) CYCLE
-          IF(CutDof( nn + eIndexes(j2))) EXIT
-        END DO
-        DO j3=1,4
-          IF(CutDof( nIndexes(j3))) EXIT
-        END DO
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nn + eIndexes(j2)
-        pElement % NodeIndexes(3) = nIndexes(j3)
+      IF( m > nFaces ) THEN
+        ! Bulk element was not split (inconsistent cuts) so there is no interface either.
+        IsCut = .FALSE.
+        RETURN
+      END IF
 
-      CASE( 12 )      
-        DO j=1,6
-          IF(CutDof( nn + eIndexes(j))) EXIT
-        END DO
-        DO j2=1,4
-          IF(CutDof( nIndexes(j2))) EXIT
-        END DO
-        DO j3=1,4
-          IF(j3==j2) CYCLE
-          IF(CutDof( nIndexes(j3))) EXIT
-        END DO
-        pElement % NodeIndexes(1) = nn + eIndexes(j)
-        pElement % NodeIndexes(2) = nIndexes(j2)
-        pElement % NodeIndexes(3) = nIndexes(j3)
-
-      CASE( 03 )      
-        ! A face of the tetrahedron lies on the levelset: the three cut nodes.
-        i = 0
-        DO j=1,4
-          IF(.NOT. CutDof( nIndexes(j))) CYCLE
-          i = i+1
-          pElement % NodeIndexes(i) = nIndexes(j)
-        END DO
-      
-      CASE DEFAULT
-        Failed = .TRUE.
-
-      END SELECT
+      pElement % NodeIndexes(1:3) = ElemInds( FaceInds(:,m) )
+      IsMore = ( m < nFaces )
 
     END SUBROUTINE SplitTetraBC
+
+    FUNCTION SortTri(a) RESULT(b)
+      INTEGER :: a(3), b(3), t
+      b = a
+      IF(b(1)>b(2)) THEN; t=b(1); b(1)=b(2); b(2)=t; END IF
+      IF(b(2)>b(3)) THEN; t=b(2); b(2)=b(3); b(3)=t; END IF
+      IF(b(1)>b(2)) THEN; t=b(1); b(1)=b(2); b(2)=t; END IF
+    END FUNCTION SortTri
     
 
     ! For prisms we currently assumes that the field is cut vertically such that
