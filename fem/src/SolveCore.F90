@@ -6359,27 +6359,25 @@ CONTAINS
      TYPE(Matrix_t), POINTER :: C   !< additional matrix, may be absent
 !------------------------------------------------------------------------------
      INTEGER :: i,j,n
-     LOGICAL :: HaveC
+     LOGICAL :: HaveC, Need
 !------------------------------------------------------------------------------
      REAL(KIND=dp), POINTER :: svals(:)
 !------------------------------------------------------------------------------
      n = SIZE(A % Values)
      HaveC = ASSOCIATED(C)
 
-     IF(ASSOCIATED(B % MassValues) .OR. HaveC) THEN
-       IF(ASSOCIATED(B % MassValues) .OR. ASSOCIATED(C % MassValues)) THEN
-         IF(.NOT.ASSOCIATED(A % MassValues)) THEN
-           ALLOCATE(A % MassValues(n)); A % MassValues = 0._dp
-         END IF
-       END IF
+     ! No short-circuit evaluation in Fortran: C may be null, test it separately.
+     Need = ASSOCIATED(B % MassValues)
+     IF(.NOT. Need .AND. HaveC) Need = ASSOCIATED(C % MassValues)
+     IF(Need .AND. .NOT.ASSOCIATED(A % MassValues)) THEN
+       ALLOCATE(A % MassValues(n)); A % MassValues = 0._dp
      END IF
 
-     IF(ASSOCIATED(B % DampValues) .OR. HaveC) THEN
-       IF(ASSOCIATED(B % DampValues) .OR. ASSOCIATED(C % DampValues)) THEN
-         IF(.NOT.ASSOCIATED(A % DampValues)) THEN
-           ALLOCATE(A % DampValues(n)); A % DampValues = 0._dp
-         END IF
-       END IF
+     ! No short-circuit evaluation in Fortran: C may be null, test it separately.
+     Need = ASSOCIATED(B % DampValues)
+     IF(.NOT. Need .AND. HaveC) Need = ASSOCIATED(C % DampValues)
+     IF(Need .AND. .NOT.ASSOCIATED(A % DampValues)) THEN
+       ALLOCATE(A % DampValues(n)); A % DampValues = 0._dp
      END IF
 
      svals => A % Values
