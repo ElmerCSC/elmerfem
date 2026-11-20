@@ -761,10 +761,8 @@
         WorkMat(i,j) = C(i,j)
       END DO
     END DO
-    CALL DSYEV('V', 'U', 3, WorkMat, 3, EigenVals, PriWork, PriLWork, PriInfo)
-    IF (PriInfo /= 0) THEN
-      CALL Fatal( 'UMAT', 'DSYEV cannot generate eigen basis')
-    END IF
+    CALL pf_jacobi3(C, EigenVals, WorkMat)
+    
 
     Strain = 0.0d0
     Strain(1,1) = LOG(SQRT(EigenVals(1)))
