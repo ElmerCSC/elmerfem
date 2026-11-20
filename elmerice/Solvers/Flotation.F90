@@ -260,9 +260,9 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
   rhow = ListGetCReal( Model % Constants, 'water density', UnFoundFatal=.TRUE. )
 
   IF (ASSOCIATED(GLMask)) GLMask%Values = +1.0
-  
+
   Active = GetNOFActive(Solver)
- 
+  
   IF (ASSOCIATED(HafVar)) HafVar%Values = 0._dp
   IF (ASSOCIATED(HafVar0)) HafVar0%Values = 0._dp
    
@@ -311,7 +311,8 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
           bedrock=BedVar%Values(BedVar%Perm(NodeIndexes(i)))
           Hf=max(zsea-bedrock,0._dp)*rhow/rhoi
           IF (ASSOCIATED(HafVar0)) THEN
-             HafVar0%Values(HafVar0%Perm(NodeIndexes(i)))=H-Hf
+             !HafVar0%Values(HafVar0%Perm(NodeIndexes(i)))=H-Hf
+             HafVar0%Values(HafVar0%Perm(NodeIndexes(i))) = H + (bedrock-zsea)*rhow/rhoi            
           END IF
           IF (zb.LE.bedrock) THEN
              zb=bedrock
@@ -320,7 +321,7 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
              IF (ASSOCIATED(HafVar)) THEN
                 HafVar%Values(HafVar%Perm(NodeIndexes(i)))=H-Hf
              END IF
-          END IF
+          END IF           
        END IF
 
        zs=zb+H
@@ -341,7 +342,6 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
        END IF
        GLMask%Values(GLMask%Perm(NodeIndexes(1:n)))= GL(1:n) * ABS(GLMask%Values(GLMask%Perm(NodeIndexes(1:n))))
     END IF
-
 
     IF (ComputeIceMasks) THEN
       IF (GroundedNode.EQ.0) THEN
@@ -403,8 +403,8 @@ SUBROUTINE Flotation( Model,Solver,dt,Transient )
     ENDIF
   END DO ActiveLoop
 
- IF (ASSOCIATED(GLMask).AND.( ParEnv % PEs>1 )) CALL ParallelSumVector( Solver % Matrix, GLMask%Values ,1 )
-
+  IF (ASSOCIATED(GLMask).AND.( ParEnv % PEs>1 )) CALL ParallelSumVector( Solver % Matrix, GLMask%Values ,1 )
+ 
 !------------------------------------------------------------------------------
 END SUBROUTINE Flotation
 !------------------------------------------------------------------------------

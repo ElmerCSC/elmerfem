@@ -1580,7 +1580,7 @@ CONTAINS
          IF ( ThisOnly ) THEN
             IF ( PRESENT(UnfoundFatal) ) THEN
                IF ( UnfoundFatal ) THEN
-                 CALL Fatal("VariableGet","Failed to find variable "//TRIM(Name))
+                 CALL Fatal('VariableGet','Failed to find variable: '//TRIM(Name))
                END IF
             END IF
             RETURN
@@ -1605,7 +1605,7 @@ CONTAINS
       IF (.NOT.ASSOCIATED( PVar ) ) THEN
          IF ( PRESENT(UnfoundFatal) ) THEN
             IF ( UnfoundFatal ) THEN
-              CALL Fatal("VariableGet","Failed to find or interpolate variable: "//TRIM(Name))
+              CALL Fatal('VariableGet','Failed to find or interpolate variable: '//TRIM(Name))
             END IF
          END IF
          RETURN
@@ -4204,8 +4204,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal('ListGetInteger','Failed to find integer: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4245,8 +4244,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find integer: ",Name
-           CALL Fatal("ListGetInteger", Message)
+           CALL Fatal('ListGetInteger', 'Failed to find integer: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4307,8 +4305,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find integer array: ",Name
-           CALL Fatal("ListGetIntegerArray", Message)
+           CALL Fatal('ListGetIntegerArray', 'Failed to find integer array: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4391,8 +4388,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find logical: ",Name
-           CALL Fatal("ListGetLogical", Message)
+           CALL Fatal('ListGetLogical', 'Failed to find logical: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4474,8 +4470,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find string: ",Name
-           CALL Fatal("ListGetString", Message)
+           CALL Fatal('ListGetString','Failed to find string: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4517,8 +4512,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find constant real: ",Name
-           CALL Fatal("ListGetConstReal", Message)
+           CALL Fatal('ListGetConstReal', 'Failed to find constant real: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -4998,7 +4992,7 @@ CONTAINS
      TYPE(Element_t), POINTER :: Element
      INTEGER :: i,j,k,n,k1,l,varsize,vari,vari0,tstep0,dti
      TYPE(Variable_t), POINTER :: Var
-     LOGICAL :: Failed
+     LOGICAL :: Failed, SplitFEM
      REAL(KIND=dp), POINTER :: Values(:)
 
      Failed = .FALSE.
@@ -5011,6 +5005,9 @@ CONTAINS
      tstep0 = 0
      IF(PRESENT(tstep)) tstep0 = tstep
 
+     SplitFEM = ( CurrentModel % Solver % SplitFEMActive ) 
+
+     
      DO Vari = vari0+1, VarCount
 
        Var => VarTable(Vari) % Variable
@@ -5089,8 +5086,47 @@ CONTAINS
            END IF
          END IF
 
-         IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
+         IF( SplitFEM ) THEN
+           ! In SplitFEM solver only dependency that cannot be dealt with the nodal standard dependency
+           ! is one associated with the enriched dofs that have permutation beyond the original nodes. 
+           IF ( ASSOCIATED(Var % Perm) ) THEN
+             BLOCK
+               INTEGER :: nn,j1,j2
+               REAL(KIND=dp) :: r
+               TYPE(Mesh_t), POINTER :: Mesh
 
+               Mesh => CurrentModel % Solver % Mesh
+               nn = Mesh % NumberOfNodes
+               
+               IF( k1 > nn .AND. Var % TYPE /= Variable_on_splitfem ) THEN
+                 ! This is an additional node of the fictitious domain method. 
+                 ! When we know where the isoline cuts the edge we can use linear interpolation
+                 ! on the edge to get the value at the intersetion on-the-fly.
+                 r = CurrentModel % CutInterp(k1-nn)
+                 j1 = Var % Perm(Mesh % Edges(k1-nn) % NodeIndexes(1))
+                 j2 = Var % Perm(Mesh % Edges(k1-nn) % NodeIndexes(2))
+                 IF(j1 > 0 .AND. j2 > 0) THEN
+                   DO l=1,Var % DOFs
+                     count = count + 1
+                     T(count) = r * Var % Values(Var % Dofs*(j1-1)+l) &
+                         + (1-r) * Var % Values(Var % Dofs*(j2-1)+l)
+                   END DO
+                 ELSE
+                   Failed = .TRUE.
+                   DO l=1,Var % DOFs
+                     count = count + 1
+                     T(count) = HUGE(1.0_dp)
+                   END DO
+                 END IF
+                 ! We found the values, nothing to do anymore. 
+                 RETURN
+               END IF
+             END BLOCK
+           END IF
+         END IF
+         
+         IF ( ASSOCIATED(Var % Perm) ) k1 = Var % Perm(k1)
+         
          IF ( k1 > 0 .AND. k1 <= VarSize ) THEN
            Values => Var % Values
            IF( dti > 0 ) THEN
@@ -5109,7 +5145,6 @@ CONTAINS
              count = count + 1
              T(count) = HUGE(1.0_dp)
            END DO
-           RETURN
          END IF
        END IF
      END DO
@@ -5643,8 +5678,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           WRITE(Message, '(A,A)') "Failed to find real: ",Name
-           CALL Fatal("ListGetReal", Message)
+           CALL Fatal('ListGetReal', 'Failed to find real: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -7506,7 +7540,7 @@ CONTAINS
            IF ( ptr % LuaFun ) THEN
              CALL Fatal('ListGetElementReal','No routine for constant scalars LUA available!')
            ELSE
-             TVar => VariableGet( CurrentModel % Variables, 'Time' )
+             TVar => VariableGet( CurrentModel % Variables, 'Time')
              F(1) = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % values,'st')
            END IF
 
@@ -8292,7 +8326,7 @@ CONTAINS
 
        CASE( LIST_TYPE_CONSTANT_SCALAR_STR )
 
-         TVar => VariableGet( CurrentModel % Variables, 'Time' )
+         TVar => VariableGet( CurrentModel % Variables, 'Time')
          Handle % ValuesVec = ptr % Coeff * GetMatcReal(ptr % Cvalue,1,Tvar % Values,'st')
 
        CASE( LIST_TYPE_VARIABLE_SCALAR_STR )
@@ -9165,7 +9199,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetConstRealArray", "Failed to find: "//TRIM(Name) )
+           CALL Fatal('ListGetConstRealArray', 'Failed to find real array: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -9212,7 +9246,7 @@ CONTAINS
      IF (.NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetConstRealArray1","Failed to find: "//TRIM(Name))
+           CALL Fatal('ListGetConstRealArray1','Failed to find: '//TRIM(Name))
          END IF
        END IF
        RETURN
@@ -9259,7 +9293,7 @@ CONTAINS
      IF ( .NOT.ASSOCIATED(ptr) ) THEN
        IF(PRESENT(UnfoundFatal)) THEN
          IF(UnfoundFatal) THEN
-           CALL Fatal("ListGetRealArray","Failed to find: "//TRIM(Name))
+           CALL Fatal('ListGetRealArray','Failed to find real array: '//TRIM(Name))
          END IF
        END IF
        RETURN

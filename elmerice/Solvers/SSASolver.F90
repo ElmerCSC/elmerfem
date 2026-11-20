@@ -56,7 +56,7 @@
   USE DefUtils
   USE SSAMaterialModels
   USE ComputeFluxUtils
-  USE CutFEMUtils
+  USE SplitFEMUtils
   
   IMPLICIT NONE
   !------------------------------------------------------------------------------
@@ -78,7 +78,7 @@
   LOGICAL :: stat
   LOGICAL :: Newton, Converged
 
-  INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs
+  INTEGER :: i,j, n, m, t, istat, DIM, p, STDOFs, iLev
   INTEGER :: NonlinearIter, NewtonIter, iter, other_body_id
 
   INTEGER, POINTER :: Permutation(:), ZsPerm(:), ZbPerm(:), &
@@ -110,13 +110,17 @@
   !------------------------------------------------------------------------------
 
 
-  ! We need this early on since Solver % Variable structures will be affected by CutFEM stuff
+  ! We need this early on since Solver % Variable structures will be affected by SplitFEM stuff
   ! that is called within this slot. 
   CALL DefaultStart()
 
   VeloSol => Solver % Variable 
   STDOFs = VeloSol % DOfs
   VariableValues => VeloSol % Values
+
+  iLev = 4
+  IF(AllocationsDone) iLev=20
+
   
   !------------------------------------------------------------------------------
   !    Get variables needed for solution
@@ -130,9 +134,9 @@
 
   ZbName = GetString(SolverParams, 'Bottom Surface Name', GotIt)
   IF (GotIt) THEN
-    CALL INFO(SolverName, 'Bottom Surface Name found', level=4)            
+    CALL INFO(SolverName, 'Bottom Surface Name found: '//TRIM(ZbName), level=iLev)            
   ELSE
-    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=4) 
+    CALL INFO(SolverName, 'Bottom Surface Name not found - using default Zb', level=iLev) 
     WRITE(ZbName,'(A)') 'Zb'
   END IF
   ZbSol => VariableGet( Solver % Mesh % Variables, ZbName,UnFoundFatal=UnFoundFatal)
@@ -141,9 +145,9 @@
 
   ZsName = GetString(SolverParams, 'Top Surface Name', GotIt)
   IF (GotIt) THEN
-    CALL INFO(SolverName, 'Top Surface Name found', level=4)            
+    CALL INFO(SolverName, 'Top Surface Name found: '//TRIM(ZsName), level=iLev)            
   ELSE
-    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=4) 
+    CALL INFO(SolverName, 'Top Surface Name not found - using default Zs', level=iLev) 
     WRITE(ZsName,'(A)') 'Zs'
   END IF
   ZsSol => VariableGet( Solver % Mesh % Variables, ZsName,UnFoundFatal=UnFoundFatal)
@@ -159,13 +163,13 @@
   IF (SEP) THEN
      IF (GLnIP == 0) THEN
        IF (.NOT. ListCheckPrefix(SolverParams,'Adaptive Integration') ) THEN
-          CALL ListAddString(SolverParams,'Adaptive Integration Variable','haf0')
-          CALL ListAddLogical(SolverParams,'Adaptive Integration Split', .True.)
+          CALL ListAddNewString(SolverParams,'Adaptive Integration Variable','haf0')
+          CALL ListAddNewLogical(SolverParams,'Adaptive Integration Split', .True.)
           CALL ListAddConstReal(SolverParams,'Adaptive Integration Split Limit',0._dp)
        END IF
-       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=4)
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP2',level=iLev)
      ELSE
-       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=4)
+       CALL INFO(SolverName,'Using Sub-Element GL parameterization: SEP3 with nIP='//I2S(GLnIP),level=iLev)
      END IF
   ELSE
        CALL INFO(SolverName,'No Sub-Element GL parameterization')     
@@ -174,7 +178,7 @@
   sealevel = ListGetCReal( Model % Constants, 'Sea Level', Found )
   IF (.NOT.Found) THEN
     WRITE(Message,'(A)') 'Constant >Sea Level< not found. Setting to zero.'
-    CALL INFO(SolverName, Message, level=20)
+    CALL INFO(SolverName, Message, level=iLev)
   END IF
 
   !--------------------------------------------------------------
@@ -187,7 +191,7 @@
     If (.NOT.Found) Then
       rhow = 1.03225e-18_dp
       WRITE(Message,*) 'Constant Water Density not found. Setting to: ',rhow
-      CALL INFO(SolverName, Message, level=20)
+      CALL INFO(SolverName, Message, level=iLev)
     End if
 
     ! Allocate
@@ -237,7 +241,6 @@
   if (.NOT.Gotit) NewtonIter = NonlinearIter + 1
 
   Newton=.FALSE.
-  
   !------------------------------------------------------------------------------
   DO iter=1,NonlinearIter
 
@@ -309,7 +312,7 @@
       NodalViscosity(1:n) = ListGetReal( Material, 'SSA Mean Viscosity',n, NodeIndexes,Found,&
            UnFoundFatal=UnFoundFatal)
 
-      ! Get the Nodal value of Zb and Zs. For CutFEM we need something special tricks. 
+      ! Get the Nodal value of Zb and Zs. For SplitFEM we need something special tricks. 
       CALL GetLocalSolution( NodalZb,UElement=Element,UVariable=ZbSol)
       CALL GetLocalSolution( NodalZs,UElement=Element,UVariable=ZsSol)
       
@@ -360,7 +363,6 @@
              'It is not possible to compute SSA with SSA var DOFs=',&
              STDOFs, '. Aborting'
         CALL Fatal( SolverName, Message)
-        ERROR STOP
       END IF
 
 
@@ -390,9 +392,9 @@
           ! Read the gravity in the Body Force Section 
           BodyForce => GetBodyForce(ParentElement)
         ELSE
-          ! This will happen in CutFEM!
-          IF( ASSOCIATED( Solver % CutInterp ) ) THEN
-            i = LIstGetInteger( SolverParams,'CutFEM inside body',Found )
+          ! This will happen in SplitFEM!
+          IF( Solver % SplitFEM ) THEN
+            i = LIstGetInteger( SolverParams,'SplitFEM inside body',Found )
             IF(.NOT. Found) i=1
             j = ListGetInteger( CurrentModel % Bodies(i) % Values,'Material')
             Material => CurrentModel % Materials(j) % Values
@@ -426,9 +428,9 @@
       END IF
     END DO
 
-    ! Tentative code for dealing with calving front using cutFEM. 
-    IF(DefaultCutFEM()) GOTO 200
-    
+    ! Tentative code for dealing with calving front using SplitFEM. 
+    IF(DefaultSplitFEM()) GOTO 200
+
     CALL DefaultFinishAssembly()
 
     ! Dirichlet 
@@ -440,7 +442,7 @@
     IF( DefaultLinesearch( Converged ) ) GOTO 100
     IF( Converged ) EXIT
 
-    
+
     !------------------------------------------------------------------------------
     !     Solve the system and check for convergence
     !------------------------------------------------------------------------------
@@ -879,7 +881,6 @@ CONTAINS
     END IF
     !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrixBCSSA
-
 
   !------------------------------------------------------------------------------
 END SUBROUTINE SSABasalSolver

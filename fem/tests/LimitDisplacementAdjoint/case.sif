@@ -17,7 +17,8 @@ Simulation
   Simulation Type = Steady state
   Steady State Max Iterations = 1
 
-!  Post File = case.vtu
+  Post File = case-c.vtu
+  ascii output = true
 End
 
 Constants
@@ -42,10 +43,12 @@ Solver 1
   Steady State Convergence Tolerance = 1.0e-8
   Nonlinear System Convergence Tolerance = 1.0e-8
   Nonlinear System Max Iterations = 30
+  Nonlinear System Relaxation Factor = 1.0
+  
   Linear System Solver = Direct
   Linear System Direct Method = Umfpack
 
-  Apply Limiter = Logical True
+!  Apply Limiter = Logical True
 
   Solve Adjoint Equation = Logical True  
   Adjoint Source Name = String "dForce"

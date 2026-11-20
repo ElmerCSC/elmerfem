@@ -91,6 +91,7 @@
      USE MainUtils, ONLY : AddEquationBasics, AddEquationSolution, AddExecWhenFlag, &
          PredictorCorrectorControl, SingleSolver, SolveEquations, SolverActivate, &
          SetGlobalBubblesFlag, SwapMesh
+     USE SplitFEMUtils, ONLY : SplitFEMRevert
      USE DefUtils, ONLY : GetSimulation, GetCompilationDate, GetRevision, GetVersion, GetBranch, &
          GetReal, GetCReal, GetLogical, GetElementNOFNodes, GetElementDOFs, GetBC, &
          GetElementFamily, GetElementNodes, VectorElementEdgeDOFs
@@ -607,6 +608,30 @@
 
        FirstLoad = .FALSE.
        IF ( Initialize == 1 ) EXIT
+
+
+       ! Mark potential SplitFEM solvers with a flag.
+       BLOCK
+         TYPE(Mesh_t), POINTER :: Mesh
+         INTEGER :: i,j,imin,imax,icnt
+
+         j = CurrentModel % NumberOfSolvers
+         icnt = 0
+         imax = 0
+         imin = j
+         DO i=1,j
+           IF(ListGetLogical(CurrentModel % Solvers(i) % Values,'SplitFEM',Found ) ) THEN
+             icnt = icnt + 1
+             imax = MAX(imax,i)
+             imin = MIN(imin,i)
+             CurrentModel % Solvers(i) % SplitFEM = .TRUE.
+           END IF
+         END DO
+         IF( icnt > 0) THEN
+           CALL Info('MAIN','We have '//I2S(icnt)//' SplitFEM solvers in interval: '//I2S(imin)//'-'//I2S(imax))  
+         END IF
+       END BLOCK
+
 
        ! Check whether we are using external optimization routine that
        ! needs to have basically Elmer given as a function that returns
@@ -1435,6 +1460,8 @@
        pSolver % Def_Dofs = -1
        pSolver % Def_Dofs(:,:,1) =  1
 
+       pSolver % SolverId = n
+       
        ! Create empty list to add some keywords to
        pSolver % Values => ListAllocate()
 
@@ -3153,7 +3180,9 @@
            END IF
          END BLOCK
 
+!------------------------------------------------------------------------------
 
+                  
 !------------------------------------------------------------------------------
          IF ( ParEnv % MyPE == 0 ) THEN
            CALL Info( 'MAIN', ' ', Level=3 )
@@ -3496,6 +3525,14 @@
              END DO
            END IF
          END IF
+
+         ! SplitFEM: This probably takes place after all visualization etc. are done.
+         ! We do not need the old meshes any more. Next timestep we should make a fresh start.
+         IF( ANY( CurrentModel % Solvers(1:nSolvers) % SplitFEM ) ) THEN
+           CALL SplitFEMRevert(CurrentModel)
+         END IF
+         !----------------------------------------------------------------------------
+         
 !------------------------------------------------------------------------------
          CALL ListPopNameSpace()
 !------------------------------------------------------------------------------
@@ -3884,6 +3921,7 @@
     CHARACTER(LEN=MAX_NAME_LEN) :: Simul, SaveWhich
     CHARACTER(MAX_PATH_LEN) :: OutputDirectory
     TYPE(Solver_t), POINTER :: pSolver
+    TYPE(Mesh_t), POINTER :: OrigMesh
 
     Simul = ListGetString( CurrentModel % Simulation,'Simulation Type' )
 
@@ -3901,6 +3939,9 @@
     IF ( ParEnv % PEs > 1 ) THEN
       PostFile = PostFile // '.' // i2s(ParEnv % MyPE)
     END IF
+
+    ! Remember the current mesh so that it can be restored after the loop.
+    OrigMesh => CurrentModel % Mesh
 
     ! Loop over all meshes
     !---------------------------------------------------
@@ -4045,6 +4086,10 @@
       END IF
       Mesh => Mesh % Next
     END DO
+
+    ! Restore the original mesh. Otherwise CurrentModel % Mesh is left pointing to the
+    ! last saved mesh which may be freed later (e.g. SplitFEM meshes).
+    IF( ASSOCIATED(OrigMesh) ) CALL SetCurrentMesh( CurrentModel, OrigMesh )
 !------------------------------------------------------------------------------
   END SUBROUTINE SaveToPost
 !------------------------------------------------------------------------------

@@ -35,7 +35,7 @@ SET(solverlib_SOURCES AddrFunc.F90 NavierStokes.F90 NavierStokesGeneral.F90
   SParIterPrecond.F90 SParIterSolver.F90 Messages.F90 Multigrid.F90
   Smoothers.F90 ClusteringMethods.F90 ParallelUtils.F90
   ParallelEigenSolve.F90 solve_cmplx.F90 solve_real.F90 MGPrec.F90
-  DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 CutFEMUtils.F90
+  DefUtils.F90 MeshPartition.F90 MeshRemeshing.F90 SplitFEMUtils.F90
   RadiationFactors.F90 f_stubs.c GFortranLocaleFix.c
   ExchangeCorrelations.F90 SolveHypre.c amgx.c rocalution.cpp SolverActivate_x.F90
   SolveSuperLU.c SolveCUDSS.c
@@ -327,7 +327,9 @@ IF(WITH_ROCALUTION)
 ENDIF()
 
 IF(WITH_AMGX)
-  TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_C "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
+  #TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_C "${AMGX_LIBRARY};${CUDA_LIBRARIES}")
+
+  TARGET_LINK_LIBRARIES(elmersolver Elmer::MPI_C "${AMGX_LIBRARY}" CUDA::cusparse CUDA::cusolver CUDA::cudart)
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CUDA_INCLUDE_DIRS}")
 ENDIF()
 
@@ -341,9 +343,10 @@ IF (WITH_CHOLMOD)
   TARGET_LINK_LIBRARIES(elmersolver "${CHOLMOD_LIBRARIES};${SPQR_LIBRARIES}")
 ENDIF()
 
-IF (WITH_CUDSS)
+IF (WITH_CUDSS) 
+  #FIND_PACKAGE(CUDAToolkit REQUIRED)
   TARGET_INCLUDE_DIRECTORIES(elmersolver PRIVATE "${CUDSS_INCLUDE_DIR}")
-  TARGET_LINK_LIBRARIES(elmersolver "${CUDSS_LIBRARIES}" CUDA::cudart)
+  TARGET_LINK_LIBRARIES(elmersolver "${CUDSS_LIBRARIES}")# CUDA::cudart CUDA::nvtx3)
 ENDIF()
 
 IF(WITH_PERMON)
