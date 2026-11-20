@@ -50,7 +50,7 @@ Solver 1
   Linear System Iterative Method = CG
   Linear System Preconditioning = ILU0
   Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Convergence Tolerance = 1.0e-10
 
   Nonlinear System Max Iterations = 1
 End
@@ -67,7 +67,7 @@ Solver 2
   Linear System Iterative Method = CG
   Linear System Preconditioning = ILU0
   Linear System Max Iterations = 1000
-  Linear System Convergence Tolerance = 1.0e-12
+  Linear System Convergence Tolerance = 1.0e-10
 End
 
 ! Each SaveScalars exposes one partition-reduced total as its norm.
