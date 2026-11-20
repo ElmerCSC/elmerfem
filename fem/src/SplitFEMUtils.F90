@@ -801,7 +801,7 @@ CONTAINS
     NULLIFY(Variable % PrevValues)
     dofs = Solver % Variable % Dofs
 
-    IF(ASSOCIATED(CutValues)) DEALLOCATE(CutValues)
+    NULLIFY(CutValues)
     ALLOCATE(CutValues(dofs*nsize))
     CutValues = 0.0_dp
     ! Point the permutation and values to the newly allocated vectors.
@@ -811,7 +811,7 @@ CONTAINS
     ! For transient problems do the same for PrevValues
     m = 0
     IF(ASSOCIATED(Solver % OrigPrevValues)) THEN
-      IF(ASSOCIATED(PrevCutValues)) DEALLOCATE(PrevCutValues)      
+      NULLIFY(PrevCutValues)      
       m = SIZE(Solver % OrigPrevValues,2)
       ALLOCATE(PrevCutValues(dofs*nsize,m))
       PrevCutValues = 0.0_dp
@@ -2288,21 +2288,22 @@ CONTAINS
     DO Sweep=0,1
       nBulk = 0
       nBC = 0
-
+      
       IF(CreateBulk) THEN
+        
         DO t=1, Mesh % NumberOfBulkElements       
           Element => Mesh % Elements(t)      
           CALL CutInterfaceCheck( Element, IsCut, IsActive, Perm )          
           !IF(.NOT. IsActive) CYCLE      
           IF(IsCut) THEN
             
-            IF(CreateBC) BulkMap(t) = nBulk
+            IF(CreateBC .AND. Sweep == 0 ) BulkMap(t) = nBulk
 10          pElement => CutInterfaceBulk(Element,isCut,isMore,Sweep)        
             !IF(.NOT. IsCut) CYCLE
 
             IF(ALL(Perm(pElement % NodeIndexes) > 0) ) THEN
               nBulk = nBulk + 1
-              BulkCnt(t) = BulkCnt(t)+1
+              IF(CreateBC .AND. Sweep == 0) BulkCnt(t) = BulkCnt(t)+1
               IF(Sweep==1) CALL AddElementData(pElement,nBulk)
             END IF
             IF(IsMore) GOTO 10

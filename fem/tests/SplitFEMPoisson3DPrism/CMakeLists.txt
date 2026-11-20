@@ -5,4 +5,4 @@ CONFIGURE_FILE(case.sif case.sif COPYONLY)
 
 file(COPY ELMERSOLVER_STARTINFO rectangle-wedge.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(SplitFEMPoisson3D LABELS quick splitfem)
+ADD_ELMER_TEST(SplitFEMPoisson3DPrism LABELS quick splitfem)
