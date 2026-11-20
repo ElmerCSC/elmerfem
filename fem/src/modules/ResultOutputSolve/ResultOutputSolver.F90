@@ -47,7 +47,7 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
       MinMeshDim,MaxMeshDim,MeshLevel,nlen,NoMeshes, m
   INTEGER, POINTER :: OutputIntervals(:), TimeSteps(:)
 
-  TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh
+  TYPE(Mesh_t), POINTER :: Mesh, iMesh, MyMesh, OrigMesh
   CHARACTER(10) :: OutputFormat
   CHARACTER(LEN=MAX_PATH_LEN) :: FilePrefix, MeshName, iMeshName, PrimVar
   LOGICAL :: SubroutineVisited,Found, SaveThisMesh, NowSave
@@ -210,6 +210,8 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
   ! Loop over the meshes and save them using the selected format(s).
   ! First iteration just count the meshes.
   !----------------------------------------------------------------------------------
+  ! Remember the current mesh so that it can be restored after looping over all meshes.
+  OrigMesh => Model % Mesh
   NowSave = .FALSE.
 1 NoMeshes = 0
   m = 1
@@ -368,6 +370,9 @@ SUBROUTINE ResultOutputSolver( Model,Solver,dt,TransientSimulation )
     State % OutputCount = State % OutputCount - 1
   END IF
   Model % Variables => ModelVariables
+  ! Restore the original mesh. Otherwise Model % Mesh is left pointing to the
+  ! last saved mesh which may be freed later (e.g. SplitFEM meshes).
+  IF( ASSOCIATED(OrigMesh) ) CALL SetCurrentMesh( Model, OrigMesh )
 
   IF( CalcNrm ) THEN
     IF( SaveVtu ) THEN

@@ -49,7 +49,7 @@ MODULE MainUtils
 
   USE IterSolve, ONLY : NumericalError
   USE LoadMod, ONLY : ExecLocalAssembly, ExecSolver
-  USE ModelDescription, ONLY : GetProcAddr
+  USE ModelDescription, ONLY : GetProcAddr, FreeMesh
   USE MatrixAssembly, ONLY : CreateChildMatrix, GlueLocalSubMatrix, MoveRow, &
       SetMatrixElement
   USE ElementDescription, ONLY : SwapRefElemNodes
@@ -62,6 +62,7 @@ MODULE MainUtils
   USE MeshGraph, ONLY : Colouring_Deallocate, ElmerColouringToGraph, &
       ElmerGraphColour, ElmerMeshToDualGraph, Graph_Deallocate
   USE MeshLoad, ONLY : LoadMesh2
+  USE MeshIO, ONLY : WriteMeshToDisk2
   USE MeshSplit, ONLY : SplitMeshEqual
 
   USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
@@ -75,6 +76,11 @@ MODULE MainUtils
   USE BoundaryConditionUtils, ONLY : GetPassiveBoundary
   USE ProjectorUtils, ONLY : GenerateProjectors
 
+
+  USE SplitFEMUtils, ONLY: CreateSplitFEMMatrix, CreateSplitFEMAddMesh, &
+      CreateSplitFEMPerm, CreateSplitFEMVariable, SplitFEMRevert, &
+      SplitFEMLevelsetUpdate, SplitFEMOutput
+  
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
       GetBodyForce, GetBC, Default2ndOrderTime, DefaultFinishBulkAssembly, &
@@ -3006,7 +3012,7 @@ CONTAINS
         ExecSlot, CoupledAbort
     LOGICAL, ALLOCATABLE :: DoneThis(:), AfterConverged(:)
     TYPE(Solver_t), POINTER :: Solver
-    TYPE(Mesh_t),   POINTER :: Mesh
+    TYPE(Mesh_t),   POINTER :: Mesh, sMesh
     CHARACTER(LEN=max_name_len) :: When
     TYPE(Variable_t), POINTER :: IterV, TimestepV
     REAL(KIND=dp), POINTER :: steadyIt,nonlnIt
@@ -3129,12 +3135,12 @@ CONTAINS
 !------------------------------------------------------------------------------
       CALL Info('SolveEquations','Solvers in main iteration loop',Level=12)
 
-      TimeVar => VariableGet( Model % Variables, 'Time')
+      TimeVar => VariableGet( Model % Mesh % Variables, 'Time' )
       sTime => TimeVar % Values(1)
 
       RungeKutta = ListGetString( Model % Simulation, &
           'Timestepping Method', Found ) == 'runge-kutta'
-
+      
       IF( .NOT. RungeKutta ) THEN
         ! Without Runge-Kutta the cycling over equations is pretty easy
         CALL SolveCoupled()
@@ -3274,11 +3280,51 @@ CONTAINS
       END IF
 
       IF ( .NOT.TransientSimulation ) SteadyStateReached = ALL(DoneThis)
-      DEALLOCATE( DoneThis, AfterConverged )
+      DEALLOCATE( DoneThis, AfterConverged )      
     END IF
 !------------------------------------------------------------------------------
 
 
+    DO i=1,nSolvers
+      Solver => Model % Solvers(i)            
+
+      ! We want to use some Solver that is associated to SplitFEM since that will have right mesh etc. 
+      IF( .NOT. Solver % SplitFEM ) CYCLE
+
+      ! We do not need the old meshes. When we reach a new timestep
+      ! they have already been saved.
+      CALL Info('SolverActive','Interpolating SplitFEM data!',Level=10)
+
+#if 0
+      IF(ParEnv % PEs > 1) THEN
+        OrigComm = Solver % Matrix % Comm
+        Solver % Matrix % COmm = ELMER_COMM_WORLD
+        ParEnv % ActiveComm = Solver % Matrix % Comm
+        ALLOCATE(OrigActive(ParEnv % PEs))
+        OrigActive = ParEnv % Active
+        CALL ParallelActive(.TRUE.)
+      END IF
+#endif
+      
+      ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
+      ! The Mesh % Next is saved normally in the VTU files etc. 
+      CALL SplitFEMLevelSetUpdate(Solver,Solver % Mesh)
+
+#if 0 
+      IF(ParEnv % PEs > 1) THEN
+        Solver % Matrix % Comm = OrigComm
+        ParEnv % ActiveComm = Solver % Matrix % Comm
+        ParEnv % Active = OrigActive
+      END IF
+#endif
+      
+      CALL SplitFEMOutput(Model,Solver)
+      
+      ! This update and outputting is done for all fields at the same time.
+      EXIT
+    END DO
+      
+    
 !------------------------------------------------------------------------------
     IF( PRESENT( AfterTime ) ) THEN
       ExecSlot = AfterTime
@@ -3361,14 +3407,14 @@ CONTAINS
          Mesh % OutputActive = .FALSE.
          Mesh => Mesh % Next
        END DO
-
+       
 !------------------------------------------------------------------------------
 !      Go through number of solvers (heat,laminar or turbulent flow, etc...)
 !------------------------------------------------------------------------------
        DO k=1,Model % NumberOfSolvers
 !------------------------------------------------------------------------------
           Solver => Model % Solvers(k)
-
+          
           IF ( .NOT. C_ASSOCIATED(Solver % PROCEDURE) ) THEN
             IF( .NOT. ( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
               Solver % SolverMode == SOLVER_MODE_ASSEMBLY .OR. &
@@ -4816,9 +4862,10 @@ CONTAINS
       ! Armijo GoldStein Criterion for accepting stepsize
       !-----------------------------------------------------------------
       Success = ( PrevResidual - Residual > Myy * Alpha * PrevResidual)
-
-      IF( Success ) THEN
-        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter' )
+      
+      IF( Success ) THEN      
+        iterV => VariableGet( Solver % Mesh % Variables, 'nonlin iter', &
+            ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
         niter = NINT(iterV % Values(1))
 
         DO i=1,BlockMatrix % NoVar
@@ -5272,7 +5319,10 @@ CONTAINS
      Parallel = Solver % Parallel
      !------------------------------------------------------------------------------
 
-     IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
+     IF( Solver % SplitFEM ) THEN
+       CALL Info('SingleSolver','Skipping some initializations done in SplitFEM already!',Level=20)
+
+     ELSE IF( Solver % Mesh % Changed .OR. Solver % NumberOfActiveElements <= 0 ) THEN
        Solver % NumberOFActiveElements = 0
        EquationName = ListGetString( Solver % Values, 'Equation', Found)
 
@@ -5428,7 +5478,7 @@ BLOCK
 END BLOCK
      END IF
 
-     IF( ListGetLogical( Solver % Values,'CutFEM',Found ) ) GOTO 1
+     !IF( ListGetLogical( Solver % Values,'SplitFEM',Found ) ) GOTO 1
 
      IF ( ASSOCIATED(Solver % Matrix) ) THEN
        IF ( Parallel .AND. MeActive ) THEN
@@ -5659,8 +5709,9 @@ END BLOCK
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
+     LOGICAL, ALLOCATABLE :: OrigActive(:)
 
-     INTEGER :: ScanningLoops, scan, sOutputPE
+     INTEGER :: ScanningLoops, scan, sOutputPE, OrigComm
      LOGICAL :: GotLoops, GlobalBubbles
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
@@ -5670,8 +5721,10 @@ END BLOCK
 !------------------------------------------------------------------------------
      sOutputPE = OutputPE
 
-
-     Mesh => Solver % Mesh
+     Params => ListGetSolverParams(Solver)
+     Model % Solver => Solver
+     
+     Mesh => Solver % Mesh 
 
      IF( ASSOCIATED( Mesh % Child ) .AND. .NOT. Mesh % OutputActive ) THEN
        i = 0
@@ -5682,7 +5735,7 @@ END BLOCK
          IF(pMesh % OutputActive) EXIT
        END DO
        IF( .NOT. ASSOCIATED(pMesh,Mesh) .AND. ASSOCIATED(pMesh) ) THEN
-         IF( .NOT. ListCheckPresent( Solver % Values,'Relative Mesh Level') ) THEN
+         IF( .NOT. ListCheckPresent( Params,'Relative Mesh Level') ) THEN
            CALL Info('SolverActivate','By some logic the mesh is switched here to child mesh!!!')
            CALL Info('SolverActivate','Changing Solver '//I2S(Solver % SolverId)//&
                ' mesh to be the '//TRIM(I2S(i))//'th Child mesh: '&
@@ -5692,11 +5745,43 @@ END BLOCK
        END IF
      END IF
 
+     ! Here we create the SplitFEM structures when visiting the solver that is
+     ! marked to have the reponsibility. Other solvers create their own SplitFEM
+     ! variable and matrix.
+     !------------------------------------------------------------------------------
+     IF(Solver % SplitFEM) THEN
+       BLOCK 
+         LOGICAL :: DoCreate
+         TYPE(Matrix_t), POINTER :: pMatrix
+
+         IF(.NOT. Solver % SplitFEMActive ) THEN                  
+           pMatrix => Solver % Matrix
+           DoCreate = (.NOT. ANY(Model % Solvers(:) % SplitFEMActive ) )
+                      
+           IF(DoCreate ) THEN
+             CALL Info('SolverActivate','First SplitFEM solver creates the splitted mesh!',Level=10)
+             CALL CreateSplitFEMPerm(Model,Solver,.TRUE.)                 
+             CALL CreateSplitFEMAddMesh(Solver,.FALSE.) 
+           ELSE
+             CALL CreateSplitFEMAddMesh(Solver,.TRUE.) 
+           END IF
+               
+           CALL CreateSplitFEMVariable(Solver)           
+           Solver % Matrix => CreateSplitFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
+           IF(ASSOCIATED(pMatrix)) THEN
+             IF(ASSOCIATED(pMatrix % ParMatrix)) THEN ! prevents error on free parmatrix
+               pMatrix % ParMatrix % SplittedMatrix % InsideMatrix % Solver => pMatrix % Solver
+             END IF
+             CALL FreeMatrix(pMatrix)
+           END IF
+           Solver % SplitFEMActive = .TRUE.
+         END IF
+       END BLOCK
+     END IF
+     !------------------------------------------------------------------------------
+
      CALL SetCurrentMesh( Model, Solver % Mesh )
-
-     Model % Solver => Solver
-     Params => ListGetSolverParams(Solver)
-
+     
      CoordTransform = ListGetString(Params,'Coordinate Transformation',&
          GotCoordTransform )
      IF( GotCoordTransform ) THEN
@@ -5735,12 +5820,14 @@ END BLOCK
        ExecIntervals =>  ListGetIntegerArray( Params,'Exec Interval', Found )
      END IF
      IF ( Found ) THEN
-       TimeVar => VariableGet( Model % Variables, 'Timestep Interval' )
+       TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep Interval',&
+           ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
        timei = NINT(Timevar % Values(1))
 
        IF( ExecIntervals(timei) == 0 ) RETURN
 
-       TimeVar => VariableGet( Model % Variables, 'Timestep' )
+       TimeVar => VariableGet( Model % Mesh % Variables, 'Timestep', &
+           ThisOnly=.TRUE., UnfoundFatal=.TRUE.)
        timestep = NINT(TimeVar % Values(1))
 
        ExecIntervalsOffset =>  ListGetIntegerArray( Params,&
@@ -5917,6 +6004,9 @@ END BLOCK
        CALL BackCoordinateTransformation( Solver % Mesh )
      END IF
 
+
+            
+     
 !------------------------------------------------------------------------------
 ! After solution register the timing, if requested
 !------------------------------------------------------------------------------

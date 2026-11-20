@@ -6,5 +6,5 @@ IF(HAVE_UMFPACK OR HAVE_MUMPS)
 
   file(COPY ELMERSOLVER_STARTINFO beam.grd DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-  ADD_ELMER_TEST(LimitDisplacementAdjoint LABELS limiter)
+  ADD_ELMER_TEST(LimitDisplacementAdjoint LABELS limiter slow)
 ENDIF()

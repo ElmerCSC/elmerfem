@@ -63,7 +63,7 @@ MODULE DefUtils
    USE BoundaryConditionUtils
    USE ProjectorUtils, ONLY : GenerateAddMatrix, GenerateConstraintMatrix, &
        GenerateProjectors, GenerateRobinProjectors
-   USE CutFEMUtils
+   USE SplitFEMUtils
 
    IMPLICIT NONE
 
@@ -642,6 +642,7 @@ CONTAINS
      ! If variable is defined on gauss points return that instead
      !-------------------------------------------------------------
      IF( Variable % TYPE == Variable_on_gauss_points ) THEN
+       ! Variable on gauss points
        j = Element % ElementIndex
        n = Variable % Perm(j+1) - Variable % Perm(j)
        DO i=1,n
@@ -650,6 +651,7 @@ CONTAINS
        IF(PRESENT(Found)) Found = (n>1)
        RETURN
      ELSE IF( Variable % TYPE == Variable_on_nodes_on_elements ) THEN
+       ! Variable on DG 
        n = Element % TYPE % NumberOfNodes
        Indexes => Element % DGIndexes
        IF(ASSOCIATED( Indexes ) ) THEN
@@ -685,21 +687,29 @@ CONTAINS
          END DO
        END IF
        IF(PRESENT(Found)) Found = Found0
-       RETURN
-     ELSE IF( ASSOCIATED(Solver % CutInterp) ) THEN
-       ! This is a special case associated to CutFEM. Only nodal fields can be mapped this way!
-
+       RETURN       
+     ELSE IF( Solver % SplitFEMActive ) THEN
+       ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
+       
        n = Element % TYPE % NumberOfNodes
        Indexes => Element % NodeIndexes
-
        BLOCK
          INTEGER :: nn,j1,j2
          REAL(KIND=dp) :: r
-         nn = SIZE(Variable % Perm)
 
+         ! If we fetch splitfem values from splitfem variable we do not need any interpolation
+         ! and ordering is available in Perm for all values. 
+         IF( Variable % TYPE == Variable_on_splitfem ) THEN
+           nn = SIZE(Variable % Perm)
+         ELSE
+           nn = Solver % Mesh % NumberOfNodes
+         END IF
+         
          DO i=1,n
            j = Indexes(i)
-           IF ( j>0 .AND. j<=nn ) THEN
+
+           Found0 = .FALSE.
+           IF ( j<=nn ) THEN
              ! This is an original node.
              j = Variable % Perm(j)
              IF ( j>0 ) THEN
@@ -707,16 +717,16 @@ CONTAINS
                x(i) = Values(j)
              END IF
            ELSE
-             ! This is an additional node of the fictitious domain method.
+             ! This is an additional node of the fictitious domain method. 
              ! When we know where the isoline cuts the edge we can use linear interpolation
              ! on the edge to get the value at the intersetion on-the-fly.
-             r = Solver % CutInterp(j-nn)
+             r = CurrentModel % CutInterp(j-nn)
              j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
              j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
              IF(j1 > 0 .AND. j2 > 0) THEN
                Found0 = .TRUE.
                x(i) = r*Variable % Values(j1) + (1-r)*Variable % Values(j2)
-               !PRINT *,'interp:',j,j1,j2,r,x(i)
+               !PRINT *,'interp:',TRIM(Variable % Name),j,j1,j2,r,x(i)
              END IF
            END IF
          END DO
@@ -890,9 +900,58 @@ CONTAINS
          END DO
        END IF
        IF(PRESENT(Found)) Found = Found0
+       RETURN       
+     ELSE IF( Solver % SplitFEMActive ) THEN
+       ! This is a special case associated to SplitFEM. Only nodal fields can be mapped this way!
+
+       n = Element % TYPE % NumberOfNodes
+       Indexes => Element % NodeIndexes
+
+       BLOCK
+         INTEGER :: nn,j1,j2,dofs
+         REAL(KIND=dp) :: r
+
+         ! If we fetch splitfem values from splitfem variable we do not need any interpolation
+         ! and ordering is available in Perm for all values. 
+         IF( Variable % TYPE == Variable_on_splitfem ) THEN
+           nn = SIZE(Variable % Perm)
+         ELSE
+           nn = Solver % Mesh % NumberOfNodes
+         END IF
+         dofs = Variable % Dofs
+         
+         DO i=1,n
+           j = Indexes(i)
+           Found0 = .FALSE.
+
+           IF ( j<=nn ) THEN
+             ! This is an original node,
+             ! or enriched one associated with edge assuming splitfem field.
+             j = Variable % Perm(j)
+             IF ( j>0 ) THEN
+               Found0 = .TRUE.
+               DO k=1,dofs
+                 x(k,i) = Values(dofs*(j-1)+k)
+               END DO
+             END IF
+           ELSE
+             ! This is an additional node of the fictious domain method. 
+             ! When we know where the isoline cuts the edge we can use linear interpolation
+             ! on the edge to get the value at the intersetion on-the-fly.
+             r = CurrentModel % CutInterp(j-nn)
+             j1 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(1))
+             j2 = Variable % Perm(Solver % Mesh % Edges(j-nn) % NodeIndexes(2))
+             IF(j1 > 0 .AND. j2 > 0) THEN
+               Found0 = .TRUE.
+               DO k=1,dofs
+                 x(k,i) = r*Variable % Values(dofs*(j1-1)+k) + &
+                     (1-r)*Variable % Values(dofs*(j2-1)+k)
+               END DO
+             END IF
+           END IF
+         END DO
+       END BLOCK
        RETURN
-     ELSE IF( ASSOCIATED(Solver % CutInterp) ) THEN
-       CALL Fatal('GetVectorLocalSolution','Not associated for CutFEM yet!')
      END IF
 
 
@@ -4009,18 +4068,6 @@ CONTAINS
      CALL Info('DefaultStart','Starting solver: '//&
         GetString(Params,'Equation'),Level=10)
 
-     ! Code for splitting the mesh to be able to integrate accurately over discontinuous
-     ! fields defined by zero levelset.
-     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
-       pMatrix => Solver % Matrix
-       CALL CreateCutFEMPerm(Solver,.TRUE.)
-       Solver % Matrix => CreateCutFEMMatrix(Solver,Solver % Variable % Perm, pMatrix )
-       CALL FreeMatrix(pMatrix)
-       IF(.NOT. ListGetLogical( Params,'CutFEM Solver',Found ) ) THEN
-         CALL CreateCutFEMAddMesh(Solver)
-       END IF
-     END IF
-
      ! When Newton linearization is used we may reset it after previously visiting the solver
      IF( Solver % NewtonActive ) THEN
        IF( ListGetLogical( Params,'Nonlinear System Reset Newton', Found) ) Solver % NewtonActive = .FALSE.
@@ -4294,35 +4341,13 @@ CONTAINS
        END IF
      END IF
 
-
-
-     IF( ListGetLogical( Params,'CutFEM',Found ) ) THEN
-       Mesh => Solver % Mesh
-
-       ! We do not need the old meshes. When we reach a new timestep
-       ! they have already been saved.
-       IF(ASSOCIATED(Solver % Mesh % Next ) ) THEN
-         IF(ASSOCIATED(Solver % Mesh % Next % Next ) ) THEN
-           CALL FreeMesh(Solver % Mesh % Next % Next )
-         END IF
-         CALL FreeMesh(Solver % Mesh % Next)
-       END IF
-
-       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
-       ! The Mesh % Next is saved normally in the VTU files etc.
-       CALL LevelSetUpdate(Solver,Solver % Mesh)
-
-       ! We do not need to create the actual CutFEM Mesh, but we might want to have it
-       ! for visualization purposes.
-       IF( ListGetLogical( Solver % Values,'CutFEM Mesh Save', Found ) )  THEN
-         ! This 2D mesh becomes Mesh % Next % Next
-         Solver % Mesh % Next % Next => CreateCutFEMMesh(Solver,Mesh,Solver % Variable % Perm,&
-             .TRUE.,.TRUE.,.FALSE.,Solver % Values,'project variable')
-       END IF
-
-       CALL CutFEMVariableFinalize(Solver)
+     ! SplitFEM: We may optionally extrapolate the variable after the solver is finished.
+     !----------------------------------------------------------------------------------
+     IF( Solver % SplitFEM ) THEN
+       CALL SplitFEMVariableExtrapolate(Solver)         
      END IF
-
+     !----------------------------------------------------------------------------------
+     
      IF( ListGetLogical( Params,'MMG Remesh', Found ) ) THEN
        CALL Remesh(CurrentModel,Solver)
      END IF
@@ -4332,7 +4357,6 @@ CONTAINS
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultFinish
 !------------------------------------------------------------------------------
-
 
    !------------------------------------------------------------------------------
    !> Calculate full derivative resulting from a change in another field solver.
@@ -4431,11 +4455,8 @@ CONTAINS
    END FUNCTION DefaultSensitivity
 
 
-
-
-   FUNCTION DefaultCutFEM(Solver) RESULT( Swap )
+   FUNCTION DefaultSplitFEM(Solver) RESULT( Swap )
      TYPE(Solver_t), TARGET, OPTIONAL :: Solver
-
      TYPE(Solver_t), POINTER :: pSolver
      LOGICAL :: Swap, Found
      INTEGER :: i,n,Counter=0
@@ -4449,32 +4470,24 @@ CONTAINS
      ELSE
        pSolver => CurrentModel % Solver
      END IF
-
-
-     ! Nothing to do.
-     IF(.NOT. ListGetLogical( pSolver % Values,'CutFEM',Found ) ) RETURN
-
-     ! If we have special solver where we use the on-the-fly splitting do not swap the mesh.
-     IF(ListGetLogical( pSolver % Values,'CutFEM Solver',Found ) ) THEN
-       CALL Info('DefaultCutFEM','Skipping mesh swapping for modified CutFEM solver!',Level=10)
-       RETURN
-     END IF
-
+            
+     ! Nothing to do. 
+     IF(.NOT. pSolver % SplitFEM ) RETURN
+     
      Counter = Counter+1
 
      IF(MODULO(Counter,2) == 1 ) THEN
        ! We start with the original mesh, then swap to AddMesh.
-       Swap = .TRUE.
-       CALL CutFEMSetAddMesh(pSolver)
+       Swap = .TRUE. 
+       CALL SplitFEMSetAddMesh(pSolver)
      ELSE
-       ! Nothing to swap this time.
-       CALL CutFEMSetOrigMesh(pSolver)
+       ! Nothing to swap this time. 
+       CALL SplitFEMSetOrigMesh(pSolver)
      END IF
+     
+   END FUNCTION DefaultSplitFEM
 
-   END FUNCTION DefaultCutFEM
-
-
-
+   
 
 !> Solver the matrix equation related to the active solver
 !------------------------------------------------------------------------------
@@ -6361,18 +6374,19 @@ CONTAINS
      CALL Info('DefUtils::DefaultDirichletBCs', &
             'Setting Dirichlet boundary conditions', Level=10)
 
+     SaveElement => GetCurrentElement()
 
      ! ----------------------------------------------------------------------
      ! Perform some preparations if BCs for p-approximation will be handled:
      ! ----------------------------------------------------------------------
      IF (.NOT. NodalBCsWithBraces) THEN
+
        DO DOF=1,x % DOFs
          name = TRIM(x % name)
          IF ( x % DOFs > 1 ) name = ComponentName(name,DOF)
 
          IF( .NOT. ListCheckPresentAnyBC( CurrentModel, name ) ) CYCLE
 
-         SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
 
@@ -6417,9 +6431,9 @@ CONTAINS
              CYCLE
            END IF
          END DO
-
-         SaveElement => SetCurrentElement(SaveElement)
+         
        END DO
+
      END IF
 
      IF (NodalBCsWithBraces) THEN
@@ -6449,7 +6463,6 @@ CONTAINS
 !           print *, '====== DOF is ', DOF
 !           print *, 'operating name ', name
 
-           SaveElement => GetCurrentElement()
            DO i=1,Solver % Mesh % NumberOfBoundaryElements
              Element => GetBoundaryElement(i)
 
@@ -6481,7 +6494,6 @@ CONTAINS
                A % Dvalues(l) = Work(j)
              END DO
            END DO
-           SaveElement => SetCurrentElement(SaveElement)
          END DO
        END DO
 
@@ -6506,7 +6518,6 @@ CONTAINS
          CALL Info('DefUtils::DefaultDirichletBCs', &
              'p-element condition setup: '//name, Level=15)
 
-         SaveElement => GetCurrentElement()
          DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
            BC => GetBC()
@@ -6664,10 +6675,12 @@ CONTAINS
            END SELECT
          END DO
 
-         SaveElement => SetCurrentElement(SaveElement)
        END DO
      END IF
 
+
+
+     
      ! BLOCK
      !------------------------------------
      DO DOF=1,x % DOFs
@@ -6680,7 +6693,6 @@ CONTAINS
 
        CALL Info('SetDefaultDirichlet','Release edge dofs from intersecting BCs',Level=15)
 
-       SaveElement => GetCurrentElement()
        DO i=1,Solver % Mesh % NumberOfBoundaryElements
          Element => GetBoundaryElement(i)
 
@@ -6731,7 +6743,6 @@ CONTAINS
            END DO
          END SELECT
        END DO
-       SaveElement => SetCurrentElement(SaveElement)
      END DO
 
 
@@ -6756,7 +6767,6 @@ CONTAINS
 
         CALL Info('SetDefaultDirichlet','Setting edge and face dofs',Level=15)
 
-        SaveElement => GetCurrentElement()
         DO i=1,Solver % Mesh % NumberOfBoundaryElements
            Element => GetBoundaryElement(i)
 
@@ -7109,9 +7119,15 @@ CONTAINS
              END SELECT
            END IF
          END DO
-         SaveElement => SetCurrentElement(SaveElement)
      END DO
 
+     ! This is just a hack to maintain the original current element.
+     IF(ASSOCIATED(SaveElement)) THEN
+       SaveElement => SetCurrentElement(SaveElement)
+     END IF
+
+
+     
      IF( ReleaseAny) THEN
        IF( InfoActive(20) ) THEN
          k = COUNT( A % ConstrainedDOF )

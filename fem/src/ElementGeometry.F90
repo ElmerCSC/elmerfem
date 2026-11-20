@@ -1688,7 +1688,11 @@ END FUNCTION PointFaceDistance
 
 
   ! Given a single element and a list of node and edge cuts create a list of
-  ! pieces coming from the split.
+  ! pieces coming from the split. The routine is called with m=1,2,... until
+  ! IsMore is false. LocalInds gives the nodes of piece m in terms of local
+  ! element nodes (1..n) and cut points on local edges (n+1..n+ne). SgnNode
+  ! is the position in LocalInds of an original node whose levelset sign
+  ! tells on which side the piece lies.
   !---------------------------------------------------------------------------
   SUBROUTINE SplitSingleElement(Element, ElemCut, ElemNodes, m, &
       IsCut, IsMore, LocalInds, SgnNode )
@@ -1700,19 +1704,18 @@ END FUNCTION PointFaceDistance
     LOGICAL :: IsCut, IsMore
     INTEGER :: LocalInds(:)
     INTEGER :: SgnNode
-
-
-    INTEGER :: n,n_split,n_cut,ElemType,SplitCase,iCase,subcase
-    INTEGER :: j,j2,j3,j4,mmax
+    INTEGER :: n,ne,n_split,n_cut,ElemType,SplitCase,subcase
+    INTEGER :: j,j2,j3,j4,mmax,k
     REAL(KIND=dp) :: s1,s2
 
     SAVE :: subcase, j, j2, j3, j4, mmax, s1, s2
     !$OMP THREADPRIVATE(subcase, j, j2, j3, j4, mmax, s1, s2)
 
     ElemType = Element % TYPE % ElementCode
-    n = ElemType / 100
+    n = Element % TYPE % NumberOfNodes
+    ne = Element % Type % NumberOfEdges
 
-    n_split = COUNT( ElemCut(n+1:2*n) )
+    n_split = COUNT( ElemCut(n+1:n+ne) )
     n_cut = COUNT( ElemCut(1:n) )
 
     IsMore = .FALSE.
@@ -1723,256 +1726,615 @@ END FUNCTION PointFaceDistance
 
     ! This allows use case to deal with element types, edge splits and node splits at the same time.
     ! It is a matter of taste if this is ok or not...
-    SplitCase = 100 * ElemType + 10 * n_split + n_cut
-    iCase = 0
+    SplitCase = 10 * n_split + n_cut
     LocalInds = 0
 
-    SELECT CASE( SplitCase )
+    SELECT CASE( ElemType )
+
+    CASE( 303 )
+      ! Triangle being cut by a 1D levelset.
+      CALL SplitTriangle()
+
+    CASE( 404 )
+      ! Triangle being cut by a 1D levelset.
+      CALL SplitQuad()
+
+    CASE( 504 )
+      ! Tetrahedron being cut by a planar levelset.
+      CALL SplitTetra()
+      
+    CASE( 706 )
+      ! Extruded prism is based on traingle being cut by 1D levelset.
+      ! This is possible while numbering first goes through bottom triangle.  
+      SplitCase = SplitCase / 2
+      LocalInds = 0
+      CALL SplitTriangle()      
+      k = COUNT(LocalInds(1:3)>0)
+      IF(k>0) LocalInds(k+1:2*k) = LocalInds(1:k) + 3      
+      
+    CASE( 808 )
+      ! Extruded hex is based on quadrilateral being cut by 1D levelset.
+      SplitCase = SplitCase / 2
+      LocalInds = 0
+      CALL SplitQuad()      
+      k = COUNT(LocalInds(1:4)>0)
+      IF(k>0) LocalInds(k+1:2*k) = LocalInds(1:k) + 4
+      
+    CASE DEFAULT
+      CALL Warn('SplitSingleElement','Do not know how to split element of type: '//I2S(ElemType))
+    END SELECT
+
+    IsMore = (m < mmax )
+
+    !IF(m==1) PRINT *,'SplitCase'//I2S(100+SplitCase)
+
+  CONTAINS
 
 
-    CASE( 30320, 30321 )
-      ! Triangle being cut on two edges.
-      IF( m == 1 ) THEN
-        ! Find the only edge that is not cut
-        DO j=1,3
-          IF( .NOT. ElemCut( n + j ) ) EXIT
-        END DO
-        j2 = MODULO(j,3)+1
-        j3 = MODULO(j+1,3)+1
-        mmax = 3
+    SUBROUTINE SplitTriangle()
 
-        ! There are two ways to split the triangle.
-        ! Choose the one with shorter diameter.
-        s1 = (ElemNodes % x(j) - ElemNodes % x(n + j2))**2 + &
-            (ElemNodes % y(j) - ElemNodes % y(n + j2))**2 + &
-            (ElemNodes % z(j) - ElemNodes % z(n + j2))**2
-        s2 = (ElemNodes % x(j2) - ElemNodes % x(n + j3))**2 + &
-            (ElemNodes % y(j2) - ElemNodes % y(n + j3))**2 + &
-            (ElemNodes % z(j2) - ElemNodes % z(n + j3))**2
+      SELECT CASE( SplitCase ) 
 
-        LocalInds(1) = j
-        LocalInds(2) = j2
-        IF( s1 < s2 ) THEN
-          LocalInds(3) = n + j2
-        ELSE
-          LocalInds(3) = n + j3
-        END IF
-        SgnNode = 1
-        iCase = 1
-      ELSE IF(m==2) THEN
-        IF( s1 < s2 ) THEN
+      CASE( 20 )
+        ! Triangle being cut on two edges.
+        IF( m == 1 ) THEN
+          ! Find the only edge that is not cut
+          DO j=1,3
+            IF( .NOT. ElemCut( n + j ) ) EXIT
+          END DO
+          j2 = MODULO(j,3)+1
+          j3 = MODULO(j+1,3)+1
+          mmax = 3
+
+          ! There are two ways to split the triangle.
+          ! Choose the one with shorter diameter.
+          s1 = (ElemNodes % x(j) - ElemNodes % x(n + j2))**2 + &
+              (ElemNodes % y(j) - ElemNodes % y(n + j2))**2 + &
+              (ElemNodes % z(j) - ElemNodes % z(n + j2))**2
+          s2 = (ElemNodes % x(j2) - ElemNodes % x(n + j3))**2 + &
+              (ElemNodes % y(j2) - ElemNodes % y(n + j3))**2 + &
+              (ElemNodes % z(j2) - ElemNodes % z(n + j3))**2
+
           LocalInds(1) = j
-        ELSE
-          LocalInds(1) = j2
-        END IF
-        LocalInds(2) = n + j2
-        LocalInds(3) = n + j3
-
-        SgnNode = 1
-        iCase = 2
-      ELSE IF(m==3) THEN
-        LocalInds(1) = n + j3
-        LocalInds(2) = n + j2
-        LocalInds(3) = j3
-
-        SgnNode = 3
-        iCase = 3
-      END IF
-
-    CASE( 30311 )
-      ! Triangle being cut on one edge and one node.
-      IF( m == 1 ) THEN
-        ! Find the only edge that is cut
-        DO j=1,3
-          IF( ElemCut( n + j ) ) EXIT
-        END DO
-        j2 = MODULO(j,3)+1
-        j3 = MODULO(j+1,3)+1
-      END IF
-
-      ! One cut result to splitted elements only if the opposing node is cut through
-      IF( ElemCut(j3) ) THEN
-        IF(m==1) THEN
-          LocalInds(1) = n + j
           LocalInds(2) = j2
+          IF( s1 < s2 ) THEN
+            LocalInds(3) = n + j2
+          ELSE
+            LocalInds(3) = n + j3
+          END IF
+          SgnNode = 1
+        ELSE IF(m==2) THEN
+          IF( s1 < s2 ) THEN
+            LocalInds(1) = j
+          ELSE
+            LocalInds(1) = j2
+          END IF
+          LocalInds(2) = n + j2
+          LocalInds(3) = n + j3
+
+          SgnNode = 1
+        ELSE IF(m==3) THEN
+          LocalInds(1) = n + j3
+          LocalInds(2) = n + j2
           LocalInds(3) = j3
 
-          SgnNode = 2
-          iCase = 4
-          mmax = 2
-        ELSE IF(m==2) THEN
-          LocalInds(1) = n + j
-          LocalInds(2) = j3
-          LocalInds(3) = j
-
-          sgnNode = 3
-          iCase = 5
+          SgnNode = 3
         END IF
-      ELSE IF(ElemCut(j) .OR. ElemCut(j2)) THEN
-        LocalInds(1:3) = [1,2,3]
-
-        iCase = 6
-        SgnNode = j3
-        mmax = 1
-      END IF
-
-    CASE( 40420, 40421 )
-      ! Quadrilateral being cut on two edges.
-
-      IF( m == 1 ) THEN
-        subcase = 0
-        IF( ElemCut(n+1) .AND. ElemCut(n+3) ) THEN
-          subcase = 1
-          j = 1
-          mmax = 2
-        ELSE IF( ElemCut(n+2) .AND. ElemCut(n+4) ) THEN
-          subcase = 1
-          j = 2
-          mmax = 2
-        ELSE
-          DO j=1,4
-            j2 = MODULO(j,4)+1
-            IF( ElemCut(n+j) .AND. ElemCut(n+j2) ) THEN
-              subcase = 2
-              mmax = 3
-              EXIT
-            END IF
+        
+      CASE( 21 )
+        ! Triangle being cut on two edges.
+        IF( m == 1 ) THEN
+          ! Find the only edge that is not cut
+          DO j=1,3
+            IF( .NOT. ElemCut( n + j ) ) EXIT
           END DO
-        END IF
-        IF( subcase == 0 ) THEN
-          CALL Fatal('SplitSingleElement','This case not treated yet for 404!')
-        END IF
-      END IF
+          j2 = MODULO(j,3)+1
+          j3 = MODULO(j+1,3)+1
+          mmax = 3
 
-
-      IF( subcase == 1 ) THEN
-        mmax = 2
-
-        IF( m == 1 ) THEN
-          j2 = MODULO(j,4)+1
-          j3 = MODULO(j+1,4)+1
-          j4 = MODULO(j+2,4)+1
+          ! There are two ways to split the triangle.
+          ! Choose the one with shorter diameter.
+          s1 = (ElemNodes % x(j) - ElemNodes % x(n + j2))**2 + &
+              (ElemNodes % y(j) - ElemNodes % y(n + j2))**2 + &
+              (ElemNodes % z(j) - ElemNodes % z(n + j2))**2
+          s2 = (ElemNodes % x(j2) - ElemNodes % x(n + j3))**2 + &
+              (ElemNodes % y(j2) - ElemNodes % y(n + j3))**2 + &
+              (ElemNodes % z(j2) - ElemNodes % z(n + j3))**2
 
           LocalInds(1) = j
-          LocalInds(2) = n + j
-          LocalInds(3) = n + j3
-          LocalInds(4) = j4
-
-          SgnNode = 1
-          iCase = 7
-        ELSE IF(m==2) THEN
-          LocalInds(1) = j2
-          LocalInds(2) = j3
-          LocalInds(3) = n + j3
-          LocalInds(4) = n + j
-
-          SgnNode = 1
-          iCase = 8
-        END IF
-
-      ELSE IF( subcase == 2 ) THEN
-        mmax = 4
-
-        IF( m == 1 ) THEN
-          j2 = MODULO(j,4)+1
-          j3 = MODULO(j+1,4)+1
-          j4 = MODULO(j+2,4)+1
-
-          LocalInds(1) = n + j
           LocalInds(2) = j2
-          LocalInds(3) = n + j2
-
-          SgnNode = 2
-          iCase = 9
+          IF( s1 < s2 ) THEN
+            LocalInds(3) = n + j2
+          ELSE
+            LocalInds(3) = n + j3
+          END IF
+          SgnNode = 1
         ELSE IF(m==2) THEN
-          LocalInds(1) = j
-          LocalInds(2) = n + j
-          LocalInds(3) = j4
-
-          SgnNode = 3
-          iCase = 10
-        ELSE IF(m==3) THEN
-          LocalInds(1) = n + j
+          IF( s1 < s2 ) THEN
+            LocalInds(1) = j
+          ELSE
+            LocalInds(1) = j2
+          END IF
           LocalInds(2) = n + j2
-          LocalInds(3) = j4
+          LocalInds(3) = n + j3
+
+          SgnNode = 1
+        ELSE IF(m==3) THEN
+          LocalInds(1) = n + j3
+          LocalInds(2) = n + j2
+          LocalInds(3) = j3
 
           SgnNode = 3
-          iCase = 11
-        ELSE IF(m==4) THEN
-          LocalInds(1) = n + j2
-          LocalInds(2) = j3
-          LocalInds(3) = j4
-
-          SgnNode = 3
-          iCase = 12
+        END IF
+        
+      CASE( 11 )
+        ! Triangle being cut on one edge and one node.
+        IF( m == 1 ) THEN
+          ! Find the only edge that is cut
+          DO j=1,3
+            IF( ElemCut( n + j ) ) EXIT
+          END DO
+          j2 = MODULO(j,3)+1
+          j3 = MODULO(j+1,3)+1
         END IF
 
-      END IF
-
-    CASE( 40411 )
-      ! Quadrilateral being cut on one edge and one node.
-
-      ! Find the only edge that is cut
-      DO j=1,4
-        IF( ElemCut( n + j ) ) EXIT
-      END DO
-      j2 = MODULO(j,4)+1
-      j3 = MODULO(j+1,4)+1
-      j4 = MODULO(j+2,4)+1
-
-      ! IF we cut node associated to the same edge, we don't really have a split element,
-      IF(ElemCut(j) .OR. ElemCut(j2)) THEN
-        LocalInds(1:4) = [1,2,3,4]
-        iCase = 13
-        SgnNode = j3
-        mmax = 1
-      ELSE
-        mmax = 2
+        ! One cut result to splitted elements only if the opposing node is cut through
         IF( ElemCut(j3) ) THEN
+          IF(m==1) THEN
+            LocalInds(1) = n + j
+            LocalInds(2) = j2
+            LocalInds(3) = j3
+
+            SgnNode = 2
+            mmax = 2
+          ELSE IF(m==2) THEN
+            LocalInds(1) = n + j
+            LocalInds(2) = j3
+            LocalInds(3) = j
+
+            sgnNode = 3
+          END IF
+        ELSE IF(ElemCut(j) .OR. ElemCut(j2)) THEN
+          LocalInds(1:3) = [1,2,3]
+
+          SgnNode = j3
+          mmax = 1
+        END IF
+
+      CASE ( 12 )
+        !triangle/quad split along edge
+        IsCut = .FALSE.
+
+      CASE DEFAULT
+        PRINT *,'ElemCut:',ElemCut(1:2*n)
+        CALL Warn('SplitSingleElement','Unknown split case for triangle: '//I2S(SplitCase))      
+
+      END SELECT
+
+    END SUBROUTINE SplitTriangle
+
+    
+    SUBROUTINE SplitQuad()
+
+      SELECT CASE(SplitCase)
+
+      CASE( 20, 21 ) 
+        ! Quadrilateral being cut on two edges. 
+
+        IF( m == 1 ) THEN
+          subcase = 0
+          IF( ElemCut(n+1) .AND. ElemCut(n+3) ) THEN
+            subcase = 1
+            j = 1
+            mmax = 2
+          ELSE IF( ElemCut(n+2) .AND. ElemCut(n+4) ) THEN
+            subcase = 1
+            j = 2
+            mmax = 2
+          ELSE
+            DO j=1,4
+              j2 = MODULO(j,4)+1
+              IF( ElemCut(n+j) .AND. ElemCut(n+j2) ) THEN
+                subcase = 2
+                mmax = 3
+                EXIT
+              END IF
+            END DO
+          END IF
+          IF( subcase == 0 ) THEN
+            CALL Fatal('SplitSingleElement','This case not treated yet for 404!')
+          END IF
+        END IF
+
+        IF( subcase == 1 ) THEN
+          mmax = 2
+
+          IF( m == 1 ) THEN
+            j2 = MODULO(j,4)+1
+            j3 = MODULO(j+1,4)+1
+            j4 = MODULO(j+2,4)+1
+
+            LocalInds(1) = j
+            LocalInds(2) = n + j
+            LocalInds(3) = n + j3
+            LocalInds(4) = j4
+
+            SgnNode = 1
+          ELSE IF(m==2) THEN
+            LocalInds(1) = j2
+            LocalInds(2) = j3
+            LocalInds(3) = n + j3
+            LocalInds(4) = n + j
+
+            SgnNode = 1
+          END IF
+
+        ELSE IF( subcase == 2 ) THEN
+          mmax = 4
+
+          IF( m == 1 ) THEN
+            j2 = MODULO(j,4)+1
+            j3 = MODULO(j+1,4)+1
+            j4 = MODULO(j+2,4)+1
+
+            LocalInds(1) = n + j
+            LocalInds(2) = j2
+            LocalInds(3) = n + j2
+
+            SgnNode = 2
+          ELSE IF(m==2) THEN
+            LocalInds(1) = j
+            LocalInds(2) = n + j
+            LocalInds(3) = j4
+
+            SgnNode = 3
+          ELSE IF(m==3) THEN
+            LocalInds(1) = n + j
+            LocalInds(2) = n + j2
+            LocalInds(3) = j4
+
+            SgnNode = 3
+          ELSE IF(m==4) THEN
+            LocalInds(1) = n + j2
+            LocalInds(2) = j3
+            LocalInds(3) = j4
+
+            SgnNode = 3
+          END IF
+
+        END IF
+
+      CASE( 11 )
+        ! Quadrilateral being cut on one edge and one node.
+
+        ! Find the only edge that is cut
+        DO j=1,4
+          IF( ElemCut( n + j ) ) EXIT
+        END DO
+        j2 = MODULO(j,4)+1
+        j3 = MODULO(j+1,4)+1
+        j4 = MODULO(j+2,4)+1
+
+        IF(ElemCut(j) .OR. ElemCut(j2)) THEN          
+          ! IF we cut node associated to the same edge, we just create an enrichment that splits the element into
+          ! two even though both pieces are on the same side.                   
           IF(m==1) THEN
             LocalInds(1) = n + j
             LocalInds(2) = j2
             LocalInds(3) = j3
             LocalInds(4) = j4
 
-            iCase = 14
             SgnNode = 3
           ELSE IF(m==2) THEN
             LocalInds(1) = j
             LocalInds(2) = n + j
             LocalInds(3) = j4
 
-            iCase = 15
-            SgnNode = 1
+            SgnNode = 3
           END IF
+          
+        ELSE
+          IF( ElemCut(j3) ) THEN
+            IF(m==1) THEN
+              LocalInds(1) = n + j
+              LocalInds(2) = j2
+              LocalInds(3) = j3
+              SgnNode = 2
+            ELSE IF(m==2) THEN
+              LocalInds(1) = j
+              LocalInds(2) = n + j
+              LocalInds(3) = j3
+              LocalInds(4) = j4            
+              SgnNode = 1
+            END IF
 
-        ELSE IF( ElemCut(j4)) THEN
-          IF(m==1) THEN
-            LocalInds(1) = j
-            LocalInds(2) = n + j
-            LocalInds(3) = j3
-            LocalInds(4) = j4
-
-            iCase = 16
-            SgnNode = 4
-          ELSE IF(m==2) THEN
-            LocalInds(1) = n + j
-            LocalInds(2) = j2
-            LocalInds(3) = j3
-
-            iCase = 17
-            SgnNode = 2
+          ELSE IF( ElemCut(j4)) THEN
+            IF(m==1) THEN
+              LocalInds(1) = j
+              LocalInds(2) = n + j
+              LocalInds(3) = j4
+              SgnNode = 1
+            ELSE IF(m==2) THEN
+              LocalInds(1) = n + j
+              LocalInds(2) = j2
+              LocalInds(3) = j3
+              LocalInds(4) = j4
+              SgnNode = 2
+            END IF            
           END IF
         END IF
+
+      CASE ( 12 )
+        ! quad split along edge
+        IsCut = .FALSE.
+
+      CASE DEFAULT
+        PRINT *,'ElemCut:',ElemCut(1:2*n)
+        CALL Warn('SplitSingleElement','Unknown split case for quad: '//I2S(SplitCase))      
+
+      END SELECT
+
+    END SUBROUTINE SplitQuad
+
+    
+
+    ! Split a linear tetrahedron (504) into tetrahedra only. The zero levelset of a
+    ! linear field is a plane, so each vertex is either on the positive side, the
+    ! negative side, or on the plane. Up to symmetry there are four ways the plane
+    ! can cut the interior:
+    !
+    !   signs (+,-,0)  cut edges+nodes  interface   natural pieces      tetras
+    !   (1,3,0)        3 + 0            triangle    tetra + wedge       1 + 3
+    !   (2,2,0)        4 + 0            quad        wedge + wedge       3 + 3
+    !   (1,2,1)        2 + 1            triangle    tetra + pyramid     1 + 2
+    !   (1,1,2)        1 + 2            triangle    tetra + tetra       1 + 1
+    !
+    ! Configurations where the plane only touches a vertex, an edge or a face have
+    ! no edge cuts and are never treated as split.
+    !
+    ! The quadrilateral faces of the wedges and the pyramid that lie on a face of the
+    ! original tetrahedron are divided by a diagonal. To keep the split mesh conforming
+    ! the neighbouring element must choose the same diagonal. Such a quad always has two
+    ! original vertices and two cut points, and the diagonal is drawn from the original
+    ! vertex that comes first in a global ordering. The ordering is based on the vertex
+    ! coordinates so that it is the same in every element and every partition.
+    ! The wedges are then divided into three tetras following Dompierre et al.,
+    ! "How to subdivide pyramids, prisms and hexahedra into tetrahedra" (1999).
+    !
+    ! Edges of 504: 1=(1,2), 2=(2,3), 3=(3,1), 4=(1,4), 5=(2,4), 6=(3,4).
+    !---------------------------------------------------------------------------------
+    SUBROUTINE SplitTetra()
+
+      INTEGER, PARAMETER :: TetEdge(4,4) = RESHAPE( [0,1,3,4, 1,0,2,5, 3,2,0,6, 4,5,6,0], [4,4] )
+      INTEGER :: Sgn(4), i, k, ref, npos, nneg, nzero, a, b, c, d
+      INTEGER :: PosNodes(4), NegNodes(4), ZeroNodes(4), Tet(4)
+      LOGICAL :: EdgeCut(4,4)
+
+      DO i=1,4
+        DO k=1,4
+          EdgeCut(i,k) = .FALSE.
+          IF( i /= k ) EdgeCut(i,k) = ElemCut( n + TetEdge(i,k) )
+        END DO
+      END DO
+
+      ! A vertex lies on the levelset if it is cut and none of its edges are cut.
+      ! The node and edge tolerances are applied independently, so a node may be marked
+      ! cut although an edge next to it is cut too. Then the edge cut takes precedence,
+      ! as for the triangle cases 30321 above.
+      ! The other vertices get a sign from the cut edges: a cut edge changes the sign.
+      Sgn = 0
+      ref = 0
+      DO i=1,4
+        IF( ElemCut(i) .AND. .NOT. ANY( EdgeCut(i,:) ) ) CYCLE
+        IF( ref == 0 ) THEN
+          ref = i
+          Sgn(i) = 1
+        ELSE IF( EdgeCut(ref,i) ) THEN
+          Sgn(i) = -1
+        ELSE
+          Sgn(i) = 1
+        END IF
+      END DO
+
+      ! Each edge between two signed vertices must be cut exactly when the signs differ.
+      DO i=1,3
+        DO k=i+1,4
+          IF( Sgn(i) == 0 .OR. Sgn(k) == 0 ) CYCLE
+          IF( EdgeCut(i,k) .NEQV. ( Sgn(i) /= Sgn(k) ) ) THEN
+            PRINT *,'ElemCut:',ElemCut(1:n+6)
+            CALL Warn('SplitSingleElement','Inconsistent cuts in tetrahedron, not splitting!')
+            IsCut = .FALSE.
+            mmax = 0
+            RETURN
+          END IF
+        END DO
+      END DO
+
+      npos = COUNT( Sgn == 1 )
+      nneg = COUNT( Sgn == -1 )
+      nzero = 4 - npos - nneg
+
+      ! Name the groups so that the "positive" one is never the larger one.
+      IF( npos > nneg ) Sgn = -Sgn
+      npos = COUNT( Sgn == 1 )
+      nneg = COUNT( Sgn == -1 )
+
+      PosNodes(1:npos) = PACK( [1,2,3,4], Sgn == 1 )
+      NegNodes(1:nneg) = PACK( [1,2,3,4], Sgn == -1 )
+      IF( nzero > 0 ) ZeroNodes(1:nzero) = PACK( [1,2,3,4], Sgn == 0 )
+
+      Tet = 0
+
+      IF( nzero == 0 .AND. npos == 1 ) THEN
+        ! One vertex "a" separated from the other three: tetra + wedge (3 tetras).
+        a = PosNodes(1)
+        b = NegNodes(1); c = NegNodes(2); d = NegNodes(3)
+        mmax = 4
+        IF( m == 1 ) THEN
+          Tet = [ a, CutNode(a,b), CutNode(a,c), CutNode(a,d) ]
+        ELSE IF( m <= mmax ) THEN
+          ! Wedge with bottom triangle on the opposite face, top triangle on the levelset.
+          Tet = PrismTet( [ b, c, d, CutNode(a,b), CutNode(a,c), CutNode(a,d) ], m-1 )
+        END IF
+
+      ELSE IF( nzero == 0 .AND. npos == 2 ) THEN
+        ! Two vertices on each side, interface is a quad: two wedges (3+3 tetras).
+        ! The uncut edges (a,b) and (c,d) become edges of the wedges joining their triangles.
+        ! The quad on the interface is shared by the two wedges of this element. It gets
+        ! its diagonal from the local edge numbering, which is the same for both.
+        a = PosNodes(1); b = PosNodes(2)
+        c = NegNodes(1); d = NegNodes(2)
+        mmax = 6
+        IF( m <= 3 ) THEN
+          Tet = PrismTet( [ a, CutNode(a,c), CutNode(a,d), b, CutNode(b,c), CutNode(b,d) ], m )
+        ELSE IF( m <= mmax ) THEN
+          Tet = PrismTet( [ c, CutNode(a,c), CutNode(b,c), d, CutNode(a,d), CutNode(b,d) ], m-3 )
+        END IF
+
+      ELSE IF( nzero == 1 ) THEN
+        ! Plane through vertex "d" and two edges: tetra + pyramid (2 tetras) with apex at "d".
+        a = PosNodes(1)
+        b = NegNodes(1); c = NegNodes(2)
+        d = ZeroNodes(1)
+        mmax = 3
+        IF( m == 1 ) THEN
+          Tet = [ a, CutNode(a,b), CutNode(a,c), d ]
+        ELSE IF( m <= mmax ) THEN
+          ! Quadrilateral base (b,c,ac,ab) lies on the face (a,b,c).
+          IF( VertexBefore(b,c) ) THEN
+            ! Diagonal b - ac
+            IF( m == 2 ) THEN
+              Tet = [ b, c, CutNode(a,c), d ]
+            ELSE
+              Tet = [ b, CutNode(a,c), CutNode(a,b), d ]
+            END IF
+          ELSE
+            ! Diagonal c - ab
+            IF( m == 2 ) THEN
+              Tet = [ b, c, CutNode(a,b), d ]
+            ELSE
+              Tet = [ c, CutNode(a,c), CutNode(a,b), d ]
+            END IF
+          END IF
+        END IF
+
+      ELSE IF( nzero == 2 ) THEN
+        ! Plane through edge (c,d) and the opposite edge (a,b): two tetras.
+        a = PosNodes(1); b = NegNodes(1)
+        c = ZeroNodes(1); d = ZeroNodes(2)
+        mmax = 2
+        IF( m == 1 ) THEN
+          Tet = [ a, CutNode(a,b), c, d ]
+        ELSE IF( m == 2 ) THEN
+          Tet = [ b, CutNode(a,b), c, d ]
+        END IF
+
+      ELSE
+        ! Cannot happen if any edge is cut.
+        CALL Warn('SplitSingleElement','Unknown tetrahedron split, not splitting!')
+        IsCut = .FALSE.
+        mmax = 0
+        RETURN
       END IF
 
-    CASE DEFAULT
-      PRINT *,'ElemCut:',ElemCut(1:n*n)
-      CALL Fatal('SplitSingleElement','Unknown split case in element divisions: '//I2S(SplitCase))
-    END SELECT
+      IF( Tet(1) == 0 ) RETURN
+      LocalInds(1:4) = Tet
 
-    IsMore = (m < mmax )
-    !IF(iCase>0) nCase(iCase) = nCase(iCase) + 1
+      ! Every piece has at least one original vertex off the levelset.
+      ! Its sign tells on which side the piece is.
+      SgnNode = 0
+      DO k=1,4
+        IF( Tet(k) <= 4 ) THEN
+          IF( Sgn(Tet(k)) /= 0 ) THEN
+            SgnNode = k
+            EXIT
+          END IF
+        END IF
+      END DO
+
+    END SUBROUTINE SplitTetra
+
+
+    ! Local index of the cut point on the edge between local vertices i and j.
+    FUNCTION CutNode(i,j) RESULT(k)
+      INTEGER :: i, j, k
+      INTEGER, PARAMETER :: TetEdge(4,4) = RESHAPE( [0,1,3,4, 1,0,2,5, 3,2,0,6, 4,5,6,0], [4,4] )
+      k = n + TetEdge(i,j)
+    END FUNCTION CutNode
+
+
+    ! Ordering of the points of a split tetrahedron used to select the diagonals.
+    ! Original vertices (1..n) come first, ordered by their coordinates. This is
+    ! independent of the element and of the partitioning. Cut points (>n) come after,
+    ! ordered by the local edge number.
+    FUNCTION VertexBefore(i,j) RESULT(Before)
+      INTEGER :: i, j
+      LOGICAL :: Before
+
+      IF( i <= n .AND. j <= n ) THEN
+        IF( ElemNodes % x(i) /= ElemNodes % x(j) ) THEN
+          Before = ( ElemNodes % x(i) < ElemNodes % x(j) )
+        ELSE IF( ElemNodes % y(i) /= ElemNodes % y(j) ) THEN
+          Before = ( ElemNodes % y(i) < ElemNodes % y(j) )
+        ELSE IF( ElemNodes % z(i) /= ElemNodes % z(j) ) THEN
+          Before = ( ElemNodes % z(i) < ElemNodes % z(j) )
+        ELSE
+          Before = ( i < j )
+        END IF
+      ELSE IF( i <= n ) THEN
+        Before = .TRUE.
+      ELSE IF( j <= n ) THEN
+        Before = .FALSE.
+      ELSE
+        Before = ( i < j )
+      END IF
+    END FUNCTION VertexBefore
+
+
+    ! The k:th (k=1,2,3) tetrahedron of a wedge with triangles P(1:3) and P(4:6)
+    ! connected by edges P(i)-P(i+3). Each quad face gets the diagonal from its
+    ! first vertex in VertexBefore ordering (Dompierre et al. 1999).
+    FUNCTION PrismTet(P, k) RESULT(T)
+      INTEGER :: P(6), k, T(4)
+      ! Permutations of the wedge that bring vertex i to position 1.
+      INTEGER, PARAMETER :: Rot(6,6) = RESHAPE( [ 1,2,3,4,5,6, 2,3,1,5,6,4, 3,1,2,6,4,5, &
+          4,6,5,1,3,2, 5,4,6,2,1,3, 6,5,4,3,2,1 ], [6,6] )
+      INTEGER :: V(6), i, imin
+      LOGICAL :: Diag26
+
+      imin = 1
+      DO i=2,6
+        IF( VertexBefore( P(i), P(imin) ) ) imin = i
+      END DO
+      V = P( Rot(:,imin) )
+
+      ! The faces including V(1) get diagonals from V(1). For the opposite
+      ! quad (V2,V3,V6,V5) choose diagonal V2-V6 or V3-V5.
+      IF( VertexBefore(V(2),V(6)) ) THEN
+        i = V(2)
+      ELSE
+        i = V(6)
+      END IF
+      IF( VertexBefore(V(3),V(5)) ) THEN
+        Diag26 = VertexBefore(i,V(3))
+      ELSE
+        Diag26 = VertexBefore(i,V(5))
+      END IF
+
+      IF( Diag26 ) THEN
+        SELECT CASE( k )
+        CASE(1); T = [ V(1), V(2), V(3), V(6) ]
+        CASE(2); T = [ V(1), V(2), V(6), V(5) ]
+        CASE DEFAULT; T = [ V(1), V(5), V(6), V(4) ]
+        END SELECT
+      ELSE
+        SELECT CASE( k )
+        CASE(1); T = [ V(1), V(2), V(3), V(5) ]
+        CASE(2); T = [ V(1), V(5), V(3), V(6) ]
+        CASE DEFAULT; T = [ V(1), V(5), V(6), V(4) ]
+        END SELECT
+      END IF
+    END FUNCTION PrismTet
 
   END SUBROUTINE SplitSingleElement
 

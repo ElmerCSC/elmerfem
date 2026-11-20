@@ -76,9 +76,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   REAL(KIND=dp), ALLOCATABLE :: ResidualVector(:), &
        STIFF(:,:),FORCE(:), TimeForce(:), SMB(:),BMB(:),&
        MASS(:,:), Velo(:,:),  LowerLimit(:), UpperLimit(:), &
-       OldValues(:), OldRHS(:),StiffVector(:),MeshVelocity(:,:)
+       OldValues(:), OldRHS(:),MeshVelocity(:,:)
 
-  CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName, StabilizeFlag
+  CHARACTER(LEN=MAX_NAME_LEN)  :: SolverName, VariableName, EquationName, FlowSolName, StabilizeFlag, PassName
 
   TYPE(Nodes_t)   :: ElementNodes
   TYPE(Element_t),POINTER :: Element
@@ -91,16 +91,16 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
   LOGICAL :: SEM ! Sub-element melting for Grounding line
   INTEGER :: GLnIP ! number of Integ. Points for GL Sub-element melting
   LOGICAL :: ComputeResidual
+  LOGICAL :: SplitFEMOn
   CHARACTER(LEN=MAX_NAME_LEN) :: MeltParam
 
   !-----------------------------------------------------------------------------
   !      remember these variables
   !----------------------------------------------------------------------------- 
-  SAVE STIFF, MASS, FORCE, &
-       SMB,BMB, &
+  SAVE STIFF, MASS, FORCE, SMB,BMB, &
        ElementNodes, AllocationsDone, Velo,  TimeForce, &
-       UseBodyForce, LimitedSolution, LowerLimit, UpperLimit, ActiveNode, OldValues, OldRHS, &
-       ResidualVector, StiffVector, MeshVelocity
+       UseBodyForce, LimitedSolution, LowerLimit, UpperLimit, ActiveNode, &
+       MeshVelocity
 
   !------------------------------------------------------------------------------
   !    Get variable/solver name
@@ -233,12 +233,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              LowerLimit,                      &
              UpperLimit, &
              LimitedSolution,  &
-             ActiveNode,                      & 
-             ResidualVector, &
-             OldValues,&
-             OldRHS,&
-             StiffVector)
-
+             ActiveNode )
      END IF
 
 
@@ -262,10 +257,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           UpperLimit( MMAX ), &
           LimitedSolution( MMAX, 2 ),  &
           ActiveNode( MMAX, 2 ),       &  
-          ResidualVector( L ),         &
-          OldValues(K), &
-          OldRHS(L), &
-          StiffVector( L ), &
           STAT=istat )
      IF ( istat /= 0 ) THEN
         CALL Fatal(SolverName,'Memory allocation error 1, Aborting.')
@@ -274,7 +265,6 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      CALL Info(SolverName,'Memory allocations done' )
      AllocationsDone = .TRUE.
      ActiveNode = .FALSE.
-     ResidualVector = 0.0_dp
   END IF
   LimitedSolution=.FALSE.
 
@@ -321,7 +311,20 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
            CALL FATAL(SolverName,"libmassbf type should be on_elements")
   ENDIF
 
+  
   CALL DefaultStart()
+
+  Thick => Solver % Variable % Values
+  ThickPerm => Solver % Variable % Perm
+  SystemMatrix => Solver % Matrix
+  ForceVector => Solver % Matrix % RHS
+
+  ! We allocate these every time since they are not needed outside and their size may change
+  ! because of changing mesh!
+  IF( ComputeResidual ) THEN
+    ALLOCATE(OldValues(SIZE( SystemMatrix % Values )), OldRhs(SIZE(ForceVector)),&
+        ResidualVector(SIZE(ForceVector)))
+  END IF
   
   !------------------------------------------------------------------------------
   ! Non-linear iteration loop
@@ -347,11 +350,15 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
       acabf % Values = 0._dp
       libmassbf % Values = 0._dp
      ENDIF
+     
+     SplitFEMOn = .FALSE.
 
      !------------------------------------------------------------------------------
      !    Do the assembly
      !------------------------------------------------------------------------------
-100  DO t=1,Solver % NumberOfActiveElements
+
+
+100   DO t=1,Solver % NumberOfActiveElements
         Element => GetActiveElement(t)
         Passive=CheckPassiveElement(Element)
         n = GetElementNOFNodes()
@@ -386,14 +393,16 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
       ! get lower limit for solution 
       !-----------------------------
-      LowerLimit(Nodeindexes(1:N)) = &
-          ListGetReal(Material,'Min ' // TRIM(VariableName),n,NodeIndexes, Found) 
-      IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 1) = Found
-      ! get upper limit for solution 
-      !-----------------------------
-      UpperLimit(Nodeindexes(1:N)) = &
-          ListGetReal(Material,'Max ' // TRIM(VariableName),n,Element % NodeIndexes, Found)              
-      IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 2) = Found
+      IF(.NOT. SplitFEMon) THEN
+        LowerLimit(Nodeindexes(1:N)) = &
+            ListGetReal(Material,'Min ' // TRIM(VariableName),n,NodeIndexes, Found) 
+        IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 1) = Found
+        ! get upper limit for solution 
+        !-----------------------------
+        UpperLimit(Nodeindexes(1:N)) = &
+            ListGetReal(Material,'Max ' // TRIM(VariableName),n,Element % NodeIndexes, Found)              
+        IF (.NOT.Passive) LimitedSolution(Nodeindexes(1:N), 2) = Found
+      END IF
 
         ! get flow soulution and velocity field from it
         !----------------------------------------------
@@ -402,30 +411,35 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
         ! get velocity profile
         IF (ConvectionVar) THEN
+#if 1
+          ! more generic routine is needed for SplitFEM
+          CALL GetLocalSolution( Velo,UElement=Element,UVariable=FlowSol)
+#else
           DO i=1,n
-             j = NSDOFs*FlowPerm(NodeIndexes(i))
-              !2D problem - 1D Thickness evolution
-              IF((DIM == 2) .AND. (NSDOFs == 1)) THEN 
-                 Velo(1,i) = FlowSolution( j ) 
-                 Velo(2,i) = 0.0_dp
+            j = NSDOFs*FlowPerm(NodeIndexes(i))
+            !2D problem - 1D Thickness evolution
+            IF((DIM == 2) .AND. (NSDOFs == 1)) THEN 
+              Velo(1,i) = FlowSolution( j ) 
+              Velo(2,i) = 0.0_dp
               !2D problem - 2D Thickness evolution (plane view pb)
-              ELSE IF ((DIM == 2) .AND. (NSDOFs == 2)) THEN
-                 Velo(1,i) = FlowSolution( j-1 ) 
-                 Velo(2,i) = FlowSolution( j ) 
+            ELSE IF ((DIM == 2) .AND. (NSDOFs == 2)) THEN
+              Velo(1,i) = FlowSolution( j-1 ) 
+              Velo(2,i) = FlowSolution( j ) 
               !3D problem - 2D Thickness evolution 
-              ELSE IF ((DIM == 3) .AND. (NSDOFs == 2)) THEN
-                 Velo(1,i) = FlowSolution( j-1 ) 
-                 Velo(2,i) = FlowSolution( j ) 
-              ELSE
-                 WRITE(Message,'(a,i0,a,i0,a)')&
-                      'DIM=', DIM, ' NSDOFs=', NSDOFs, ' does not combine. Aborting'
-                 CALL Fatal( SolverName, Message)
-              END IF
-           END DO
-       ELSE
+            ELSE IF ((DIM == 3) .AND. (NSDOFs == 2)) THEN
+              Velo(1,i) = FlowSolution( j-1 ) 
+              Velo(2,i) = FlowSolution( j ) 
+            ELSE
+              WRITE(Message,'(a,i0,a,i0,a)')&
+                  'DIM=', DIM, ' NSDOFs=', NSDOFs, ' does not combine. Aborting'
+              CALL Fatal( SolverName, Message)
+            END IF
+          END DO
+#endif
+        ELSE
           IF (ASSOCIATED( BodyForce ) ) THEN
-               Velo(1,1:n) = GetReal( BodyForce, 'Convection Velocity 1',Found )
-               IF (NSDOFs == 2) Velo(2,1:n) = GetReal( BodyForce, 'Convection Velocity 2',Found )
+            Velo(1,1:n) = GetReal( BodyForce, 'Convection Velocity 1',Found )
+            IF (NSDOFs == 2) Velo(2,1:n) = GetReal( BodyForce, 'Convection Velocity 2',Found )
           END IF
         END IF
       !------------------------------------------------------------------------------
@@ -458,7 +472,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
              TransientSimulation,&
               ALEFormulation,Eacabf,Elibmassbf, SEM)
 
-        IF (ComputeMassBalance) THEN
+        IF ((ComputeMassBalance).AND.(.NOT. SplitFEMon)) THEN
           acabf % Values ( acabf % Perm (Element % ElementIndex)) = Eacabf
           libmassbf % Values (libmassbf%Perm(Element % ElementIndex))= Elibmassbf
         ENDIF
@@ -501,6 +515,15 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !    transient simulations.
      !------------------------------------------------------------------------------
 
+     ! Tentative code for dealing with calving front using SplitFEM. 
+     IF(DefaultSplitFEM()) THEN
+       SplitFEMOn = .TRUE.
+       CALL Info(SolverName,'Going back for SplitFEM interface elements!')
+       PassName = GetVarName(CurrentModel % Solver % Variable) // ' Passive'
+       IF(ListCheckPresentAnyBodyForce(Model, PassName)) CALL FATAL(SolverName, 'Cannot have passive variable with SplitFEM')
+       GOTO 100
+     END IF
+     
      CALL DefaultFinishAssembly()
      CALL DefaultDirichletBCs()
 
@@ -508,8 +531,9 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
      !    Manipulation of the assembled matrix due to limits
      !------------------------------------------------------------------------------
      IF( ComputeResidual ) THEN
-       OldValues = SystemMatrix % Values
+       OldValues = SystemMatrix % Values       
        OldRHS = ForceVector
+       ResidualVector = 0.0_dp
      END IF
        
      IF (ApplyDirichlet) THEN
@@ -545,7 +569,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
           DHDT => DHDTSol % Values
 
           Do i=1,Solver % Mesh % NumberOfNodes
-             IF ( DHDTSol % Perm(i) .ge. 1 ) THEN
+             IF ( DHDTSol % Perm(i) .ge. 1 .AND. ThickPerm(i) > 0) THEN
                 DHDT(DHDTSol % Perm(i))=(Solver % Variable % Values(ThickPerm(i))-PreH(ThickPerm(i),1))/dt
              END IF
           End Do
@@ -571,12 +595,12 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
 
           IF ( ParEnv % PEs > 1 ) THEN !!!!!!!!!!!!!!!!!!!!!! we have a parallel run
             CALL ParallelInitSolve( SystemMatrix, Thick, ForceVector, ResidualVector )
-            CALL ParallelMatrixVector( SystemMatrix, Thick, StiffVector, .TRUE. )
-            ResidualVector =  StiffVector - ForceVector
+            CALL ParallelMatrixVector( SystemMatrix, Thick, ResidualVector, .TRUE. )
+            ResidualVector =  ResidualVector - ForceVector
             CALL ParallelSumVector( SystemMatrix, ResidualVector )
           ELSE !!!!!!!!!!!!!!!!!!!!!! serial run 
-            CALL CRS_MatrixVectorMultiply( SystemMatrix, Thick, StiffVector)
-            ResidualVector =  StiffVector - ForceVector
+            CALL CRS_MatrixVectorMultiply( SystemMatrix, Thick, ResidualVector)
+            ResidualVector = ResidualVector - ForceVector
           END IF
         END IF
         !-----------------------------
@@ -787,7 +811,7 @@ SUBROUTINE ThicknessSolver( Model,Solver,dt,TransientSimulation )
        END IF
        
        UseLinear = GetLogical( GetSolverParams(), 'Use linear elements', Stat )
-       UseLinear = UseLinear .OR. ANY(ActiveNode(NodeIndexes,:))
+       IF(.NOT. SplitFEMOn) UseLinear = UseLinear .OR. ANY(ActiveNode(NodeIndexes,:))
        UseLinear = UseLinear .AND. Element % TYPE % BasisFunctionDegree==2
 
        IF ( UseLinear ) THEN

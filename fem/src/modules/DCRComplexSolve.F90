@@ -394,7 +394,7 @@ CONTAINS
       INTEGER :: n, NodeIndexes(:)
 !------------------------------------------------------------------------------
       LOGICAL :: FirstTime = .TRUE., stat
-      REAL(KIND=dp), POINTER :: Hwrk(:,:,:)
+      REAL(KIND=dp), POINTER :: Hwrk(:,:,:) 
       INTEGER :: i,n1,n2,t1
       SAVE FirstTime, Hwrk
 !------------------------------------------------------------------------------
@@ -461,8 +461,11 @@ CONTAINS
       END IF
 
       Tensor = 0.0d0
-
+      IsScalar = .TRUE.
+      
       CALL ListGetRealArray( Material, Name, Hwrk, n, NodeIndexes, stat )
+      IF(.NOT. Stat) RETURN
+
       n1 = MIN(SIZE(HWrk,1),3)
       n2 = MIN(SIZE(HWrk,2),3)
       IsScalar = (n1==1 .AND. n2==1)

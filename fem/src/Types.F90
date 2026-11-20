@@ -747,6 +747,7 @@ MODULE Types
    INTEGER, PARAMETER :: Variable_on_gauss_points = 4
    INTEGER, PARAMETER :: Variable_on_elements = 5
    INTEGER, PARAMETER :: Variable_global = 6
+   INTEGER, PARAMETER :: Variable_on_splitfem = 7
 
 
    TYPE IntegrationPointsTable_t
@@ -1037,6 +1038,7 @@ MODULE Types
      LOGICAL :: HaveHalo = .FALSE.
 
      LOGICAL :: SingleMesh = .FALSE.
+     !REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
    END TYPE Mesh_t
 
    TYPE Graph_t
@@ -1147,7 +1149,12 @@ MODULE Types
       TYPE(LocalSystemStorage_t), POINTER :: LocalSystem(:) => NULL()
 
       TYPE(ParEnv_t) :: ParEnv
-      REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
+      !REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()
+      ! These are the original perm and values when using SplitFEM.
+      LOGICAL :: SplitFEM = .FALSE., SplitFEMActive  = .FALSE.
+      REAL(KIND=dp), POINTER :: OrigValues(:) => NULL(), OrigPrevValues(:,:) => NULL()
+      INTEGER, POINTER :: OrigActiveElements(:) => NULL()
+      INTEGER, POINTER :: OrigPerm(:) => NULL()
     END TYPE Solver_t
 
 !------------------------------------------------------------------------------
@@ -1383,6 +1390,7 @@ MODULE Types
 ! Tag counts to speed things up
       INTEGER :: NumberOfDistTags=-1,NumberOfParTags=-1
 
+      REAL(KIND=dp), POINTER :: CutInterp(:) => NULL()  
     END TYPE Model_t
 
     TYPE(Model_t),  POINTER :: CurrentModel => NULL()
