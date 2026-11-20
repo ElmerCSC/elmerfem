@@ -249,14 +249,14 @@
      LOGICAL, OPTIONAL :: GotPort
      COMPLEX(KIND=dp), OPTIONAL :: B, L(:)
      REAL(KIND=dp), OPTIONAL :: Basis(:), dBasisdx(:,:), WBasis(:,:)
-     ! For eigenmode ports: the tangential field e_t of the port mode and the field
-     ! e_t - grad(e_n)/(i beta) which is proportional to the tangential trace of the magnetic
-     ! field of the mode (here e_n is the component of the mode along the direction
-     ! of propagation).
+     ! For eigenmode ports, the tangential field e_t of the port mode and the field
+     ! Etil = e_t - grad(e_p)/(i beta) which is proportional to the tangential trace of the magnetic
+     ! field of the mode (here e_p is the component of the mode along the direction
+     ! of propagation):
      COMPLEX(KIND=dp), OPTIONAL :: Etan(3), Etil(3)
+     COMPLEX(KIND=dp) :: Et(3), Eg(3)
 
      LOGICAL :: Found, UseV, ModeProjection
-     COMPLEX(KIND=dp) :: Et(3), Eg(3)
      TYPE(Solver_t), POINTER :: EigenSolver
      TYPE(Variable_t), POINTER :: EigenVar, PotVar
      REAL(KIND=dp), ALLOCATABLE :: Re_Eigenf(:), Im_Eigenf(:), ParentBasis(:)
@@ -411,8 +411,8 @@
            END IF
 
            ! The component e_n of the mode along the propagation direction is
-           ! e_n = i beta P with P the first nodal DOF when potentials are used, otherwise
-           ! e_n = P / (i beta). Compute Eg = -grad(e_n)/(i beta):
+           ! e_p = i beta P with P the first nodal DOF when potentials are used, otherwise
+           ! e_p = P / (i beta). Compute Eg = -grad(e_p)/(i beta):
            DO i=1,3
              Eg(i) = -CMPLX(SUM(Re_Eigenf(1:np:ndofs)*dBasisdx(1:n,i)), &
                  SUM(Im_Eigenf(1:np:ndofs)*dBasisdx(1:n,i)), KIND=dp)
