@@ -1,0 +1,117 @@
+! Gap sensitivity S = dp/dh of the Reynolds solution, for a uniform
+! change of the gap height h, in a steady case with most terms that
+! depend on p or h: isothermal ideal gas, rarefied viscosity, a gap
+! growing along y, sliding, leakage through a Flow Admittance to an
+! External FilmPressure, and an Open Side boundary.
+! The references are central differences (p(h+d)-p(h-d))/2d, d=1e-5,
+! of the solution of this same case run without the sensitivity, which
+! agree with S to about 1e-8. FilmPressure is given at the top, so the
+! sensitivity is zero there without a BC of its own.
+! S used to miss the derivatives of the coefficients with respect to p
+! (and the boundary terms) and had a sign error in the leakage term,
+! being off by up to 400x in such cases.
+
+Header
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+
+Initial Condition 1
+  FilmPressure = Real 1.0
+End
+
+Equation 1
+  Name = "Eqs"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Reynolds"
+  Procedure = File "ReynoldsSolver" "ReynoldsSolver"
+  Variable = FilmPressure
+  Gap Sensitivity = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 200
+  Nonlinear System Convergence Tolerance = 1.0e-13
+End
+
+Solver 2
+  Exec Solver = after all
+  Equation = "SaveInt"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = FilmPressure Gap Sensitivity
+  Operator 1 = int
+  Show Norm Index = 1
+End
+
+! Columns: coordinates 1-3, FilmPressure, FilmPressure Gap Sensitivity
+Solver 3
+  Exec Solver = after all
+  Equation = "SavePoint"
+  Procedure = "SaveData" "SaveScalars"
+  Save Coordinates(1,2) = 5.0 50.0
+  Show Norm Index = 5
+End
+
+Material 1
+  Name = "Gas"
+  Viscosity = Real 1.0e-2
+  Gap Height = Variable Coordinate 2
+    Real MATC "0.6 + 0.008*tx"
+  Flow Admittance = Real 2.0e-4
+  Compressibility Model = String "isothermal ideal gas"
+  Viscosity Model = String "rarefied"
+  Mean Free Path = Real 0.3
+  Reference Pressure = Real 1.0
+  Tangent Velocity 2 = Real 0.05
+End
+
+Body Force 1
+  Normal Velocity = Real -1.0e-3
+  External FilmPressure = Real 0.2
+End
+
+Boundary Condition 1
+  Name = "top"
+  Target Boundaries(1) = 3
+  FilmPressure = Real 0.5
+End
+
+Boundary Condition 2
+  Name = "bottom"
+  Target Boundaries(1) = 1
+  Open Side = Logical True
+End
+
+Solver 2 :: Reference Norm = 1.3751564000E+02
+Solver 2 :: Reference Norm Tolerance = 1.0e-6
+Solver 3 :: Reference Norm = 1.8521179000E-01
+Solver 3 :: Reference Norm Tolerance = 1.0e-6

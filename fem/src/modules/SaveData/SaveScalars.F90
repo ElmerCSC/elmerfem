@@ -1272,6 +1272,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   IF( NoValues == 0 ) THEN
     CALL Warn(Caller,'Found no values to save')
+    ! Other partitions may have values (e.g. "res:" keywords of a solver
+    ! active only there) and wait in the final sync below: join it.
+    n = 1
+    n = ParallelReduction(n)
+    IF( PrevComm > 0 ) ParEnv % ActiveComm = PrevComm
     RETURN
   ELSE
     CALL Info(Caller,'Found '//I2S(NoValues)//' values to save in total',Level=6)

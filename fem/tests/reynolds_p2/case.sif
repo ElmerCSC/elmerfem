@@ -1,0 +1,148 @@
+! Reynolds solver and postprocessor on second order p-elements, using
+! the two-body case of reynolds_multibody. The pressure is piecewise
+! quadratic, so p:2 is exact: max FilmPressure 0.9, int flux 1 = 200,
+! and the postprocessed totals are exact too:
+!   heating = 1/(12 mu) * 10 * int p'^2 dy + mu * 10 * int U^2 dy = 1.1 + 2 = 3.1
+!   pressure force 3 = -int p dA = -650
+! The local basis and the local matrices used to be sized by the node
+! count only, overflowing for the edge dofs (NaN solution). The
+! postprocessor then used only the vertex values of the pressure, giving
+! the linear-element totals 3.09995 and 649.98.
+
+Header
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+!  Post File = "case.vtu"
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Equation 1
+  Name = "Eqs"
+  Active Solvers(2) = 1 2
+  Element = "p:2"
+End
+
+Solver 1
+  Equation = "Reynolds"
+  Procedure = File "ReynoldsSolver" "ReynoldsSolver"
+  Variable = FilmPressure
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+End
+
+Solver 2
+  Equation = "ReynoldsPost"
+  Procedure = File "ReynoldsSolver" "ReynoldsPostprocess"
+  Calculate Flux = Logical True
+  Calculate Heating = Logical True
+  Calculate Force = Logical True
+  Calculate Force Dim = Integer 3
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+End
+
+! Each SaveScalars exposes one analytic value as its norm.
+Solver 3
+  Exec Solver = after all
+  Equation = "SavePressure"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = FilmPressure
+  Operator 1 = max
+  Show Norm Index = 1
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "SaveFlux"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = FilmPressure Flux 1
+  Operator 1 = int
+  Show Norm Index = 1
+End
+
+Solver 5
+  Exec Solver = after all
+  Equation = "SaveHeating"
+  Procedure = "SaveData" "SaveScalars"
+  Show Norm Name = String "res: reynolds heating"
+End
+
+Solver 6
+  Exec Solver = after all
+  Equation = "SaveForce"
+  Procedure = "SaveData" "SaveScalars"
+  Show Norm Name = String "res: pressure force 3"
+End
+
+Material 1
+  Name = "Viscous"
+  Viscosity = Real 1.0e-2
+  Gap Height = Real 1.0
+End
+
+Body Force 1
+  Normal Velocity = Real -1.0e-3
+  Tangent Velocity 1 = Real 0.2
+End
+
+Body Force 2
+  Normal Velocity = Real -3.0e-3
+  Tangent Velocity 1 = Real 0.6
+End
+
+Boundary Condition 1
+  Name = "bottom"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "top"
+  Target Boundaries(1) = 3
+  FilmPressure = 0.0
+End
+
+Boundary Condition 4
+  Name = "left"
+  Target Boundaries(1) = 4
+End
+
+Solver 3 :: Reference Norm = 0.9
+Solver 4 :: Reference Norm = 200.0
+
+Solver 3 :: Reference Norm Tolerance = 1.0e-8
+Solver 4 :: Reference Norm Tolerance = 1.0e-8
+Solver 5 :: Reference Norm = 3.1
+Solver 5 :: Reference Norm Tolerance = 1.0e-8
+Solver 6 :: Reference Norm = 650.0
+Solver 6 :: Reference Norm Tolerance = 1.0e-8

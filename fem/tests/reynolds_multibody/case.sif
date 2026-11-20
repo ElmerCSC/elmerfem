@@ -1,0 +1,130 @@
+! Two-body test for the Reynolds equation: both bodies share Equation 1
+! and Material 1, but have different Body Forces. Checks that each body
+! picks up its own body force in ReynoldsSolver and ReynoldsPostprocess.
+!
+! Gap h=1, viscosity mu=1e-2, so the equation reduces to
+!   p'' = 12 mu Vn / h^3 = 0.12 Vn   (1D in y, p'(0)=0, p(100)=0)
+! with Vn = V1 on y<50 (body 1) and V2 on y>50 (body 2). Then
+!   p(0) = -(3750 a + 1250 b),  a = 0.12 V1, b = 0.12 V2
+! V1=-1e-3, V2=-3e-3  ->  p(0) = 0.45 + 0.45 = 0.9   (= max FilmPressure)
+! Linear elements are nodally exact here (interface lies on a node row).
+!
+! Tangent velocity U1 in x gives flux component 1 = h*U1/2:
+! body 1: 0.1, body 2: 0.3. The postprocessor's L2 projection of this
+! discontinuous field overshoots at the interface (so no max check), but
+! preserves the integral exactly: int flux 1 = 0.1*500 + 0.3*500 = 200.
+!
+! If body 2 wrongly uses body 1's body force: p(0)=0.6, int flux 1 = 100.
+
+Header
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+!  Post File = "case.vtu"
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 1
+  Material = 1
+  Body Force = 2
+End
+
+Equation 1
+  Name = "Eqs"
+  Active Solvers(2) = 1 2
+End
+
+Solver 1
+  Equation = "Reynolds"
+  Procedure = File "ReynoldsSolver" "ReynoldsSolver"
+  Variable = FilmPressure
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 1
+End
+
+Solver 2
+  Equation = "ReynoldsPost"
+  Procedure = File "ReynoldsSolver" "ReynoldsPostprocess"
+  Calculate Flux = Logical True
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+End
+
+! Each SaveScalars exposes one analytic value as its norm.
+Solver 3
+  Exec Solver = after all
+  Equation = "SavePressure"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = FilmPressure
+  Operator 1 = max
+  Show Norm Index = 1
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "SaveFlux"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = FilmPressure Flux 1
+  Operator 1 = int
+  Show Norm Index = 1
+End
+
+Material 1
+  Name = "Viscous"
+  Viscosity = Real 1.0e-2
+  Gap Height = Real 1.0
+End
+
+Body Force 1
+  Normal Velocity = Real -1.0e-3
+  Tangent Velocity 1 = Real 0.2
+End
+
+Body Force 2
+  Normal Velocity = Real -3.0e-3
+  Tangent Velocity 1 = Real 0.6
+End
+
+Boundary Condition 1
+  Name = "bottom"
+  Target Boundaries(1) = 1
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "top"
+  Target Boundaries(1) = 3
+  FilmPressure = 0.0
+End
+
+Boundary Condition 4
+  Name = "left"
+  Target Boundaries(1) = 4
+End
+
+Solver 3 :: Reference Norm = 0.9
+Solver 4 :: Reference Norm = 200.0
