@@ -1,9 +1,9 @@
 ! Reynolds solved in body 2 only, on 2 partitions split at the body
 ! interface: rank 0 has no Reynolds elements, so the solver and its
 ! postprocessor are run on rank 1 only. The "res:" totals they set are
-! broadcast by SingleSolver to the partitions where they were not run;
-! before that, rank 0 (which writes the output and checks the norms) had
-! no values at all.
+! global, so SaveScalars uses "Parallel Reduce": it then collects them
+! from the partitions having them; before that, rank 0 (which writes the
+! output and checks the norms) had no values at all.
 ! Reference norms are the serial values.
 
 Header
@@ -78,6 +78,7 @@ Solver 3
   Equation = "SaveHeating"
   Procedure = "SaveData" "SaveScalars"
   Show Norm Name = String "res: reynolds heating"
+  Parallel Reduce = Logical True
 End
 
 Solver 4
@@ -85,6 +86,7 @@ Solver 4
   Equation = "SaveMoment"
   Procedure = "SaveData" "SaveScalars"
   Show Norm Name = String "res: reynolds moment 1"
+  Parallel Reduce = Logical True
 End
 
 Material 1

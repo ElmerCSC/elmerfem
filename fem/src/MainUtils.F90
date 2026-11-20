@@ -5303,11 +5303,6 @@ CONTAINS
      INTEGER, ALLOCATABLE :: memb(:)
      TYPE(Matrix_t), POINTER :: M
      INTEGER :: comm_active, group_active, group_world, ierr
-     ! Result scalars ("res:") of a solver run on a subset of partitions
-     LOGICAL :: SyncResults
-     INTEGER :: ResRoot
-     CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ResNames(:)
-     REAL(KIND=dp), ALLOCATABLE :: ResValues(:)
 
      LOGICAL :: ApplyMortar, FoundMortar, SlaveNotParallel, Parallel, UseOrigMesh
      TYPE(Matrix_t), POINTER :: CM, CM0, CM1, CMP
@@ -5320,9 +5315,6 @@ CONTAINS
 !------------------------------------------------------------------------------
      MeActive = ASSOCIATED(Solver % Matrix)
      IF ( MeActive ) MeActive = (Solver % Matrix % NumberOfRows > 0)
-
-     SyncResults = .FALSE.
-     ResRoot = 0
 
      Parallel = Solver % Parallel
      !------------------------------------------------------------------------------
@@ -5411,16 +5403,6 @@ BLOCK
        CALL ParallelActive( MeActive )
        n = COUNT(ParEnv % Active)
 
-       ! The solver is run only on the active partitions, so the result
-       ! scalars it sets are sent from the 1st active one to the others.
-       SyncResults = ( n>0 .AND. n<ParEnv % PEs )
-       IF( SyncResults ) THEN
-         DO i=1,ParEnv % PEs
-           IF ( ParEnv % Active(i) ) EXIT
-         END DO
-         ResRoot = i-1
-       END IF
-
        IF ( n>0 .AND. n<ParEnv % PEs ) THEN
          IF ( ASSOCIATED(Solver % Matrix) ) THEN
            IF ( Solver % Matrix % Comm /= ELMER_COMM_WORLD .AND. Solver % Matrix % Comm /= MPI_COMM_NULL ) &
@@ -5492,10 +5474,7 @@ BLOCK
        ! IF (.NOT. ASSOCIATED(Solver % Matrix) ) RETURN
        ! or some such .... )
 
-       IF(.NOT. MeActive .AND. n>0) THEN
-         IF( SyncResults ) CALL SyncResultScalars()
-         RETURN
-       END IF
+       IF(.NOT. MeActive .AND. n>0) RETURN
 END BLOCK
      END IF
 
@@ -5557,8 +5536,6 @@ END BLOCK
         Message = 'Solver Equation string is: '//TRIM(EquationName)
         CALL Info(Caller, Message, level=8)
      END IF
-
-     IF( SyncResults ) CALL SnapshotResultScalars()
 
      IF( Solver % SolverMode == SOLVER_MODE_STEPS ) THEN
        CALL ExecSolverinSteps( Model, Solver, dt, TransientSimulation)
@@ -5701,106 +5678,10 @@ END BLOCK
      !-----------------------------------------------------------------------
      CALL UpdateDependentObjects( Solver, .TRUE. )
 
-     IF( SyncResults ) CALL SyncResultScalars()
-
      IF( UseOrigMesh ) THEN
        CALL Info(Caller,'Reverting back to current coordinates',Level=12)
        Mesh % Nodes => Mesh % NodesMapped
      END IF
-
-   CONTAINS
-
-     ! Store the result scalars of the root partition before the solver call.
-     !------------------------------------------------------------------------------
-     SUBROUTINE SnapshotResultScalars()
-       TYPE(ValueListEntry_t), POINTER :: Lst
-       INTEGER :: nres
-
-       IF( ParEnv % MyPe /= ResRoot ) RETURN
-
-       DO k=1,2
-         nres = 0
-         Lst => ListHead( Model % Simulation )
-         DO WHILE( ASSOCIATED(Lst) )
-           IF( IsResultScalar(Lst) ) THEN
-             nres = nres + 1
-             IF( k == 2 ) THEN
-               ResNames(nres) = Lst % Name
-               ResValues(nres) = Lst % FValues(1,1,1)
-             END IF
-           END IF
-           Lst => Lst % Next
-         END DO
-         IF( k == 1 ) ALLOCATE( ResNames(nres), ResValues(nres) )
-       END DO
-     END SUBROUTINE SnapshotResultScalars
-
-
-     ! Broadcast the result scalars that the solver added or changed on the
-     ! root partition. Called also by the partitions where the solver was not
-     ! run: they get the values, the active ones keep their own.
-     !------------------------------------------------------------------------------
-     SUBROUTINE SyncResultScalars()
-       TYPE(ValueListEntry_t), POINTER :: Lst
-       CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: Names(:)
-       REAL(KIND=dp), ALLOCATABLE :: Vals(:)
-       INTEGER :: nres, m
-       LOGICAL :: Changed
-
-       nres = 0
-       IF( ParEnv % MyPe == ResRoot ) THEN
-         DO k=1,2
-           nres = 0
-           Lst => ListHead( Model % Simulation )
-           DO WHILE( ASSOCIATED(Lst) )
-             IF( IsResultScalar(Lst) ) THEN
-               Changed = .TRUE.
-               DO m=1,SIZE(ResNames)
-                 IF( ResNames(m) == Lst % Name ) THEN
-                   Changed = ( ResValues(m) /= Lst % FValues(1,1,1) )
-                   EXIT
-                 END IF
-               END DO
-               IF( Changed ) THEN
-                 nres = nres + 1
-                 IF( k == 2 ) THEN
-                   Names(nres) = Lst % Name
-                   Vals(nres) = Lst % FValues(1,1,1)
-                 END IF
-               END IF
-             END IF
-             Lst => Lst % Next
-           END DO
-           IF( k == 1 ) ALLOCATE( Names(nres), Vals(nres) )
-         END DO
-       END IF
-
-       CALL MPI_BCAST( nres, 1, MPI_INTEGER, ResRoot, ELMER_COMM_WORLD, ierr )
-       IF( nres == 0 ) RETURN
-
-       IF( ParEnv % MyPe /= ResRoot ) ALLOCATE( Names(nres), Vals(nres) )
-       CALL MPI_BCAST( Names, nres*MAX_NAME_LEN, MPI_CHARACTER, ResRoot, ELMER_COMM_WORLD, ierr )
-       CALL MPI_BCAST( Vals, nres, MPI_DOUBLE_PRECISION, ResRoot, ELMER_COMM_WORLD, ierr )
-
-       IF( .NOT. MeActive ) THEN
-         CALL Info(Caller,'Received '//I2S(nres)//' result scalars from partition '&
-             //I2S(ResRoot),Level=10)
-         DO m=1,nres
-           CALL ListAddConstReal( Model % Simulation, TRIM(Names(m)), Vals(m) )
-         END DO
-       END IF
-     END SUBROUTINE SyncResultScalars
-
-
-     FUNCTION IsResultScalar( Lst ) RESULT ( IsRes )
-       TYPE(ValueListEntry_t), POINTER :: Lst
-       LOGICAL :: IsRes
-
-       IsRes = .FALSE.
-       IF( Lst % NameLen < 4 ) RETURN
-       IF( Lst % Name(1:4) /= 'res:' ) RETURN
-       IsRes = ASSOCIATED( Lst % FValues )
-     END FUNCTION IsResultScalar
 !------------------------------------------------------------------------------
    END SUBROUTINE SingleSolver
 !------------------------------------------------------------------------------
