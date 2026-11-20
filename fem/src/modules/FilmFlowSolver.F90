@@ -183,18 +183,19 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
   REAL(KIND=dp) :: GapFactor, Nm, TotHeating, FsiMult
   CHARACTER(:), ALLOCATABLE :: str, DensityName, ViscosityName
   CHARACTER(*), PARAMETER :: Caller = 'FilmFlowSolver'
-  LOGICAL :: Debug, FirstRound=.TRUE.
+  LOGICAL :: Debug, FirstRound=.TRUE., SensPass
+  REAL(KIND=dp) :: HeatingArea = 0.0_dp
 
   SAVE STIFF, MASS, LOAD, FORCE, rho, ac, gap, gap0, mu, height, AcPres, Velocity, &
       AcPrevPressure, AllocationsDone, pVar, GotAc, SurfAC, FsiRhs, PrevGap, &
       FrictionModel, itime0, hVar, HeatingEnergy, FrictionHeatFlux, PressureHeatFlux, &
-      HeatingW, FirstRound
+      HeatingW, FirstRound, HeatingArea
 !------------------------------------------------------------------------------
 
   CALL Info(Caller,'Computing reduced dimensional Navier-Stokes equations!')
 
   Mesh => GetMesh()
-  Element => GetActiveElement(1)
+  SensPass = .FALSE.
 
   dim = CoordinateSystemDimension()
 
@@ -352,8 +353,6 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
         END IF
       END IF
     END IF
-    IF( CalcFrictionHeating ) FrictionHeatFlux = 0.0_dp
-    IF( CalcPressureHeating ) PressureHeatFlux = 0.0_dp
     IF(.NOT. DoneWeight) HeatingW = 0.0_dp
     itime0 = itime
   END IF
@@ -397,6 +396,14 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     CALL DefaultInitialize()
 
     Newton = GetNewtonActive()
+
+    ! The heat fluxes are assembled in each nonlinear iteration and only the last
+    ! one is kept. The sensitivity pass solves a perturbed problem and does not
+    ! update them.
+    IF( CalcHeating .AND. .NOT. SensPass ) THEN
+      IF( CalcFrictionHeating ) FrictionHeatFlux = 0.0_dp
+      IF( CalcPressureHeating ) PressureHeatFlux = 0.0_dp
+    END IF
 
     ! This is an experimental feature to turn convection on/off. It could depend on time, for example.
     s = ListGetCReal( Params,'Convect Condition', Found )
@@ -490,20 +497,16 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
     END DO
     CALL DefaultFinishBulkAssembly()
 
-    IF( GotAC ) THEN
-      BLOCK
-        REAL(KIND=dp) :: sorig, sfsi, coeff
-        sorig = SUM(FsiRhs(1,:))
-        sfsi = SUM(FsiRhs(2,:))
-        coeff = 1.0_dp
-        IF(sfsi /= 0.0) coeff = sorig / sfsi
-        IF(sfsi < sorig) coeff = 1.0_dp
+    ! The nodal weights for the heat fluxes are computed in the first assembly only.
+    IF( CalcHeating .AND. .NOT. DoneWeight ) THEN
+      HeatingArea = ParallelReduction( SUM( HeatingW ) )
+      IF ( ParEnv % PEs > 1 ) CALL ParallelSumNodalVector( Mesh, HeatingW, hVar % Perm )
+      DoneWeight = .TRUE.
+    END IF
 
-        ! Just report incoming and outgoing total fluxes
-        IF(InfoActive(20)) THEN
-          PRINT *,'RHSComp:',sorig,sfsi,coeff
-        END IF
-      END BLOCK
+    ! Just report incoming and outgoing total fluxes
+    IF( GotAC .AND. InfoActive(20) ) THEN
+      PRINT *,'RHSComp:',SUM(FsiRhs(1,:)),SUM(FsiRhs(2,:))
     END IF
 
     DO t=1, Solver % Mesh % NumberOfBoundaryElements
@@ -549,6 +552,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
   IF(DefaultSensitivity()) THEN
     maxiter = 1
+    SensPass = .TRUE.
     GOTO 100
   END IF
 
@@ -556,23 +560,20 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
 
   IF( CalcHeating ) THEN
     BLOCK
-      REAL(KIND=dp) :: TotFlux, Area, cfix
+      REAL(KIND=dp) :: TotFlux, cfix
 
       TotFlux = 0.0_dp
       IF(CalcFrictionHeating) &
           TotFlux = ParallelReduction(SUM(FrictionHeatFlux))
       IF(CalcPressureHeating) &
-          TotFlux = TotFlux + ParallelReduction(SUM(FrictionHeatFlux))
+          TotFlux = TotFlux + ParallelReduction(SUM(PressureHeatFlux))
       IF ( ParEnv % PEs > 1) THEN
         ! In parallel we need to sum up the terms at shared nodes.
         IF( CalcFrictionHeating ) &
             CALL ParallelSumNodalVector( Mesh, FrictionHeatFlux, HVar % Perm )
         IF( CalcPressureHeating ) &
             CALL ParallelSumNodalVector( Mesh, PressureHeatFlux, HVar % Perm )
-        IF(.NOT. DoneWeight ) &
-          CALL ParallelSumNodalVector( Mesh, HeatingW, HVar % Perm )
       END IF
-      DoneWeight = .TRUE.
 
       IF(CalcFrictionHeating) THEN
         WHERE(HeatingW > 0.0_dp )
@@ -589,8 +590,7 @@ SUBROUTINE FilmFlowSolver( Model,Solver,dt,Transient)
       ! This is just a tentative feature that would allow finding of steady state
       ! solutions. Not usuful generally.
       IF(ListGetLogical(Params,'Enforce Zero Heating', Found ) ) THEN
-        Area = ParallelReduction( SUM( HeatingW ) )
-        cfix = -TotFlux / Area
+        cfix = -TotFlux / HeatingArea
         FrictionHeatFlux = FrictionHeatFlux + cfix
       END IF
 
@@ -771,14 +771,14 @@ CONTAINS
        Pres = SUM(NodalPres(1:n) * Basis(1:n) )
 
        DO i=1,mdim
-         gapGrad(i) = SUM( NodalGap(1:nd) * dBasisdx(1:nd,i) )
-         presGrad(i) = SUM( NodalPres(1:nd) * dBasisdx(1:nd,i) )
+         gapGrad(i) = SUM( NodalGap(1:n) * dBasisdx(1:n,i) )
+         presGrad(i) = SUM( NodalPres(1:n) * dBasisdx(1:n,i) )
        END DO
 
        IF( GotHeight ) THEN
-         h = SUM( NodalH(1:nd) * Basis(1:nd) )
+         h = SUM( NodalH(1:n) * Basis(1:n) )
          DO i=1,mdim
-           hGrad(i) = SUM( NodalH(1:nd) * dBasisdx(1:nd,i) )
+           hGrad(i) = SUM( NodalH(1:n) * dBasisdx(1:n,i) )
          END DO
        ELSE
          IF(mdim == 1) THEN
@@ -808,8 +808,10 @@ CONTAINS
          LoadAtIP(i) = SUM( Basis(1:n) * LOAD(i,1:n) )
        END DO
 
+       ! Newton linearization of convection: rho*(u0.grad)u0 to rhs.
+       ! The load is multiplied by rho below.
        IF ( Convect .AND. Newton ) THEN
-         LoadAtIp(1:mdim) = LoadAtIp(1:mdim) + rho * MATMUL(VeloGrad(1:mdim,1:mdim),Velo(1:mdim))
+         LoadAtIp(1:mdim) = LoadAtIp(1:mdim) + MATMUL(VeloGrad(1:mdim,1:mdim),Velo(1:mdim))
        END IF
 
        ! Fsi velocity
@@ -842,7 +844,7 @@ CONTAINS
              MuCoeff = fd * rho * Speed / (2*D)
            ELSE
              GradZphi2 =  MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0d-09)
-             MuCoeff = rho * SQRT(fd*Grav) * (2*gap)**(-1.0/2.0) * GradZphi2**(1.0/4.0)
+             MuCoeff = rho * SQRT(fd*Grav) * (2*gapi)**(-0.5_dp) * GradZphi2**0.25_dp
            END IF
          END BLOCK
 
@@ -850,12 +852,12 @@ CONTAINS
          BLOCK
            REAL(KIND=dp) :: GradZphi2
            GradZphi2 = MAX(SUM((hGrad(1:mdim) + presGrad(1:mdim)/(rho*Grav))**2), 1.0d-09)
-           MuCoeff = nm * rho * Grav * (gapi/2)**(-2.0/3) * GradZphi2**(1.0/4.0)
+           MuCoeff = nm * rho * Grav * (gapi/2)**(-2.0_dp/3) * GradZphi2**0.25_dp
          END BLOCK
 
        CASE( 4)
          BLOCK
-           MuCoeff = rho * Grav * nm**2 * (gapi/2)**(-4.0/3) * Speed
+           MuCoeff = rho * Grav * nm**2 * (gapi/2)**(-4.0_dp/3) * Speed
        END BLOCK
 
        CASE DEFAULT
@@ -916,6 +918,11 @@ CONTAINS
              IF( GradP ) THEN
                A(i,mdim+1) = A(i,mdim+1) + s * dBasisdx(q,i) * Basis(p)
                A(mdim+1,i) = A(mdim+1,i) - s * gap * rho * Basis(q) * dBasisdx(p,i)
+               ! Integration by parts gives div(gap*u). For pipes the area goes as gap^2
+               ! and the additional u.grad(gap) term must be added.
+               IF( geomc > 1 ) THEN
+                 A(mdim+1,i) = A(mdim+1,i) + (geomc-1) * s * rho * Basis(q) * gapGrad(i) * Basis(p)
+               END IF
              ELSE
                A(i,mdim+1) = A(i,mdim+1) - s * Basis(q) * dBasisdx(p,i)
                A(mdim+1,i) = A(mdim+1,i) + s * gap * rho * dBasisdx(q,i) * Basis(p) &
@@ -937,10 +944,10 @@ CONTAINS
          i = (mdim+1) * (p-1) + 1
          F => FORCE(i:i+mdim)
 
-         ! Body force for velocity components and pressure
-         F(1:mdim+1) = F(1:mdim+1) - s * rho * Basis(p) * LoadAtIp(1:mdim+1)
-         ! Additional body force from FSI velocity
-         F(mdim+1) = F(mdim+1) - s * rho * Basis(p) * LoadAtIp(mdim+2)
+         ! Body force for velocity components
+         F(1:mdim) = F(1:mdim) + s * rho * Basis(p) * LoadAtIp(1:mdim)
+         ! Normal velocity and FSI velocity, positive out of the film
+         F(mdim+1) = F(mdim+1) - s * rho * Basis(p) * ( LoadAtIp(mdim+1) + LoadAtIp(mdim+2) )
 
          ! Gravity for the slope
          IF(GotGrav) THEN
@@ -955,18 +962,17 @@ CONTAINS
 
 
          IF(UseHeating) THEN
-           ! Additional source term from friction melting.
-           ! Continuity equation is weighted by gap so the BC term need not be divided by it
-           ! as is the case for momentum equation.
-           F(1:mdim+1) = F(1:mdim+1) + s * Basis(p) * MAX(q_f + q_p,0.0_dp) / (MeltHeat * rho)
+           ! Additional mass source from melting, q/L [kg/(m^2 s)], to the continuity equation.
+           ! The continuity equation is div(rho*gap*u), i.e. mass flux per unit area,
+           F(mdim+1) = F(mdim+1) + s * Basis(p) * MAX(q_f + q_p,0.0_dp) / MeltHeat
          END IF
        END DO
 
-       IF( CalcFrictionHeating ) THEN
+       IF( CalcFrictionHeating .AND. .NOT. SensPass ) THEN
          FrictionHeatFlux(hVar % Perm(Element % NodeIndexes)) = &
              FrictionHeatFlux(hVar % Perm(Element % NodeIndexes)) + s * Basis(1:n) * q_f
        END IF
-       IF( CalcPressureHeating ) THEN
+       IF( CalcPressureHeating .AND. .NOT. SensPass ) THEN
          PressureHeatFlux(hVar % Perm(Element % NodeIndexes)) = &
              PressureHeatFlux(hVar % Perm(Element % NodeIndexes)) + s * Basis(1:n) * q_p
        END IF
