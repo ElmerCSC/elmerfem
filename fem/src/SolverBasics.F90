@@ -316,7 +316,7 @@ CONTAINS
 #endif
      END IF
 !------------------------------------------------------------------------------
-     Order = MIN(Solver % DoneTime, Solver % Order)
+     Order = MIN(Solver % TimeLevels, Solver % Order)
 
      DO i=1,n
        DO j=1,DOFs
@@ -389,7 +389,7 @@ CONTAINS
        PredCorrOrder = ListGetInteger( Solver % Values, &
            'Predictor-Corrector Scheme Order', GotIt)
        IF (.NOT. GotIt) PredCorrOrder = 2
-       PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
+       PredCorrOrder = MIN(PredCorrOrder, Solver % TimeLevels /2)
        CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
 
@@ -397,7 +397,7 @@ CONTAINS
        PredCorrOrder = ListGetInteger( Solver % Values, &
            'Predictor-Corrector Scheme Order', GotIt)
        IF (.NOT. GotIt) PredCorrOrder = 2
-       PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
+       PredCorrOrder = MIN(PredCorrOrder, Solver % TimeLevels /2)
        CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol, PredCorrOrder )
 
@@ -435,7 +435,7 @@ CONTAINS
      CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix',Level=20)
 
 !------------------------------------------------------------------------------
-     Order = MIN(Solver % DoneTime, Solver % Order)
+     Order = MIN(Solver % TimeLevels, Solver % Order)
      IF(Order == 0 ) THEN
        CALL Info('Add1stOrderTime_CRS','Zeroth order, nothing to do!',Level=20)
        RETURN
@@ -2636,6 +2636,7 @@ END FUNCTION SearchNodeL
 
 !------------------------------------------------------------------------------
      Solver % DoneTime = Solver % DoneTime + 1
+     Solver % TimeLevels = Solver % TimeLevels + 1
 !------------------------------------------------------------------------------
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) .OR. &
@@ -2752,12 +2753,12 @@ END FUNCTION SearchNodeL
            IF(.NOT.GotIt) Solver % Alpha = -0.05_dp
          END SELECT
        ELSE
-         IF (Solver % DoneTime==1 .AND.Solver % Beta/= 0.0_dp) Solver % Beta = 1.0_dp
+         IF (Solver % TimeLevels==1 .AND.Solver % Beta/= 0.0_dp) Solver % Beta = 1.0_dp
        END IF
 
        SELECT CASE( Solver % TimeOrder )
        CASE(1)
-         Order = MIN(Solver % DoneTime, Solver % Order)
+         Order = MIN(Solver % TimeLevels, Solver % Order)
          DO i=Order, 2, -1
            Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
          END DO
@@ -2779,7 +2780,7 @@ END FUNCTION SearchNodeL
          Var % PrevValues(:,7) = Var % PrevValues(:,6)
        END SELECT
      ELSE
-       Order = MIN(Solver % DoneTime, Solver % Order)
+       Order = MIN(Solver % TimeLevels, Solver % Order)
        DO i=Order, 2, -1
          Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
        END DO
@@ -2794,7 +2795,7 @@ END FUNCTION SearchNodeL
      END IF
 
      IF( ListGetLogical( Solver % Values,'Nonlinear Timestepping', GotIt ) ) THEN
-       IF( Solver % DoneTime > 1 ) THEN
+       IF( Solver % TimeLevels > 1 ) THEN
          A => Solver % Matrix
          CALL Info('InitializeTimestep','Saving previous linear system for timestepping',Level=12)
          IF( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
@@ -2875,7 +2876,7 @@ END FUNCTION SearchNodeL
     Simulation = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
     IF ( Simulation == 'transient' ) THEN
       Method = ListGetString( Solver % Values, 'Timestepping Method' )
-      Order = MIN(Solver % DoneTime, Solver % Order)
+      Order = MIN(Solver % TimeLevels, Solver % Order)
 
       IF ( Order <= 0 .OR. Solver % TimeOrder /= 1 .OR. Method=='bdf' ) RETURN
 

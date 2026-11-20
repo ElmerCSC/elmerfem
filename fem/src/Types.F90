@@ -1097,6 +1097,11 @@ MODULE Types
       TYPE(ValueList_t), POINTER :: Values => NULL()
 
       INTEGER :: TimeOrder=0,DoneTime=0,Order=0,NOFEigenValues=0
+      ! DoneTime counts the initialized timesteps and solvers use it to detect a
+      ! new timestep, it only increases. TimeLevels is the number of timesteps in
+      ! the history (it sets the order at the startup of multistep methods): when
+      ! a timestep is subdivided and a substep is rejected it is restored.
+      INTEGER :: TimeLevels=0
       INTEGER :: TimesVisited = 0
       TYPE(C_FUNPTR) :: PROCEDURE = C_NULL_FUNPTR, LinBeforeProc = C_NULL_FUNPTR, LinAfterProc = C_NULL_FUNPTR
 

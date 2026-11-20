@@ -3496,7 +3496,7 @@ CONTAINS
      Solver => CurrentModel % solver
    END IF
 
-   Order = MAX( MIN( Solver % DoneTime, Solver % Order ), 1)
+   Order = MAX( MIN( Solver % TimeLevels, Solver % Order ), 1)
    HasMass = ASSOCIATED( Solver % Matrix % MassValues )
 
    HasFCT = ListGetLogical( Solver % Values,'Linear System FCT', Found )

@@ -276,7 +276,7 @@ MODULE DiffuseConvective
 
        IF ( Transient ) THEN
          dt = CurrentModel % Solver % dt
-         Order = MIN(CurrentModel % Solver % DoneTime,CurrentModel % Solver % Order)
+         Order = MIN(CurrentModel % Solver % TimeLevels,CurrentModel % Solver % Order)
 
          CALL GetVectorLocalSolution( NodalPVelo, 'Flow Solution', tStep=-1 )
 

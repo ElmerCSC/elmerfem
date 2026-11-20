@@ -1611,7 +1611,7 @@ CONTAINS
         END DO
         FORCE(1) = Solver % Matrix % RHS(i)
         Solver % Matrix % Force(i,1) = FORCE(1)
-        k = MIN( Solver % DoneTime, Solver % Order )
+        k = MIN( Solver % TimeLevels, Solver % Order )
         CALL BDFLocal( n, dt, MASS, STIFF, FORCE, X, k )
 
         n = 0
