@@ -1805,6 +1805,7 @@ CONTAINS
     USE Types
     USE Integration
     USE ElementDescription
+    USE LinearAlgebra, ONLY : LUDecomp
     IMPLICIT NONE
 
     TYPE(Mesh_t) :: Mesh
@@ -1815,7 +1816,7 @@ CONTAINS
     REAL(KIND=dp) :: Weight, DetJ
     INTEGER :: i,t,p,q,n,tid,nthr
     TYPE(GaussIntegrationPoints_t) :: IP
-    LOGICAL :: Stat
+    LOGICAL :: Stat, Erroneous, Same
     CHARACTER(*), PARAMETER :: Caller = 'Ip2DgFieldInElement'
 
     ! Per-thread scratch state — NOT THREADPRIVATE (Windows/GCC emutls bug,
@@ -1828,8 +1829,12 @@ CONTAINS
     TYPE :: Ip2DgState_t
       TYPE(Nodes_t) :: Nodes
       REAL(KIND=dp), ALLOCATABLE :: Basis(:), MASS(:,:), LOAD(:)
+      REAL(KIND=dp), ALLOCATABLE :: BasisTab(:,:), WeightTab(:)
+      INTEGER, ALLOCATABLE :: Pivot(:)
       LOGICAL :: CSymmetry = .FALSE.
       LOGICAL :: AllocationsDone = .FALSE.
+      LOGICAL :: MassDone = .FALSE.
+      INTEGER :: MassN = 0, MassNip = 0
       TYPE(Element_t), POINTER :: PrevElement => NULL()
     END TYPE Ip2DgState_t
     TYPE(Ip2DgState_t), ALLOCATABLE, TARGET, SAVE :: States(:)
@@ -1875,6 +1880,7 @@ CONTAINS
       CSymmetry = CurrentCoordinateSystem() == AxisSymmetric .OR. &
           CurrentCoordinateSystem() == CylindricSymmetric
       ALLOCATE( Nodes % x(n), Nodes % y(n), Nodes % z(n) )
+      ALLOCATE( States(tid) % Pivot(n), States(tid) % BasisTab(n,0), States(tid) % WeightTab(0) )
       AllocationsDone = .TRUE.
     END IF
 
@@ -1887,39 +1893,73 @@ CONTAINS
     n = Element % TYPE % NumberOfNodes
     IF( n /= ndg ) CALL Fatal(Caller,'Mismatch in sizes!')
 
-    ! We could probably do more to utilize the previous visit to save resources...
-    IF(.NOT. ASSOCIATED( States(tid) % PrevElement, Element ) ) THEN
+    ! The mass matrix depends only on the element geometry and the rule, and
+    ! callers visit the same element once per dof in a row, so keep it
+    ! factored. Coordinates are part of the key: an element pointer can be
+    ! reused after remeshing and the mesh can move between visits.
+    Same = States(tid) % MassDone .AND. States(tid) % MassNip == nip .AND. &
+        ASSOCIATED( States(tid) % PrevElement, Element )
+    IF( Same ) Same = ALL( Nodes % x(1:n) == Mesh % Nodes % x(Element % NodeIndexes) ) .AND. &
+        ALL( Nodes % y(1:n) == Mesh % Nodes % y(Element % NodeIndexes) ) .AND. &
+        ALL( Nodes % z(1:n) == Mesh % Nodes % z(Element % NodeIndexes) )
+    IF( .NOT. Same ) THEN
+
       Nodes % x(1:n) = Mesh % Nodes % x(Element % NodeIndexes)
       Nodes % y(1:n) = Mesh % Nodes % y(Element % NodeIndexes)
       Nodes % z(1:n) = Mesh % Nodes % z(Element % NodeIndexes)
       States(tid) % PrevElement => Element
-    END IF
 
-    States(tid) % MASS = 0._dp
-    States(tid) % LOAD = 0._dp
+      ! Numerical integration:
+      !-----------------------
+      IP = GaussPoints( Element, nip )
 
-    ! Numerical integration:
-    !-----------------------
-    IP = GaussPoints( Element, nip )
-
-    DO t=1,IP % n
-      stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, States(tid) % Basis )
-      Weight = IP % s(t) * DetJ
-
-      IF( CSymmetry ) THEN
-        Weight = Weight * SUM( States(tid) % Basis(1:n) * Nodes % x(1:n) )
+      IF( SIZE( States(tid) % WeightTab ) < IP % n ) THEN
+        DEALLOCATE( States(tid) % BasisTab, States(tid) % WeightTab )
+        ALLOCATE( States(tid) % BasisTab( SIZE(States(tid) % Basis), IP % n ), &
+            States(tid) % WeightTab( IP % n ) )
       END IF
 
-      DO p=1,n
-        States(tid) % LOAD(p) = States(tid) % LOAD(p) + Weight * States(tid) % Basis(p) * fip(t)
-        DO q=1,n
-          States(tid) % MASS(p,q) = States(tid) % MASS(p,q) + &
-              Weight * States(tid) % Basis(q) * States(tid) % Basis(p)
+      States(tid) % MassNip = nip
+      States(tid) % MassN = IP % n
+
+      States(tid) % MASS = 0._dp
+
+      DO t=1,IP % n
+        stat = ElementInfo( Element, Nodes, IP % U(t), IP % V(t), IP % W(t), detJ, States(tid) % Basis )
+        Weight = IP % s(t) * DetJ
+
+        IF( CSymmetry ) THEN
+          Weight = Weight * SUM( States(tid) % Basis(1:n) * Nodes % x(1:n) )
+        END IF
+
+        States(tid) % WeightTab(t) = Weight
+        States(tid) % BasisTab(1:n,t) = States(tid) % Basis(1:n)
+
+        DO p=1,n
+          DO q=1,n
+            States(tid) % MASS(p,q) = States(tid) % MASS(p,q) + &
+                Weight * States(tid) % Basis(q) * States(tid) % Basis(p)
+          END DO
         END DO
+      END DO
+
+      ! Same decomposition LuSolve would do internally, but kept here so the
+      ! factors and pivots survive to the next visit of this element.
+      CALL LUDecomp( States(tid) % MASS, n, States(tid) % Pivot, erroneous )
+      IF( erroneous ) CALL Fatal(Caller,'LU decomposition of the element mass matrix failed')
+      States(tid) % MassDone = .TRUE.
+    END IF
+
+    ! Only this part sees the field values.
+    States(tid) % LOAD = 0._dp
+    DO t=1,States(tid) % MassN
+      DO p=1,n
+        States(tid) % LOAD(p) = States(tid) % LOAD(p) + &
+            States(tid) % WeightTab(t) * States(tid) % BasisTab(p,t) * fip(t)
       END DO
     END DO
 
-    CALL LuSolve(n, States(tid) % MASS, States(tid) % LOAD)
+    CALL LuSolve( n, States(tid) % MASS, States(tid) % LOAD, States(tid) % Pivot )
 
     fdg(1:n) = States(tid) % LOAD(1:n)
 
