@@ -134,6 +134,8 @@
        TYPE(Variable_t), POINTER :: Var => NULL()
        REAL(KIND=dp), ALLOCATABLE :: Values(:), PrevValues(:,:)
        REAL(KIND=dp) :: Norm = 0.0_dp, PrevNorm = 0.0_dp
+       ! Accuracy order of the method in the full step of step doubling
+       INTEGER :: Order = 0
      END TYPE TimeVarState_t
      TYPE TimeSolverState_t
        INTEGER :: TimeLevels = 0
@@ -142,8 +144,18 @@
        INTEGER :: nVars = 0
        TYPE(TimeVarState_t), ALLOCATABLE :: Vars(:)
      END TYPE TimeSolverState_t
+     ! The other variables of a mesh (not saved with the solvers) and its
+     ! node coordinates, which a moving mesh changes.
+     TYPE TimeMeshState_t
+       TYPE(Mesh_t), POINTER :: Mesh => NULL()
+       REAL(KIND=dp), ALLOCATABLE :: x(:), y(:), z(:)
+       INTEGER :: nVars = 0
+       TYPE(TimeVarState_t), ALLOCATABLE :: Vars(:)
+     END TYPE TimeMeshState_t
      TYPE TimeState_t
        TYPE(TimeSolverState_t), ALLOCATABLE :: Solvers(:)
+       INTEGER :: nMeshes = 0
+       TYPE(TimeMeshState_t), ALLOCATABLE :: Meshes(:)
        REAL(KIND=dp) :: Time, Size
        REAL(KIND=dp), ALLOCATABLE :: PrevSizes(:,:)
        LOGICAL :: PushSize
@@ -151,6 +163,20 @@
      TYPE(TimeState_t), SAVE, TARGET :: SubstepState
      ! Solutions of the full step of adaptive timestepping
      TYPE(TimeVarState_t), ALLOCATABLE, SAVE, TARGET :: FullStep(:)
+     ! History of accepted solutions of the solvers for the predictor error
+     ! estimate of adaptive timestepping: Values(:,j) is the solution at
+     ! time t(j), j=0 the latest, n the number of valid entries.
+     INTEGER, PARAMETER :: MaxHist = 6
+     TYPE TimeHist_t
+       TYPE(Variable_t), POINTER :: Var => NULL()
+       INTEGER :: n = 0
+       REAL(KIND=dp) :: t(0:MaxHist-1) = 0.0_dp
+       REAL(KIND=dp), ALLOCATABLE :: Values(:,:)
+     END TYPE TimeHist_t
+     TYPE(TimeHist_t), ALLOCATABLE, SAVE, TARGET :: StepHist(:)
+     ! Solutions after the 1st half step of step doubling, and their time
+     TYPE(TimeVarState_t), ALLOCATABLE, SAVE, TARGET :: HalfStep(:)
+     REAL(KIND=dp), SAVE :: HalfTime = 0.0_dp
      ! Is the current timestep size to be pushed to the history of sizes
      ! when the next substep is started?
      LOGICAL, SAVE :: SubstepPushSize = .FALSE.
@@ -2809,13 +2835,18 @@
      ! With "Adaptive Rough Timestep" the last substep may overshoot the end of
      ! the timestep. RoughShift is the time the solution is ahead of the nominal
      ! time, StepLength the length that remains to the nominal end of the step.
-     REAL(KIND=dp) :: RoughShift, StepLength
+     REAL(KIND=dp) :: RoughShift, StepLength, ProbeStep, ReqStep
+     ! The size the controller asked for before the end of the interval cut or
+     ! stretched it, and how much a step may be stretched to reach the end.
+     REAL(KIND=dp) :: DdtWanted, AdaptiveStretch, Remains, StretchLimit
+     LOGICAL :: AdaptiveLookahead, GotSmart
+     LOGICAL :: GotReq
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
      LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found, DoIt
      INTEGER :: AllocStat
      REAL(KIND=dp) :: AdaptiveIncrease, AdaptiveDecrease, AdaptiveSafety, &
          AdaptiveAbsError, StepFactor
-     LOGICAL :: WeightedError, GotAbsError, StepAccepted
+     LOGICAL :: WeightedError, GotAbsError, StepAccepted, PredictorError, UsePredictor
      INTEGER :: ErrorOrder, ErrorSolver
      CHARACTER(:), ALLOCATABLE :: ErrorType
      TYPE(Solver_t), POINTER :: Solver
@@ -3105,12 +3136,20 @@
            ! of the full step and the two half steps, see WeightedTimeError.
            ! "norm": relative change in the norms of the solvers (or an external
            ! "Adaptive Error Measure"), the original measure.
+           ! "predictor" (default): the weighted norm of the local error estimated
+           ! from the difference of the solution and its extrapolation from the
+           ! history (BDF methods), one solve per try. Step doubling is used until
+           ! the history is long enough, and for other methods. See PredictorTimeError.
            ErrorType = ListGetString( CurrentModel % Simulation, &
                'Adaptive Error Type', GotIt )
-           IF( .NOT. GotIt ) ErrorType = 'weighted'
+           IF( .NOT. GotIt ) ErrorType = 'predictor'
+           PredictorError = .FALSE.
            SELECT CASE( ErrorType )
            CASE( 'weighted' )
              WeightedError = .TRUE.
+           CASE( 'predictor' )
+             WeightedError = .TRUE.
+             PredictorError = .TRUE.
            CASE( 'norm' )
              WeightedError = .FALSE.
            CASE DEFAULT
@@ -3149,7 +3188,11 @@
                'Adaptive Rough Timestep', GotIt )
 
            AdaptiveSmart = ListGetLogical( CurrentModel % Simulation, &
-               'Adaptive Smart Timestep', GotIt )
+               'Adaptive Smart Timestep', GotSmart )
+
+           AdaptiveStretch = ListGetConstReal( CurrentModel % Simulation, &
+               'Adaptive Timestep Stretch', GotIt )
+           IF(.NOT. GotIt) AdaptiveStretch = 0.1_dp
          END IF
 
 
@@ -3310,16 +3353,98 @@
             IF(.NOT. ALLOCATED( FullNorm ) ) ALLOCATE( FullNorm( nSolvers ) )
 
             CumTime = 0.0d0
-            IF ( ddt < 0.0_dp .OR. ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep
+            IF ( ddt > AdaptiveMaxTimestep ) ddt = AdaptiveMaxTimestep
 
             s = sTime(1) - dt + RoughShift
             CALL BeginSubsteps( timestep > 1 .OR. interval > 1 )
             SmallestCount = 0
             StepLength = dt - RoughShift
+
+            ! The size of the first substep. Starting from the largest size may
+            ! take many rejections: far from it the error estimate does not
+            ! scale with the step and each rejection cuts it by a bounded factor.
+            ! By default the error of a small probe step, which is discarded,
+            ! gives the size that meets the tolerance.
+            IF( ddt < 0.0_dp .AND. WeightedError ) THEN
+              ProbeStep = ListGetConstReal( CurrentModel % Simulation, &
+                  'Adaptive Initial Timestep', GotIt )
+              IF( GotIt ) THEN
+                ddt = MAX( MIN( ProbeStep, AdaptiveMaxTimestep ), AdaptiveMinTimestep )
+              ELSE
+                DoIt = ListGetLogical( CurrentModel % Simulation, &
+                    'Adaptive Initial Probe', GotIt )
+                IF( .NOT. GotIt ) DoIt = .TRUE.
+                IF( DoIt ) THEN
+                  ProbeStep = MAX( 1.0d-3 * AdaptiveMaxTimestep, AdaptiveMinTimestep )
+                  CALL SaveTimeState( SubstepState )
+                  CALL ListRemove( CurrentModel % Simulation,'Adaptive Timestep Request')
+                  CALL SetSubstep( ProbeStep, s + ProbeStep )
+                  CALL SolveEquations( CurrentModel, ProbeStep, Transient, &
+                      CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                      BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                  CALL StoreFullStep()
+                  CALL RestoreTimeState( SubstepState )
+                  CALL SetSubstep( ProbeStep/2, s + ProbeStep/2 )
+                  CALL SolveEquations( CurrentModel, ProbeStep/2, Transient, &
+                      CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                      BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                  CALL SetSubstep( ProbeStep/2, s + ProbeStep )
+                  CALL SolveEquations( CurrentModel, ProbeStep/2, Transient, &
+                      CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                      BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                  CALL WeightedTimeError( AdaptiveLimit, AdaptiveAbsError, GotAbsError, &
+                      MaxErr, ErrorOrder, ErrorSolver )
+                  IF( ListCheckPresent( CurrentModel % Simulation,'Adaptive Error Measure') ) THEN
+                    MaxErr = MAX( MaxErr, ListGetConstReal( CurrentModel % Simulation, &
+                        'Adaptive Error Measure' ) / AdaptiveLimit )
+                  END IF
+                  CALL RestoreTimeState( SubstepState )
+
+                  IF( MaxErr /= MaxErr .OR. MaxErr > HUGE(MaxErr) ) THEN
+                    ddt = AdaptiveDecrease * ProbeStep
+                  ELSE IF( MaxErr <= TINY(MaxErr) .OR. ErrorOrder == HUGE(ErrorOrder) ) THEN
+                    ddt = AdaptiveMaxTimestep
+                  ELSE
+                    ddt = AdaptiveSafety * ProbeStep * MaxErr**(-1.0_dp/(ErrorOrder+1))
+                  END IF
+                  ReqStep = ListGetConstReal( CurrentModel % Simulation, &
+                      'Adaptive Timestep Request', GotReq )
+                  IF( GotReq ) ddt = MIN( ddt, ReqStep )
+                  ddt = MAX( MIN( ddt, AdaptiveMaxTimestep ), AdaptiveMinTimestep )
+                  WRITE(Message,'(A,ES12.4,A,ES12.4,A,ES12.4)') 'Probe step ',ProbeStep,&
+                      ' error ',MaxErr,': initial substep ',ddt
+                  CALL Info(Caller, Message, Level=4)
+                END IF
+              END IF
+            END IF
+            IF ( ddt < 0.0_dp ) ddt = AdaptiveMaxTimestep
+
+            ! With the error controlled steps look ahead to the end of the
+            ! interval, so that no sliver of a step is left to be taken there:
+            ! besides its own solve, it would make the next interval start from
+            ! its size. "Adaptive Smart Timestep" given selects the old ways.
+            AdaptiveLookahead = WeightedError .AND. .NOT. GotSmart
+            StretchLimit = AdaptiveMaxTimestep
+
             DO WHILE( CumTime < StepLength-1.0d-12 )
+              DdtWanted = ddt
               IF( .NOT. AdaptiveRough ) THEN
-                ddt = MIN( StepLength - CumTime, ddt )
-                IF( AdaptiveSmart ) THEN
+                Remains = StepLength - CumTime
+                ddt = MIN( Remains, ddt )
+                IF( AdaptiveLookahead ) THEN
+                  IF( Remains <= DdtWanted * (1+1.0d-10) ) THEN
+                    ! Fits, but for roundoff
+                    ddt = Remains
+                  ELSE IF( Remains <= (1.0_dp + AdaptiveStretch) * DdtWanted .AND. &
+                      Remains <= StretchLimit * (1+1.0d-10) .AND. StepControl /= -1 ) THEN
+                    ! A little longer than asked for, to reach the end, but not
+                    ! right after a rejection nor beyond what a solver asked for
+                    ddt = Remains
+                  ELSE IF( Remains < 2 * DdtWanted ) THEN
+                    ! Two equal steps, rather than the one asked for and a sliver
+                    ddt = Remains / 2
+                  END IF
+                ELSE IF( AdaptiveSmart ) THEN
                   ! If the next timestep will not get us home but the next one would
                   ! then split the timestep equally into two parts.
                   IF( StepLength - CumTime - ddt > 1.0d-12 ) THEN
@@ -3332,6 +3457,12 @@
 
                ! Store the state before the start of the step
                CALL SaveTimeState( SubstepState )
+               ! A solver may ask for a smaller step during the try (the PNEWDT
+               ! of a UMAT): the smallest size asked for.
+               CALL ListRemove( CurrentModel % Simulation,'Adaptive Timestep Request')
+
+               UsePredictor = .FALSE.
+               IF( PredictorError ) UsePredictor = PredictorReady()
 
                ! Solve with full timestep
                CALL SetSubstep( ddt, s + CumTime + ddt )
@@ -3339,7 +3470,10 @@
                    CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
                    BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
 
-               IF( WeightedError ) THEN
+               IF( UsePredictor ) THEN
+                 CALL PredictorTimeError( AdaptiveLimit, AdaptiveAbsError, GotAbsError, &
+                     MaxErr, ErrorOrder, ErrorSolver )
+               ELSE IF( WeightedError ) THEN
                  CALL StoreFullStep()
                ELSE
                  ! External adaptive error given
@@ -3355,23 +3489,26 @@
                  END DO
                END IF
 
-               ! Test the error for two steps of half the size
-               CALL RestoreTimeState( SubstepState )
+               IF( .NOT. UsePredictor ) THEN
+                 ! Test the error for two steps of half the size
+                 CALL RestoreTimeState( SubstepState )
 
-               CALL SetSubstep( ddt/2, s + CumTime + ddt/2 )
-               CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
-                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                 CALL SetSubstep( ddt/2, s + CumTime + ddt/2 )
+                 CALL SolveEquations( CurrentModel, ddt/2, Transient, &
+                     CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                     BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                 IF( PredictorError ) CALL StoreHalfStep()
 
-               CALL SetSubstep( ddt/2, s + CumTime + ddt )
-               CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                   CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
-                   BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                 CALL SetSubstep( ddt/2, s + CumTime + ddt )
+                 CALL SolveEquations( CurrentModel, ddt/2, Transient, &
+                     CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                     BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+               END IF
 
                IF( WeightedError ) THEN
                  ! Error relative to the tolerances, the step is fine if it is <= 1
-                 CALL WeightedTimeError( AdaptiveLimit, AdaptiveAbsError, GotAbsError, &
-                     MaxErr, ErrorOrder, ErrorSolver )
+                 IF( .NOT. UsePredictor ) CALL WeightedTimeError( AdaptiveLimit, &
+                     AdaptiveAbsError, GotAbsError, MaxErr, ErrorOrder, ErrorSolver )
 
                  ! An embedded estimate of the last half step (Runge-Kutta 2 sets it)
                  ! detects also the instability of an explicit method, which the
@@ -3411,7 +3548,24 @@
                  StepAccepted = ( MaxErr < AdaptiveLimit )
                END IF
 
+               ! The step is rejected when a solver asks for a smaller size than
+               ! that of the substeps which would be accepted: the full step with
+               ! the predictor estimate, the half steps with step doubling.
+               ReqStep = ListGetConstReal( CurrentModel % Simulation, &
+                   'Adaptive Timestep Request', GotReq )
+               IF( GotReq ) THEN
+                 IF( UsePredictor ) THEN
+                   IF( ReqStep < ddt * (1-1.0d-10) ) StepAccepted = .FALSE.
+                 ELSE
+                   IF( ReqStep < ddt/2 * (1-1.0d-10) ) StepAccepted = .FALSE.
+                 END IF
+               END IF
+
                WRITE(Message,'(A,3ES20.12)') 'Adaptive(cum,ddt,err): ', CumTime, ddt, MaxErr
+               IF( UsePredictor ) Message = TRIM(Message)//' (predictor)'
+               IF( GotReq ) THEN
+                 WRITE(Message,'(A,ES12.4)') TRIM(Message)//' request ',ReqStep
+               END IF
                CALL Info(Caller, Message, Level=4)
 
                ! We have a success no need to redo this step
@@ -3428,11 +3582,20 @@
                  CumTime = CumTime + ddt
                  RealTimestep = RealTimestep+1
 
+                 IF( PredictorError ) CALL PushStepHistory( .NOT. UsePredictor )
+
                  ! Finally solve only the postprocessing solver after the timestep has
-                 ! been accepted. The last step taken was the 2nd half step.
-                 CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                     CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
-                     BeforeTime = .FALSE., AtTime = .FALSE., AfterTime = .TRUE.)
+                 ! been accepted. The last step taken was the 2nd half step, or the
+                 ! full step with the predictor estimate.
+                 IF( UsePredictor ) THEN
+                   CALL SolveEquations( CurrentModel, ddt, Transient, &
+                       CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                       BeforeTime = .FALSE., AtTime = .FALSE., AfterTime = .TRUE.)
+                 ELSE
+                   CALL SolveEquations( CurrentModel, ddt/2, Transient, &
+                       CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                       BeforeTime = .FALSE., AtTime = .FALSE., AfterTime = .TRUE.)
+                 END IF
 
                  IF( WeightedError ) THEN
                    ! After a rejection keep the size for "Adaptive Keep Smallest" steps
@@ -3444,7 +3607,18 @@
                      StepControl   = 0
                      SmallestCount = SmallestCount + 1
                    END IF
-                   ddt = MIN( StepFactor * ddt, AdaptiveMaxTimeStep )
+                   ! A step cut short by the end of the interval says little of
+                   ! the size the next one could have: when its error does not
+                   ! object, continue from the size asked for before the cut. The
+                   ! growth is still limited, as the step history of the
+                   ! variable step BDF continues over the cut.
+                   IF( AdaptiveLookahead .AND. StepControl == 1 .AND. StepFactor >= 1.0_dp .AND. &
+                       ddt < DdtWanted * (1-1.0d-10) ) THEN
+                     ddt = MAX( StepFactor * ddt, MIN( DdtWanted, AdaptiveIncrease * ddt ) )
+                   ELSE
+                     ddt = StepFactor * ddt
+                   END IF
+                   ddt = MIN( ddt, AdaptiveMaxTimeStep )
                    ddt = MAX( ddt, AdaptiveMinTimestep )
                  ELSE IF ( SmallestCount >= AdaptiveKeepSmallest .OR. StepControl > 0 ) THEN
                    ddt = MIN( AdaptiveIncrease * ddt, AdaptiveMaxTimeStep )
@@ -3464,6 +3638,9 @@
                  END IF
                  StepControl = -1
                END IF
+               IF( GotReq ) ddt = MAX( MIN( ddt, ReqStep ), AdaptiveMinTimestep )
+               StretchLimit = AdaptiveMaxTimestep
+               IF( GotReq ) StretchLimit = MIN( StretchLimit, ReqStep )
              END DO
             ! "Timestep size" is left to the size of the last substep, as the
             ! history of sizes continues from it.
@@ -3802,7 +3979,8 @@
 
 !------------------------------------------------------------------------------
 !> Save the time-stepping state of the solvers: the values and history of the
-!> primary and exported variables, the number of timesteps in the history
+!> primary and exported variables and of all the other variables of the meshes,
+!> the node coordinates of the meshes, the number of timesteps in the history
 !> (TimeLevels, it sets the order at the BDF startup), the force vectors of earlier timesteps
 !> (Crank-Nicolson) and the time, timestep size and history of sizes.
 !------------------------------------------------------------------------------
@@ -3877,10 +4055,13 @@
        END DO
      END DO
 
+     CALL SaveMeshStates( State )
+
      State % Time = sTime(1)
      State % Size = sSize(1)
      State % PrevSizes = sPrevSizes
      State % PushSize = SubstepPushSize
+
 !------------------------------------------------------------------------------
    END SUBROUTINE SaveTimeState
 !------------------------------------------------------------------------------
@@ -3928,13 +4109,173 @@
        END DO
      END DO
 
+     CALL RestoreMeshStates( State )
+
      sTime(1) = State % Time
      sSize(1) = State % Size
      sPrevSizes = State % PrevSizes
      SubstepPushSize = State % PushSize
+
 !------------------------------------------------------------------------------
    END SUBROUTINE RestoreTimeState
 !------------------------------------------------------------------------------
+
+
+
+   ! Save the node coordinates and the variables of all meshes that are not
+   ! saved with the solvers: e.g. variables of solvers executed only at
+   ! certain times, integration point and elemental variables (material
+   ! history), and fields of other meshes.
+   SUBROUTINE SaveMeshStates( State )
+     TYPE(TimeState_t), TARGET :: State
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Variable_t), POINTER :: MVar
+     INTEGER :: m, nv
+
+     m = 0
+     Mesh => CurrentModel % Meshes
+     DO WHILE( ASSOCIATED( Mesh ) )
+       m = m + 1
+       Mesh => Mesh % Next
+     END DO
+     IF( ALLOCATED( State % Meshes ) ) THEN
+       IF( SIZE( State % Meshes ) < m ) DEALLOCATE( State % Meshes )
+     END IF
+     IF( .NOT. ALLOCATED( State % Meshes ) ) ALLOCATE( State % Meshes(m) )
+     State % nMeshes = m
+
+     m = 0
+     Mesh => CurrentModel % Meshes
+     DO WHILE( ASSOCIATED( Mesh ) )
+       m = m + 1
+       ASSOCIATE( MState => State % Meshes(m) )
+         MState % Mesh => Mesh
+         IF( ASSOCIATED( Mesh % Nodes % x ) ) THEN
+           MState % x = Mesh % Nodes % x
+           MState % y = Mesh % Nodes % y
+           MState % z = Mesh % Nodes % z
+         END IF
+
+         nv = 0
+         MVar => Mesh % Variables
+         DO WHILE( ASSOCIATED( MVar ) )
+           nv = nv + 1
+           MVar => MVar % Next
+         END DO
+         IF( ALLOCATED( MState % Vars ) ) THEN
+           IF( SIZE( MState % Vars ) < nv ) DEALLOCATE( MState % Vars )
+         END IF
+         IF( .NOT. ALLOCATED( MState % Vars ) ) ALLOCATE( MState % Vars(MAX(nv,1)) )
+
+         MState % nVars = 0
+         MVar => Mesh % Variables
+         DO WHILE( ASSOCIATED( MVar ) )
+           IF( SaveMeshVar( State, MVar, Mesh ) ) THEN
+             MState % nVars = MState % nVars + 1
+             ASSOCIATE( VState => MState % Vars( MState % nVars ) )
+               VState % Var => MVar
+               VState % Values = MVar % Values
+               VState % Norm = MVar % Norm
+               VState % PrevNorm = MVar % PrevNorm
+               IF( ASSOCIATED( MVar % PrevValues ) ) THEN
+                 VState % PrevValues = MVar % PrevValues
+               ELSE IF( ALLOCATED( VState % PrevValues ) ) THEN
+                 DEALLOCATE( VState % PrevValues )
+               END IF
+             END ASSOCIATE
+           END IF
+           MVar => MVar % Next
+         END DO
+       END ASSOCIATE
+       Mesh => Mesh % Next
+     END DO
+   END SUBROUTINE SaveMeshStates
+
+   ! A mesh variable is saved unless it is saved with a solver, aliases a part
+   ! of another variable (components of a vector field) or is a coordinate
+   ! (the coordinates are saved separately).
+   FUNCTION SaveMeshVar( State, MVar, Mesh ) RESULT( DoSave )
+     TYPE(TimeState_t), TARGET :: State
+     TYPE(Variable_t), POINTER :: MVar
+     TYPE(Mesh_t), POINTER :: Mesh
+     LOGICAL :: DoSave
+     INTEGER :: i, k
+
+     DoSave = .FALSE.
+     IF( .NOT. ASSOCIATED( MVar % Values ) ) RETURN
+     IF( SIZE( MVar % Values ) == 0 ) RETURN
+     IF( .NOT. IS_CONTIGUOUS( MVar % Values ) ) RETURN
+     IF( ASSOCIATED( MVar % PrevValues ) ) THEN
+       IF( .NOT. IS_CONTIGUOUS( MVar % PrevValues ) ) RETURN
+     END IF
+     IF( ASSOCIATED( Mesh % Nodes % x ) ) THEN
+       IF( ASSOCIATED( MVar % Values, Mesh % Nodes % x ) .OR. &
+           ASSOCIATED( MVar % Values, Mesh % Nodes % y ) .OR. &
+           ASSOCIATED( MVar % Values, Mesh % Nodes % z ) ) RETURN
+     END IF
+     DO i=1,SIZE( State % Solvers )
+       DO k=1,State % Solvers(i) % nVars
+         IF( ASSOCIATED( State % Solvers(i) % Vars(k) % Var, MVar ) ) RETURN
+       END DO
+     END DO
+     DoSave = .TRUE.
+   END FUNCTION SaveMeshVar
+
+
+   ! The meshes and variables are matched by pointer while walking the
+   ! current lists, so a mesh or variable deleted in between is skipped and
+   ! never referenced.
+   SUBROUTINE RestoreMeshStates( State )
+     TYPE(TimeState_t), TARGET :: State
+     TYPE(Mesh_t), POINTER :: Mesh
+     TYPE(Variable_t), POINTER :: MVar
+     INTEGER :: m, k
+
+     Mesh => CurrentModel % Meshes
+     DO WHILE( ASSOCIATED( Mesh ) )
+       DO m=1,State % nMeshes
+         IF( ASSOCIATED( State % Meshes(m) % Mesh, Mesh ) ) EXIT
+       END DO
+       IF( m > State % nMeshes ) THEN
+         Mesh => Mesh % Next
+         CYCLE
+       END IF
+
+       ASSOCIATE( MState => State % Meshes(m) )
+         IF( ALLOCATED( MState % x ) .AND. ASSOCIATED( Mesh % Nodes % x ) ) THEN
+           IF( SIZE( Mesh % Nodes % x ) /= SIZE( MState % x ) ) THEN
+             CALL Fatal('RestoreTimeState','Number of nodes changed in mesh: '//TRIM(Mesh % Name))
+           END IF
+           Mesh % Nodes % x = MState % x
+           Mesh % Nodes % y = MState % y
+           Mesh % Nodes % z = MState % z
+         END IF
+
+         MVar => Mesh % Variables
+         DO WHILE( ASSOCIATED( MVar ) )
+           DO k=1,MState % nVars
+             IF( ASSOCIATED( MState % Vars(k) % Var, MVar ) ) EXIT
+           END DO
+           IF( k <= MState % nVars ) THEN
+             ASSOCIATE( VState => MState % Vars(k) )
+               IF( SIZE( MVar % Values ) /= SIZE( VState % Values ) ) THEN
+                 CALL Fatal('RestoreTimeState','Size of variable changed: '//TRIM(MVar % Name))
+               END IF
+               MVar % Values = VState % Values
+               MVar % Norm = VState % Norm
+               MVar % PrevNorm = VState % PrevNorm
+               IF( ALLOCATED( VState % PrevValues ) .AND. ASSOCIATED( MVar % PrevValues ) ) THEN
+                 IF( ALL( SHAPE( MVar % PrevValues ) == SHAPE( VState % PrevValues ) ) ) &
+                     MVar % PrevValues = VState % PrevValues
+               END IF
+             END ASSOCIATE
+           END IF
+           MVar => MVar % Next
+         END DO
+       END ASSOCIATE
+       Mesh => Mesh % Next
+     END DO
+   END SUBROUTINE RestoreMeshStates
 
 
 !------------------------------------------------------------------------------
@@ -3958,7 +4299,10 @@
      IF( .NOT. ( Solver % SolverExecWhen == SOLVER_EXEC_ALWAYS .OR. &
          Solver % SolverExecWhen == SOLVER_EXEC_AHEAD_TIME .OR. &
          Solver % SolverExecWhen == SOLVER_EXEC_PREDCORR ) ) RETURN
+     ! Only solvers with a time derivative term are counted, unless forced by
+     ! "Adaptive Error Exclude = False" (a solver integrating in time on its own).
      IF( ListGetLogical( Solver % Values,'Adaptive Error Exclude', Found ) ) RETURN
+     IF( .NOT. ( Found .OR. Solver % TimeIntegrated ) ) RETURN
      Method = ListGetString( Solver % Values,'Timestepping Method', Found )
      IF( Method == 'none' ) RETURN
      IsErr = .TRUE.
@@ -4022,9 +4366,258 @@
        IF( .NOT. TimeErrorSolver( Solver ) ) CYCLE
        FullStep(i) % Var => Solver % Variable
        FullStep(i) % Values = Solver % Variable % Values
+       ! The BDF startup raises the order in the half steps that follow
+       FullStep(i) % Order = TimeAccuracyOrder( Solver )
      END DO
 !------------------------------------------------------------------------------
    END SUBROUTINE StoreFullStep
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> The order of the BDF method of the solver for the predictor error estimate,
+!> 0 if the method is not a BDF method.
+!------------------------------------------------------------------------------
+   FUNCTION PredictorOrder( Solver ) RESULT ( k )
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER :: k
+!------------------------------------------------------------------------------
+     CHARACTER(:), ALLOCATABLE :: Method
+     LOGICAL :: Found
+
+     k = 0
+     IF( Solver % TimeOrder /= 1 ) RETURN
+     Method = ListGetString( Solver % Values,'Timestepping Method', Found )
+     SELECT CASE( Method )
+     CASE( 'bdf' )
+       k = MAX( MIN( Solver % Order, MaxHist-1 ), 1 )
+     CASE( 'implicit euler' )
+       k = 1
+     END SELECT
+!------------------------------------------------------------------------------
+   END FUNCTION PredictorOrder
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Can the next try use the predictor error estimate? All the solvers of the
+!> error estimate must use BDF methods at their full order, and their histories
+!> of accepted solutions must be long enough. The partitions decide together.
+!------------------------------------------------------------------------------
+   FUNCTION PredictorReady() RESULT ( Ready )
+     USE ParallelUtils, ONLY : ParallelReduction
+     LOGICAL :: Ready
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER :: i, k, nErr, iReady
+
+     iReady = 1
+     nErr = 0
+     DO i=1,CurrentModel % NumberOfSolvers
+       Solver => CurrentModel % Solvers(i)
+       IF( .NOT. TimeErrorSolver( Solver ) ) CYCLE
+       nErr = nErr + 1
+       k = PredictorOrder( Solver )
+       IF( k == 0 ) THEN
+         iReady = 0
+       ELSE IF( Solver % TimeLevels < k ) THEN
+         iReady = 0
+       ELSE IF( .NOT. ALLOCATED( StepHist ) ) THEN
+         iReady = 0
+       ELSE IF( SIZE( StepHist ) < i ) THEN
+         iReady = 0
+       ELSE IF( StepHist(i) % n < k+1 .OR. &
+           .NOT. ASSOCIATED( StepHist(i) % Var, Solver % Variable ) ) THEN
+         iReady = 0
+       ELSE IF( SIZE( StepHist(i) % Values, 1 ) /= SIZE( Solver % Variable % Values ) ) THEN
+         iReady = 0
+       END IF
+     END DO
+     IF( nErr == 0 ) iReady = 0
+     IF( ParEnv % PEs > 1 ) THEN
+       ! A partition without the solvers of the error estimate does not vote
+       IF( nErr == 0 ) iReady = 1
+       nErr = ParallelReduction( nErr, 2 )
+       iReady = ParallelReduction( iReady, 1 )
+       IF( nErr == 0 ) iReady = 0
+     END IF
+     Ready = ( iReady == 1 )
+!------------------------------------------------------------------------------
+   END FUNCTION PredictorReady
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Store the solutions after the 1st half step of step doubling: they are
+!> added to the history when the step is accepted.
+!------------------------------------------------------------------------------
+   SUBROUTINE StoreHalfStep()
+     TYPE(Solver_t), POINTER :: Solver
+     INTEGER :: i, n
+
+     n = CurrentModel % NumberOfSolvers
+     IF( ALLOCATED( HalfStep ) ) THEN
+       IF( SIZE( HalfStep ) /= n ) DEALLOCATE( HalfStep )
+     END IF
+     IF( .NOT. ALLOCATED( HalfStep ) ) ALLOCATE( HalfStep(n) )
+
+     DO i=1,n
+       Solver => CurrentModel % Solvers(i)
+       HalfStep(i) % Var => NULL()
+       IF( .NOT. TimeErrorSolver( Solver ) ) CYCLE
+       HalfStep(i) % Var => Solver % Variable
+       HalfStep(i) % Values = Solver % Variable % Values
+     END DO
+     HalfTime = sTime(1)
+!------------------------------------------------------------------------------
+   END SUBROUTINE StoreHalfStep
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
+!> Add the accepted solutions to the history of the predictor error estimate.
+!> After step doubling (WithHalf) the solutions of the 1st half step are added
+!> first. A history whose variable changed is started anew.
+!------------------------------------------------------------------------------
+   SUBROUTINE PushStepHistory( WithHalf )
+     LOGICAL :: WithHalf
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), POINTER :: Solver
+     TYPE(Variable_t), POINTER :: Var
+     INTEGER :: i, n, nloc
+
+     n = CurrentModel % NumberOfSolvers
+     IF( ALLOCATED( StepHist ) ) THEN
+       IF( SIZE( StepHist ) /= n ) DEALLOCATE( StepHist )
+     END IF
+     IF( .NOT. ALLOCATED( StepHist ) ) ALLOCATE( StepHist(n) )
+
+     DO i=1,n
+       Solver => CurrentModel % Solvers(i)
+       IF( .NOT. TimeErrorSolver( Solver ) ) THEN
+         StepHist(i) % n = 0
+         CYCLE
+       END IF
+       Var => Solver % Variable
+       nloc = SIZE( Var % Values )
+       IF( .NOT. ASSOCIATED( StepHist(i) % Var, Var ) ) StepHist(i) % n = 0
+       IF( ALLOCATED( StepHist(i) % Values ) ) THEN
+         IF( SIZE( StepHist(i) % Values, 1 ) /= nloc ) DEALLOCATE( StepHist(i) % Values )
+       END IF
+       IF( .NOT. ALLOCATED( StepHist(i) % Values ) ) THEN
+         ALLOCATE( StepHist(i) % Values( nloc, 0:MaxHist-1 ) )
+         StepHist(i) % n = 0
+       END IF
+       StepHist(i) % Var => Var
+
+       IF( WithHalf ) THEN
+         IF( ALLOCATED( HalfStep ) ) THEN
+           IF( ASSOCIATED( HalfStep(i) % Var, Var ) ) THEN
+             IF( SIZE( HalfStep(i) % Values ) == nloc ) &
+                 CALL PushHist( StepHist(i), HalfStep(i) % Values, HalfTime )
+           END IF
+         END IF
+       END IF
+       CALL PushHist( StepHist(i), Var % Values, sTime(1) )
+     END DO
+
+!------------------------------------------------------------------------------
+   END SUBROUTINE PushStepHistory
+!------------------------------------------------------------------------------
+
+!> Add a solution to the front of a history.
+
+   SUBROUTINE PushHist( H, u, tu )
+     TYPE(TimeHist_t) :: H
+     REAL(KIND=dp) :: u(:), tu
+     INTEGER :: j
+     DO j=MIN( H % n, MaxHist-1 ), 1, -1
+       H % Values(:,j) = H % Values(:,j-1)
+       H % t(j) = H % t(j-1)
+     END DO
+     H % Values(:,0) = u
+     H % t(0) = tu
+     H % n = MIN( H % n + 1, MaxHist )
+   END SUBROUTINE PushHist
+
+
+!------------------------------------------------------------------------------
+!> The predictor error estimate of BDF methods (Milne's device). The solution
+!> u at t = t_{n+1} is compared to the prediction P(t) extrapolated through the
+!> k+1 latest accepted solutions at t_n,...,t_{n-k}. With D the (k+1)th
+!> derivative of the exact solution over (k+1)!,
+!>   exact - P = D * Ep,  Ep = prod_{j=0..k} (t - t_{n-j})
+!>   exact - u = -D * Ec, Ec = prod_{j=0..k-1} (t - t_{n-j}) / sum_{j=0..k-1} 1/(t - t_{n-j})
+!> for the variable coefficient BDF of order k, so the local error is
+!>   Ec/(Ep+Ec) * |u - P|,
+!> 1/3 for implicit Euler and 2/11 for BDF2 with constant steps. The weighted
+!> norm is then that of WeightedTimeError.
+!------------------------------------------------------------------------------
+   SUBROUTINE PredictorTimeError( rtol0, atol0, GotAtol0, Err, ErrOrder, ErrSolver )
+     REAL(KIND=dp) :: rtol0, atol0, Err
+     LOGICAL :: GotAtol0
+     INTEGER :: ErrOrder, ErrSolver
+!------------------------------------------------------------------------------
+     TYPE(Solver_t), POINTER :: Solver
+     REAL(KIND=dp), ALLOCATABLE :: Factor(:)
+     REAL(KIND=dp) :: tn1, L, Ep, Ec, a0
+     INTEGER :: i, j, m, k, n
+
+     n = CurrentModel % NumberOfSolvers
+     IF( ALLOCATED( FullStep ) ) THEN
+       IF( SIZE( FullStep ) /= n ) DEALLOCATE( FullStep )
+     END IF
+     IF( .NOT. ALLOCATED( FullStep ) ) ALLOCATE( FullStep(n) )
+     ALLOCATE( Factor(n) )
+     Factor = 0.0_dp
+     tn1 = sTime(1)
+
+     DO i=1,n
+       Solver => CurrentModel % Solvers(i)
+       FullStep(i) % Var => NULL()
+       IF( .NOT. TimeErrorSolver( Solver ) ) CYCLE
+       k = PredictorOrder( Solver )
+       IF( k == 0 .OR. .NOT. ALLOCATED( StepHist ) ) &
+           CALL Fatal('PredictorTimeError','No history for solver '//I2S(i))
+       IF( StepHist(i) % n < k+1 ) &
+           CALL Fatal('PredictorTimeError','Too short history for solver '//I2S(i))
+
+       ASSOCIATE( H => StepHist(i) )
+         ! Lagrange extrapolation through t(0:k)
+         FullStep(i) % Var => Solver % Variable
+         IF( ALLOCATED( FullStep(i) % Values ) ) THEN
+           IF( SIZE( FullStep(i) % Values ) /= SIZE( H % Values, 1 ) ) &
+               DEALLOCATE( FullStep(i) % Values )
+         END IF
+         IF( .NOT. ALLOCATED( FullStep(i) % Values ) ) &
+             ALLOCATE( FullStep(i) % Values( SIZE( H % Values, 1 ) ) )
+         FullStep(i) % Values = 0.0_dp
+         DO j=0,k
+           L = 1.0_dp
+           DO m=0,k
+             IF( m /= j ) L = L * ( tn1 - H % t(m) ) / ( H % t(j) - H % t(m) )
+           END DO
+           FullStep(i) % Values = FullStep(i) % Values + L * H % Values(:,j)
+         END DO
+
+         Ep = 1.0_dp
+         DO j=0,k
+           Ep = Ep * ( tn1 - H % t(j) )
+         END DO
+         Ec = 1.0_dp
+         a0 = 0.0_dp
+         DO j=0,k-1
+           Ec = Ec * ( tn1 - H % t(j) )
+           a0 = a0 + 1.0_dp / ( tn1 - H % t(j) )
+         END DO
+         Ec = Ec / a0
+         Factor(i) = Ec / ( Ep + Ec )
+       END ASSOCIATE
+     END DO
+
+     CALL WeightedTimeError( rtol0, atol0, GotAtol0, Err, ErrOrder, ErrSolver, Factor )
+!------------------------------------------------------------------------------
+   END SUBROUTINE PredictorTimeError
 !------------------------------------------------------------------------------
 
 
@@ -4124,11 +4717,14 @@
 !> maximum over the solvers, it is acceptable if <= 1. ErrOrder returns the
 !> lowest p, ErrSolver the solver of the maximum.
 !------------------------------------------------------------------------------
-   SUBROUTINE WeightedTimeError( rtol0, atol0, GotAtol0, Err, ErrOrder, ErrSolver )
+   SUBROUTINE WeightedTimeError( rtol0, atol0, GotAtol0, Err, ErrOrder, ErrSolver, Factor )
      USE ParallelUtils, ONLY : ParallelReduction
      REAL(KIND=dp) :: rtol0, atol0, Err
      LOGICAL :: GotAtol0
      INTEGER :: ErrOrder, ErrSolver
+     ! With the predictor estimate FullStep holds the predictions and the
+     ! error is the weighted difference times Factor(i), not divided by 2^p-1.
+     REAL(KIND=dp), OPTIONAL :: Factor(:)
 !------------------------------------------------------------------------------
      TYPE(Solver_t), POINTER :: Solver
      TYPE(Variable_t), POINTER :: Var
@@ -4216,6 +4812,9 @@
            END DO
          END IF
          atol = rtol * atol
+         ! A component that is zero (e.g. a constrained displacement component)
+         ! would compare roundoff to roundoff: limit by the largest component.
+         IF( ANY( Incl ) ) atol = MAX( atol, 1.0d-6 * MAXVAL( atol, MASK=Incl ) )
        END IF
 
        ssum = 0.0_dp
@@ -4255,8 +4854,15 @@
        END IF
        IF( cnt < 1.0_dp ) CYCLE
 
-       p = TimeAccuracyOrder( Solver )
-       e = SQRT( ssum / cnt ) / ( 2.0_dp**p - 1 )
+       IF( PRESENT( Factor ) ) THEN
+         p = TimeAccuracyOrder( Solver )
+         e = SQRT( ssum / cnt ) * Factor(i)
+       ELSE
+         ! The order of the full step: the half steps of the BDF startup
+         ! have already raised it.
+         p = FullStep(i) % Order
+         e = SQRT( ssum / cnt ) / ( 2.0_dp**p - 1 )
+       END IF
        ErrOrder = MIN( ErrOrder, p )
 
        WRITE(Message,'(A,ES12.4,A,I0)') 'Error estimate of solver '//I2S(i)//': ',e,&

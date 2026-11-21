@@ -7,7 +7,8 @@
 ! the startup counter of BDF). Before that adaptive BDF2 failed at the
 ! 1st timestep.
 !
-! The default weighted error measure is used. The reference norm is the
+! The weighted error measure by step doubling is used, starting from the
+! largest substep (no initial probe step). The reference norm is the
 ! result of this case; BDF2 with fixed dt=1e-5 gives 0.79426236E-02, the
 ! original norm-based measure 0.79429233E-02 and adaptive implicit Euler with
 ! the same settings 0.79298344E-02.
@@ -35,6 +36,8 @@ Simulation
 
   Adaptive Timestepping = True
   Adaptive Time Error = 1.0e-3
+  Adaptive Error Type = String "weighted"
+  Adaptive Initial Probe = Logical False
   Adaptive Keep Smallest = 3
   Adaptive Min Timestep = 1.0e-6
   Adaptive Max Timestep = Real 0.001
@@ -94,7 +97,7 @@ Boundary Condition 1
   Temperature = 0
 End
 
-Solver 1 :: Reference Norm = Real 0.79427858E-02
+Solver 1 :: Reference Norm = Real 0.79428928E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
 Solver 2 :: Reference Norm = Real 10
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-8

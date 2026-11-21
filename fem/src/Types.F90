@@ -1102,6 +1102,9 @@ MODULE Types
       ! the history (it sets the order at the startup of multistep methods): when
       ! a timestep is subdivided and a substep is rejected it is restored.
       INTEGER :: TimeLevels=0
+      ! Has the solver added a time derivative term (Add1stOrderTime etc.)?
+      ! Quasi-static solvers of transient simulations (e.g. MeshSolve) do not.
+      LOGICAL :: TimeIntegrated = .FALSE.
       INTEGER :: TimesVisited = 0
       TYPE(C_FUNPTR) :: PROCEDURE = C_NULL_FUNPTR, LinBeforeProc = C_NULL_FUNPTR, LinAfterProc = C_NULL_FUNPTR
 

@@ -97,7 +97,7 @@ Boundary Condition 1
   Temperature = 0
 End
 
-Solver 1::Reference Norm = Real 0.78862766E-02
+Solver 1::Reference Norm = Real 0.78885285E-02
 Solver 1::Reference Norm Tolerance = Real 1.0e-4
 
 RUN

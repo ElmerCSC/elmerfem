@@ -268,6 +268,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder       !< Order of predictor-corrector scheme
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -432,6 +433,7 @@ CONTAINS
      CHARACTER(:), ALLOCATABLE :: Method
 !------------------------------------------------------------------------------
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix',Level=20)
 
 !------------------------------------------------------------------------------
@@ -512,6 +514,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      IF ( Solver % Matrix % Lumped ) THEN
 !------------------------------------------------------------------------------
 #ifndef OLD_LUMPING
@@ -627,6 +630,7 @@ CONTAINS
      REAL(KIND=dp), POINTER :: PrevValues(:,:)
      TYPE(Solver_t) :: Solver
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      IF( Matrix % Lumped ) THEN
        CALL Fatal('Add2ndOrderTime_CRS','Implement matrix lumping for this!')
      END IF

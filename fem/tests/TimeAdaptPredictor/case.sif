@@ -1,0 +1,94 @@
+! Adaptive timestepping with BDF2 and the predictor error estimate: the
+! solution of a try is compared to its extrapolation from the history of
+! accepted solutions (one solve per try instead of three of step doubling).
+! Step doubling is used until the history is long enough for BDF2.
+!
+! The case is that of TimeAdaptBDF2. BDF2 with fixed dt=1e-5 gives
+! 0.79426236E-02; this case 0.79439652E-02 with 27 solves (3 of them for the
+! initial probe step) while step doubling without the probe (TimeAdaptBDF2)
+! gives 0.79428928E-02 with 72 solves.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 2
+  Timestep Sizes = 0.001
+  Timestep Intervals = 10
+  Output Intervals = 0
+  Steady State Max Iterations = 1
+
+  Adaptive Timestepping = True
+  Adaptive Time Error = 1.0e-3
+  Adaptive Error Type = String "predictor"
+  Adaptive Keep Smallest = 3
+  Adaptive Min Timestep = 1.0e-6
+  Adaptive Max Timestep = Real 0.001
+End
+
+Body 1
+  Name = "Body1"
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "Temperature"
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "CG"
+  Linear System Max Iterations = 100
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = None
+  Stabilize = True
+  Lumped Mass Matrix = True
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+End
+
+Solver 2
+  Exec Solver = after timestep
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = timestep
+  Show Norm Index = 1
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Capacity = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries(6) = 1 2 3 4 5 6
+  Temperature = 0
+End
+
+Solver 1 :: Reference Norm = Real 0.79439652E-02
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
+Solver 2 :: Reference Norm = Real 10
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-8

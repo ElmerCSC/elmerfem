@@ -385,6 +385,14 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 
   ! Create variables for some state variables of a user-defined material model (UMAT):
   ! Note that Elmer does not like length of zero for the variables.
+  ! Whether the state variables of an integration point have been initialized
+  ! ("Initialize State Variables"). A variable and not a private flag, so that
+  ! the adaptive timestepping restores it with the state when a step is rejected.
+  IF( GetLogical(SolverParams, 'Initialize State Variables', Found) ) THEN
+    CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
+        '-nooutput -ip UmatInitDone' )
+  END IF
+
   IF( NState > 0 ) THEN
     IF (OutputStateVars) THEN
       str = '-dofs '//I2S(NState)//' -ip UmatState'
@@ -551,8 +559,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   TYPE(Variable_t), POINTER :: UmatEnergyVar, UmatStressVar, UmatStateVar
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)
+  ! The converged state at the previous time/load level: the 1st PrevValues of
+  ! the variables above.
   REAL(KIND=dp), POINTER :: UmatEnergy0(:),UmatStress0(:), UmatState0(:)
-  LOGICAL, ALLOCATABLE :: UmatInitDone(:)
+  REAL(KIND=dp), POINTER :: UmatInitDone(:)
+  ! The smallest PNEWDT the UMAT returned in the latest assembly
+  REAL(KIND=dp) :: UmatPnewdt
+  REAL(KIND=dp), PARAMETER :: UmatNoPnewdt = 1.0d30
   LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta, NeedMass
   REAL(KIND=dp) :: RayleighAlpha, RayleighBeta
 
@@ -722,9 +735,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! version active is to have "UMAT Subroutine" as specified.
   !
   UseUMAT = ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine')
-  IF (UseUMAT .AND. TransientSimulation) THEN
-    CALL Fatal(Caller, 'UMAT version does not yet support transient simulation')
-  END IF
+  ! A transient simulation with UMAT: the unknown of the nonlinear iteration is
+  ! the increment of the displacement, see UmatIncrementalTime. The UMAT
+  ! integrates its own rate equations over the timestep it is given.
 
   PrevMaterial => NULL()
   NeoHookeanMaterial = ListGetLogical( SolverParams, 'Neo-Hookean Material', GotIt )
@@ -946,20 +959,22 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        UmatStress = 0.0_dp
 
        ! ----------------------------------------------------------------------
-       ! We also create similar variables with suffix "0" to keep the variable
-       ! values corresponding to the converged solution at the previous time
-       ! level m. In addition to the stress and energy variables, we need to
+       ! The values corresponding to the converged solution at the previous time
+       ! level m are kept in the 1st PrevValues of the variables (the arrays with
+       ! suffix "0"). In addition to the stress and energy variables, we need to
        ! save the state variables as they evolve during the nonlinear iteration
        ! to obtain the solution at the new time level m+1. The right values
        ! of the state variables corresponding to the initial state can be found
        ! by making an extra UMAT call. Check whether this call is needed.
+       !
+       ! In a transient simulation the PrevValues of the exported variables are
+       ! advanced to the Values (the converged state) when a timestep begins,
+       ! and the adaptive timestepping restores both when it rejects a step or
+       ! repeats it. In a steady state or scanning simulation they are set below
+       ! when the nonlinear iteration ends.
        ! ----------------------------------------------------------------------
-
-       ALLOCATE( UmatEnergy0( SIZE( UmatEnergy ) ) )
-       ALLOCATE( UmatStress0( SIZE( UmatStress ) ) )
-
-       UmatEnergy0 = 0.0_dp
-       UmatStress0 = 0.0_dp
+       UmatEnergy0 => UmatPrevValues( UmatEnergyVar )
+       UmatStress0 => UmatPrevValues( UmatStressVar )
 
        UmatStateVar => VariableGet( Mesh % Variables, 'UmatState')
        IF( ASSOCIATED( UmatStateVar ) ) THEN
@@ -967,9 +982,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          CALL Info(Caller,'Maximum number of state variables in UMAT: '&
              //I2S(MaxStateV),Level=7)
          UmatState => UmatStateVar % Values
-         ALLOCATE( UmatState0( SIZE( UmatState ) ) )
          UmatState = 0.0_dp
-         UmatState0 = 0.0_dp
+         UmatState0 => UmatPrevValues( UmatStateVar )
        ELSE
          CALL Info(Caller,'Could not find variable "UmatState", assuming no state variable!')
          MaxStateV = 0
@@ -977,10 +991,16 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          UmatState0 => NULL()
        END IF
 
-       ALLOCATE( UmatInitDone( SIZE( UmatEnergy ) / 3 ) )
-       UmatInitDone = .FALSE.
-
        InitializeStateVars = GetLogical(SolverParams, 'Initialize State Variables',GotIt)
+       UmatInitDone => NULL()
+       IF( InitializeStateVars ) THEN
+         Var => VariableGet( Mesh % Variables, 'UmatInitDone')
+         IF (.NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'Could not find variable "UmatInitDone"')
+         IF( SIZE( Var % Values ) /= SIZE( UmatEnergy ) / 3 ) &
+             CALL Fatal(Caller,'"UmatInitDone" and "UmatEnergy" differ in size')
+         UmatInitDone => Var % Values
+         UmatInitDone = 0.0_dp
+       END IF
      END IF
 
      AllocationsDone = .TRUE.
@@ -1602,7 +1622,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   previ = 0
   IF (UseUMAT) THEN
     IF( TransientSimulation ) THEN
-      previ = 3
+      ! The displacement at t-dt: the 3rd PrevValues of the second order
+      ! methods, the 1st of the first order ones.
+      previ = 1
+      IF( SecondOrderTime ) previ = 3
     ELSE IF( Scanning ) THEN
       previ = 1
     END IF
@@ -1666,7 +1689,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller, 'Starting assembly...', Level=7 )
 
-     IF (UseUMAT) TotalSol(:) = Displacement(:)
+     IF (UseUMAT) THEN
+       TotalSol(:) = Displacement(:)
+       UmatPnewdt = HUGE(UmatPnewdt)
+     END IF
 
      !------------------------------------------------------------------------------
 100  CALL DefaultInitialize()
@@ -1828,10 +1854,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
 
          ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         ! solution to the array holding the previous solution state. In a
+         ! transient simulation this is done when the next timestep begins.
+         IF( .NOT. TransientSimulation ) CALL UmatCommitState()
 
          Displacement(:) = TotalSol(:)
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
@@ -1863,10 +1888,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              'The maximum of nonlinear iterations reached: Terminating...', Level=5)
 
          ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         ! solution to the array holding the previous solution state. In a
+         ! transient simulation this is done when the next timestep begins.
+         IF( .NOT. TransientSimulation ) CALL UmatCommitState()
 
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
          EXIT
@@ -1880,6 +1904,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !------------------------------------------------------------------------------
   END DO ! of nonlinear iter
   !------------------------------------------------------------------------------
+
+  IF ( UseUMAT .AND. TransientSimulation ) CALL UmatEndTimestep()
 
   CALL PostProcess()
 
@@ -1900,6 +1926,132 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
 !------------------------------------------------------------------------------
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> The 1st PrevValues of a UMAT variable, which holds its converged value at
+!> the previous time/load level. Allocated (zero) when not there yet.
+!------------------------------------------------------------------------------
+  FUNCTION UmatPrevValues( Var ) RESULT( Prev )
+    TYPE(Variable_t), POINTER :: Var
+    REAL(KIND=dp), POINTER :: Prev(:)
+
+    IF ( ASSOCIATED( Var % PrevValues ) ) THEN
+      IF ( SIZE( Var % PrevValues,1 ) /= SIZE( Var % Values ) ) THEN
+        DEALLOCATE( Var % PrevValues )
+      END IF
+    END IF
+    IF ( .NOT. ASSOCIATED( Var % PrevValues ) ) THEN
+      ALLOCATE( Var % PrevValues( SIZE( Var % Values ), 1 ) )
+      Var % PrevValues = 0.0_dp
+    END IF
+    Prev => Var % PrevValues(:,1)
+  END FUNCTION UmatPrevValues
+
+!------------------------------------------------------------------------------
+!> Make the UMAT state of the converged solution the previous state.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatCommitState()
+    UmatEnergy0 = UmatEnergy
+    UmatStress0 = UmatStress
+    IF( ASSOCIATED( UmatState ) ) UmatState0 = UmatState
+  END SUBROUTINE UmatCommitState
+
+!------------------------------------------------------------------------------
+!> The time discretization of an element of the UMAT formulation, whose
+!> unknown is the increment of the displacement from the current iterate u_k.
+!> Default1stOrderTime/Default2ndOrderTime write the system for the total
+!> displacement: the effective stiffness K + c M (+ c' D) and the history terms
+!> of the force. For the increment the force must be reduced by the time terms
+!> evaluated at u_k, (K_eff - K) u_k, which leaves the inertia and damping
+!> forces of the iterate, M a(u_k) + D v(u_k), in the residual.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatIncrementalTime( nd )
+    INTEGER :: nd
+    REAL(KIND=dp), ALLOCATABLE :: Kt(:,:), uk(:)
+    INTEGER :: i, j, k, m
+
+    m = STDOFs * nd
+    Kt = LocalStiffMatrix(1:m,1:m)
+    ALLOCATE( uk(m) )
+    uk = 0.0_dp
+    DO i=1,nd
+      k = StressPerm( Indices(i) )
+      IF( k <= 0 ) CYCLE
+      DO j=1,STDOFs
+        uk(STDOFs*(i-1)+j) = Displacement(STDOFs*(k-1)+j)
+      END DO
+    END DO
+
+    IF( SecondOrderTime ) THEN
+      CALL Default2ndOrderTime( LocalMassMatrix, LocalDampMatrix, &
+          LocalStiffMatrix, LocalForce )
+    ELSE
+      CALL Default1stOrderTime( LocalDampMatrix, LocalStiffMatrix, LocalForce )
+    END IF
+
+    LocalForce(1:m) = LocalForce(1:m) - MATMUL( LocalStiffMatrix(1:m,1:m) - Kt, uk )
+  END SUBROUTINE UmatIncrementalTime
+
+!------------------------------------------------------------------------------
+!> The force of the boundary springs at the current iterate, moved to the right
+!> hand side of the incremental UMAT system: f = f - K_s u_k. Springs are the
+!> only matrix terms of LocalBoundaryMatrix.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatSpringResidual( nb )
+    INTEGER :: nb
+    INTEGER, ALLOCATABLE :: BIndices(:)
+    REAL(KIND=dp), ALLOCATABLE :: uk(:)
+    INTEGER :: i, j, k, m, nbd
+
+    ALLOCATE( BIndices( Mesh % MaxElementDOFs ) )
+    nbd = GetElementDOFs( BIndices, CurrentElement )
+    m = STDOFs * nb
+    ALLOCATE( uk(m) )
+    uk = 0.0_dp
+    DO i=1,MIN( nb, nbd )
+      k = StressPerm( BIndices(i) )
+      IF( k <= 0 ) CYCLE
+      DO j=1,STDOFs
+        uk(STDOFs*(i-1)+j) = Displacement(STDOFs*(k-1)+j)
+      END DO
+    END DO
+    LocalForce(1:m) = LocalForce(1:m) - MATMUL( LocalStiffMatrix(1:m,1:m), uk )
+  END SUBROUTINE UmatSpringResidual
+
+!------------------------------------------------------------------------------
+!> The end of a transient timestep with UMAT. The velocity and acceleration of
+!> the second order methods were updated by the linear solver from its
+!> solution, which is here the increment: update them from the displacement.
+!> Pass the timestep the UMAT asks for (PNEWDT) to the adaptive timestepping.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatEndTimestep()
+    REAL(KIND=dp) :: r, Request, OldRequest
+    LOGICAL :: Found
+
+    IF( SecondOrderTime .AND. ASSOCIATED( StressSol % PrevValues ) ) THEN
+      IF( SIZE( StressSol % PrevValues,2 ) >= 5 ) THEN
+        CALL Update2ndOrder( SIZE(Displacement), Solver % dt, Displacement, &
+            StressSol % PrevValues, Solver % Alpha, Solver % Beta )
+      END IF
+    END IF
+
+    ! PNEWDT is the ratio of the timestep the UMAT suggests to the one used:
+    ! below one it asks for the step to be repeated with a smaller one.
+    r = UmatPnewdt
+    IF( Parallel ) r = ParallelReduction( r, 1 )
+    IF( r >= UmatNoPnewdt ) RETURN
+
+    Request = r * Solver % dt
+    IF( ListGetLogical( Model % Simulation,'Adaptive Timestepping', Found ) ) THEN
+      OldRequest = ListGetConstReal( Model % Simulation,'Adaptive Timestep Request', Found )
+      IF( Found ) Request = MIN( Request, OldRequest )
+      CALL ListAddConstReal( Model % Simulation,'Adaptive Timestep Request', Request )
+    ELSE IF( r < 1.0_dp ) THEN
+      WRITE(Message,'(A,ES12.4,A)') 'UMAT asks for a timestep of ',Request,&
+          ': use "Adaptive Timestepping" to act on it'
+      CALL Warn(Caller, Message)
+    END IF
+  END SUBROUTINE UmatEndTimestep
 
 !------------------------------------------------------------------------------
 !> The integration rule this bulk element is to be assembled over.
@@ -2432,7 +2584,9 @@ CONTAINS
         !        matrix and global RHS vector
         !------------------------------------------------------------------------------
         IF ( TransientSimulation ) THEN
-           IF( SecondOrderTime ) THEN
+          IF ( UseUMAT ) THEN
+            CALL UmatIncrementalTime( nd )
+          ELSE IF( SecondOrderTime ) THEN
              CALL Default2ndOrderTime( LocalMassMatrix, LocalDampMatrix, &
                   LocalStiffMatrix, LocalForce )
            ELSE
@@ -2688,6 +2842,11 @@ CONTAINS
              LocalForce = LocalForceSaved
              Solver % Matrix % RHS => ValuesSaved
            END IF
+
+           ! The unknown of the UMAT formulation is the increment: the spring force
+           ! of the current iterate belongs to the residual, else the spring acts
+           ! on the increment only and drops out at convergence.
+           IF ( UseUMAT .AND. GotSpring ) CALL UmatSpringResidual( ntot )
 
            !------------------------------------------------------------------------------
            !           Update global matrices from local matrices (will also affect
@@ -3078,6 +3237,7 @@ CONTAINS
 
     INTEGER :: i, j, k, l, p, q, t, dim, cdim, totdofs
     INTEGER :: ipindex
+    LOGICAL :: DoInit, QuasiActive
 
     LOGICAL :: stat
 
@@ -3201,6 +3361,8 @@ CONTAINS
     MassMatrix  = 0.0D0
     DampMatrix  = 0.0d0
 
+    QuasiActive = QuasiStationary .AND. .NOT. ( ANY( NodalDamping(1:n) /= 0.0_dp ) &
+        .OR. GotRayleighAlpha .OR. GotRayleighBeta )
 
     DO t=1,IntegStuff % n
       ipindex = GetIpIndex( t, usolver=solver, element=element, ipvar = UmatEnergyVar )
@@ -3402,7 +3564,9 @@ CONTAINS
       ! the initial state (stress-free initial condition is supposed), we first make
       ! an extra UMAT call to obtain the state variables if requested in the sif file.
       ! ----------------------------------------------------------------------------
-      INITIALIZE_STATE_VARIABLES: IF ( InitializeStateVars .AND. .NOT. UmatInitDone(ipIndex ) ) THEN
+      DoInit = .FALSE.
+      IF ( InitializeStateVars ) DoInit = ( UmatInitDone(ipIndex) == 0.0_dp )
+      INITIALIZE_STATE_VARIABLES: IF ( DoInit ) THEN
 
         ! We insert the identity tensor as the deformation gradient so the initial solution
         ! should be the zero-displacement solution:
@@ -3424,12 +3588,14 @@ CONTAINS
           UmatState0(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NstateV)
         END IF
 
-        UmatInitDone(ipindex) = .TRUE.
+        UmatInitDone(ipindex) = 1.0_dp
       END IF INITIALIZE_STATE_VARIABLES
 
       ! -----------------------------------------------------------------------------
-      ! Perform the actual UMAT call.
+      ! Perform the actual UMAT call. PNEWDT is set to a large value before it,
+      ! as Abaqus does: the UMAT lowers it to ask for a smaller timestep.
       ! -----------------------------------------------------------------------------
+      pnewdt = UmatNoPnewdt
       CALL UMATusersubrtn(UMATSubrtn, StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
           EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
           stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
@@ -3445,6 +3611,7 @@ CONTAINS
       UmatEnergy(3*(Ipindex-1)+3) = EnergyVisc
 
       UmatStress(ntens*(Ipindex-1)+1:ntens*IpIndex) = StressVec(1:ntens)
+      UmatPnewdt = MIN( UmatPnewdt, pnewdt )
       IF( NStateV > 0 ) THEN
         UmatState(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NStateV)
       END IF
@@ -3694,17 +3861,19 @@ CONTAINS
 
       END IF STIFFMATRIX_FOR_CHOSEN_STRAIN
 
-      ! Integrate mass matrix:
+      ! Integrate mass matrix (not under "Quasi Stationary", as in LocalMatrix):
       ! ----------------------
-      DO p = 1,ntot
-        DO q = 1,ntot
-          DO i = 1,cdim
-            MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                + Basis(p)*Basis(q)*Density*s
+      IF ( .NOT. QuasiActive ) THEN
+        DO p = 1,ntot
+          DO q = 1,ntot
+            DO i = 1,cdim
+              MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  + Basis(p)*Basis(q)*Density*s
+            END DO
           END DO
         END DO
-      END DO
+      END IF
 
       ! Utilize the Rayleigh damping:
       ! -----------------------------

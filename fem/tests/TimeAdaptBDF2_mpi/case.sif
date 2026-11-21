@@ -23,6 +23,7 @@ Simulation
 
   Adaptive Timestepping = True
   Adaptive Time Error = 1.0e-3
+  Adaptive Error Type = String "weighted"
   Adaptive Keep Smallest = 3
   Adaptive Min Timestep = 1.0e-6
   Adaptive Max Timestep = Real 0.001
@@ -83,7 +84,7 @@ Boundary Condition 1
   Temperature = 0
 End
 
-Solver 1 :: Reference Norm = Real 0.74114819E-02
+Solver 1 :: Reference Norm = Real 0.74115648E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
 Solver 2 :: Reference Norm = Real 10
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-8

@@ -6,8 +6,8 @@
 ! average. Before, the time was set to the nominal time while the solution
 ! was ahead of it.
 !
-! The end time is 1.03185500E-02 (SaveScalars, Solver 2). BDF2 with 1000
-! fixed steps to that time gives 0.81726889E-02; at the nominal time 0.01 the
+! The end time is 1.06743852E-02 (SaveScalars, Solver 2). BDF2 with 4000
+! fixed steps to that time gives 0.84283947E-02; at the nominal time 0.01 the
 ! norm is 0.79426236E-02.
 
 Header
@@ -90,7 +90,7 @@ Boundary Condition 1
   Temperature = 0
 End
 
-Solver 1 :: Reference Norm = Real 0.81729006E-02
+Solver 1 :: Reference Norm = Real 0.84297928E-02
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
-Solver 2 :: Reference Norm = Real 1.03185500E-02
+Solver 2 :: Reference Norm = Real 1.06743852E-02
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-6
