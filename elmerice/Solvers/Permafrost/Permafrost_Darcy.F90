@@ -497,7 +497,7 @@ CONTAINS
     LOGICAL :: Stat,Found, ConstantsRead=.FALSE., ConstVal=.FALSE., ConstantDispersion=.FALSE.,&
          ConstantDiffusion=.FALSE., CryogenicSuction=.FALSE., swaptensor=.FALSE., &
          SolutePhaseForces=.FALSE.,DirectFickian=.FALSE.,Boussinesq=.FALSE.,&
-         Linear=.FALSE.,Exponential=.FALSE.
+         Linear=.FALSE.,Exponential=.FALSE., ConstantElasticProperties=.FALSE.
     TYPE(GaussIntegrationPoints_t) :: IP
     TYPE(ValueList_t), POINTER :: BodyForce, Material
     TYPE(ExponentialParameters_t) :: ExponentialParams
@@ -509,7 +509,7 @@ CONTAINS
     INTEGER, POINTER :: XiAtIPPerm(:), RhoOffsetAtIPPerm(:),GWfluxPerm(:),FreshwaterHeadAtIPPerm(:)
     REAL(KIND=dp), POINTER :: XiAtIP(:), RhoOffsetAtIP(:),GWFluxVal(:),FreshwaterHeadAtIP(:)
     
-    SAVE Nodes, ConstantsRead, ConstVal, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity
+    SAVE Nodes, ConstantsRead, ConstVal, ConstantElasticProperties, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity
     !------------------------------------------------------------------------------
     Material => GetMaterial(Element)    ! Get stuff from SIF Material section
     Exponential = .FALSE.
@@ -522,6 +522,7 @@ CONTAINS
       ConstantsRead = &
            ReadPermafrostConstants(Model, FunctionName, DIM, GasConstant, N0, DeltaT, T0, p0, eps, Gravity)
       ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
+      ConstantElasticProperties = GetLogical(Material,'Constant Elastic Properties',Found)
       IF (ConstVal) &
            CALL INFO(FunctionName,'"Constant Permafrost Properties" set to true',Level=9)
     END IF
@@ -754,6 +755,8 @@ CONTAINS
           PRINT *, "Darcy: XiAtIP", B1AtIP*B1AtIP + D1AtIP !1.0/(1.0 + 0.5*B1AtIP + SQRT(B1AtIP*B1AtIP + D1AtIP)
           CALL FATAL(SolverName,"XiAtIP is NaN")
         END IF
+      CASE('none')
+        XiTAtIP = 1.0_dp
       CASE DEFAULT
         CALL FATAL(FunctionName,'Unsupported phase change model: '//TRIM(PhaseChangeModel))
       END SELECT
@@ -858,17 +861,28 @@ CONTAINS
         fwAtIP = 0.0_dp
         KgwpTAtIP = 0.0_dp
       END IF
- 
-      ! Elastic properties at IP
-      EGAtIP = EG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
-      nuGAtIP = nuG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
+
+      IF (ConstantElasticProperties) THEN
+        ! constant properties
+        EGAtIP = (GlobalRockMaterial % Es0(RockMaterialID))&
+             /(1.0_dp - (GlobalRockMaterial % eta0(RockMaterialID)))
+        nuGAtIP = GlobalRockMaterial % nuS0(RockMaterialID)        
+      ELSE
+        ! Elastic properties at IP
+        EGAtIP = EG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
+        nuGAtIP = nuG(CurrentSolventMaterial,RockMaterialID,XiAtIP(IPPerm),PorosityAtIP)
+      END IF
       kappaGAtIP = kappaG(EGAtIP,nuGAtIP)
+      !PRINT *,"kappaGAtIP",kappaGAtIP
       
       ! capacities at IP
       IF (HydroGeo) THEN   ! Simplifications: Xip=0 Xi=1 kappas=0
         CgwppAtIP = PorosityAtIP * rhogwPAtIP + rhogwAtIP * kappaGAtIP
       ELSE IF (Exponential) THEN
         CgwppAtIP = PorosityAtIP * rhogwAtIP * ExponentialParams % Beta * XiAtIP(IPPerm)
+      ELSE IF (ConstantElasticProperties) THEN
+        CgwppAtIP = rhogwAtIP*kappaGAtIP
+        !PRINT *,"CgwppAtIP",CgwppAtIP
       ELSE
         CgwppAtIP = GetCgwpp(rhogwAtIP,rhoiAtIP,rhosAtIP,rhogwPAtIP,rhoiPAtIP,rhosPAtIP,&
              kappaGAtIP,XiAtIP(IPPerm),XiPAtIP,&
@@ -880,12 +894,16 @@ CONTAINS
         CgwpYcAtIP = GetCgwpYc(rhogwAtIP,rhoiAtIP,rhogwYcAtIP,XiAtIP(IPPerm),XiYcAtIP,PorosityAtIP)     
       END IF
       IF (ComputeDeformation) THEN
-        CgwpI1AtIP = GetCgwpI1(rhogwAtIP,rhoiAtIP,XiAtIP(IPPerm),&
-             kappaGAtIP,RockMaterialID)
-        IF (CgwpI1AtIP > 1.0d-03) THEN ! sanity check
-          PRINT *,"CgwpI1AtIP", CgwpI1AtIP,&
+        IF(ConstantElasticProperties) THEN
+          CgwpI1AtIP = rhogwAtIP*kappaGAtIP/3.0_dp
+        ELSE
+          CgwpI1AtIP = GetCgwpI1(rhogwAtIP,rhoiAtIP,XiAtIP(IPPerm),&
+               kappaGAtIP,RockMaterialID)       
+          IF (CgwpI1AtIP > 1.0d-03) THEN ! sanity check
+            PRINT *,"CgwpI1AtIP", CgwpI1AtIP,&
                XiAtIP(IPPerm),rhogwAtIP,rhoiAtIP,kappaGAtIP, EGAtIP, nuGAtIP
-          STOP
+            STOP
+          END IF
         END IF
       END IF
 
@@ -929,6 +947,7 @@ CONTAINS
       END IF
 
       ! bedrock deformation velocity at IP
+      vstarAtIP = 0.0_dp
       vstarAtIP(1) = ListGetElementReal( Vstar1_h, Basis, Element, Found, GaussPoint=t)
       vstarAtIP(2) = ListGetElementReal( Vstar2_h, Basis, Element, Found, GaussPoint=t)
       IF (DIM > 2) &
@@ -1265,6 +1284,8 @@ CONTAINS
                    GasConstant,p0,T0,&
                    XiAtIP,XiTAtIP,XiYcAtIP,XiPAtIP,XiEtaAtIP,&
                    .FALSE.,.FALSE.,.FALSE.,.FALSE.)
+            CASE('none')
+              XiAtIP = 1.0_dp
             CASE DEFAULT
               CALL FATAL(FunctionName,'Unsupported phase change model: '//&
                    TRIM(BoundaryPhaseChangeModel))

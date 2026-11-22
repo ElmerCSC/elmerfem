@@ -382,7 +382,7 @@ SUBROUTINE PermafrostPorosityEvolution( Model, Solver, Timestep, TransientSimula
     Material => GetMaterial(CurrentElement)
     ConstVal = GetLogical(Material,'Constant Permafrost Properties',Found)
     IF (ConstVal) &
-        CALL INFO(SolverName,'"Constant Permafrost Properties" set to true',Level=5)
+        CALL INFO(SolverName,'"Constant Permafrost Properties" set to true',Level=20)
     IF (.NOT.ASSOCIATED(Material)) CALL FATAL(SolverName,'No Material pointer found')
     IF (FirstTime) THEN
       ! check, whether we have globally or element-wise defined values of rock-material parameters

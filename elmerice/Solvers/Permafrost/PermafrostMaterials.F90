@@ -293,7 +293,7 @@ CONTAINS
 
     SELECT CASE(PhaseChangeModel)
     CASE('powerlaw','exponential','linear','hartikainen',&
-         'lunardini1988_threezone_linear')
+         'lunardini1988_threezone_linear','none')
     CASE DEFAULT
       CALL FATAL(Caller,'Unknown "Permafrost Phase Change Model": '//TRIM(PhaseChangeModel)//&
            '. Accepted values: powerlaw, exponential, linear, hartikainen, '//&
