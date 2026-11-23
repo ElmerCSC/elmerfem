@@ -593,6 +593,7 @@ END SUBROUTINE MagnetoDynamicsCalcFields_Init
  SUBROUTINE MagnetoDynamicsCalcFields(Model,Solver,dt,Transient)
 !------------------------------------------------------------------------------
    USE MagnetoDynamicsUtils
+   USE LumpingUtils, ONLY : ComponentCoilEnergy, ComponentNodalForceReduction, ComponentStokesTheorem
    USE MeshBasics, ONLY : MinimalElementalSet, ReduceElementalVar
    USE CircuitUtils
    USE Zirka

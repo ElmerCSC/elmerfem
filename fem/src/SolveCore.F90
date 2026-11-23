@@ -48,6 +48,7 @@ MODULE SolveCore
     USE ParallelUtils, ONLY : ParallelDot, PartitionVector
     USE Multigrid, ONLY : MultigridSolve
     USE BoundaryConditionUtils, ONLY : EnforceDirichletConditions, SetDirichletBoundaries
+    USE LumpingUtils, ONLY : BoundaryWaveFlux, ComponentCoilEnergy, ComponentStokesTheorem
     USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
     USE MatrixAssembly, ONLY : CreateChildMatrix
     USE IterSolve, ONLY : NumericalError

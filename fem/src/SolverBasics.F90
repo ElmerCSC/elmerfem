@@ -55,8 +55,7 @@ MODULE SolverBasics
    USE ElementUtils
    USE IpFieldInterface
    USE PElementVisual
-   USE LumpingUtils, ONLY : ComponentStokesTheorem, ComponentCoilEnergy, BoundaryWaveFlux, &
-       UpdateDependentComponents, ComponentNodalForceReduction
+   USE LumpingUtils, ONLY : UpdateDependentComponents
    USE TimeIntegrate
    USE ModelDescription
    USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
@@ -7706,7 +7705,7 @@ END SUBROUTINE DerivateExportedVariables
     CALL Info(Caller,'Assuming '//I2S(dim)//&
         ' active dimensions',Level=10)
 
-    ! Add the lasrgest entry that allocates the whole list matrix structure
+    ! Add the largest entry that allocates the whole list matrix structure
     CALL AddToMatrixElement(A_fs,i,j,0.0_dp)
     CALL AddToMatrixElement(A_sf,j,i,0.0_dp)
 
