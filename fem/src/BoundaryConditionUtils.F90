@@ -46,9 +46,296 @@ MODULE BoundaryConditionUtils
     USE SolverBasics
     USE MatrixScaling, ONLY : ScaleLinearSystem
     USE MatrixAssembly, ONLY : GetMatrixElement
+    USE ParallelUtils, ONLY : ParallelSumNodalVector
     IMPLICIT NONE
 
+    ! State for "<Name> Constant" / "<Name> Profile" conditions implemented with
+    ! extra global unknowns (one per condition and component) appended to the linear
+    ! system via the AddMatrix. ConstSlots < 0 means that collecting is not active,
+    ! i.e. we are not inside ConstantGlobalDofsBegin/Finalize.
+    !
+    ! If the system already has an AddMatrix of its own (e.g. circuits), the global
+    ! dofs are appended after its rows to a merged copy. ConstBase is then that
+    ! original AddMatrix, and ConstRowTarget/Scale/Keep tell where its rows of the
+    ! constrained set go: row k is summed to row ConstRowTarget(k) with the factor
+    ! ConstRowScale(k), and removed from row k unless ConstRowKeep(k).
+    !
+    ! Ownership is recorded with the Parent/Child pointers, which FreeMatrix does
+    ! not follow: our AddMatrix without a base has Parent pointing to itself, and a
+    ! merged one has Parent => base and base % Child => merged.
+    INTEGER, PRIVATE, SAVE :: ConstSlots = -1, ConstNRows = 0, ConstNm = 0
+    TYPE(Matrix_t), POINTER, PRIVATE, SAVE :: ConstAddM => NULL(), ConstBase => NULL()
+    REAL(KIND=dp), ALLOCATABLE, PRIVATE, SAVE :: ConstRhs(:), ConstRowScale(:)
+    INTEGER, ALLOCATABLE, PRIVATE, SAVE :: ConstRowTarget(:)
+    LOGICAL, ALLOCATABLE, PRIVATE, SAVE :: ConstRowKeep(:)
+    ! For complex systems the 2x2 blocks [Re -Im; Im Re] of the AddMatrix must be
+    ! complete, since the complex solvers read only one row of each block.
+    LOGICAL, PRIVATE, SAVE :: ConstComplex = .FALSE.
+
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> Start collecting the "Constant"/"Profile" conditions that are eliminated
+!> using extra global unknowns. To be called before the SetDirichletBoundaries
+!> calls of a solver. Releases the AddMatrix created at the previous call and
+!> restores the original AddMatrix of the system, if any.
+!------------------------------------------------------------------------------
+  SUBROUTINE ConstantGlobalDofsBegin( A )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), TARGET :: A
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: Cur, Old
+    LOGICAL :: Found
+!------------------------------------------------------------------------------
+    IF( ASSOCIATED( ConstAddM ) ) THEN
+      ! Leftover from a sequence that was never finalized.
+      CALL FreeMatrix( ConstAddM )
+      ConstAddM => NULL()
+    END IF
+    IF( ALLOCATED( ConstRowTarget ) ) DEALLOCATE( ConstRowTarget, ConstRowScale, ConstRowKeep )
+
+    ConstBase => NULL()
+    Cur => A % AddMatrix
+    IF( ASSOCIATED( Cur ) ) THEN
+      IF( ASSOCIATED( Cur % Parent, Cur ) ) THEN
+        ! Our own AddMatrix from the previous call.
+        Cur % Parent => NULL()
+        CALL FreeMatrix( Cur )
+        A % AddMatrix => NULL()
+      ELSE
+        ConstBase => Cur
+        IF( ASSOCIATED( Cur % Parent ) ) THEN
+          ! Our merged AddMatrix from the previous call, go back to its base.
+          IF( ASSOCIATED( Cur % Parent % Child, Cur ) ) ConstBase => Cur % Parent
+        END IF
+        ! Release the merged matrix built on this base. It may also be left over
+        ! if the owner of the base has meanwhile reset the AddMatrix to the base.
+        IF( ASSOCIATED( ConstBase % Child ) ) THEN
+          Old => ConstBase % Child
+          IF( ASSOCIATED( Old % Parent, ConstBase ) ) THEN
+            Old % Parent => NULL()
+            CALL FreeMatrix( Old )
+          END IF
+          ConstBase % Child => NULL()
+        END IF
+        A % AddMatrix => ConstBase
+      END IF
+    END IF
+
+    ConstComplex = A % COMPLEX
+    IF( .NOT. ConstComplex ) ConstComplex = ListGetLogical( CurrentModel % Solver % Values, &
+        'Linear System Complex', Found )
+
+    ConstSlots = 0
+    ConstNm = A % NumberOfRows
+    ConstNRows = ConstNm
+    IF( ASSOCIATED( ConstBase ) ) ConstNRows = MAX( ConstNm, ConstBase % NumberOfRows )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ConstantGlobalDofsBegin
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Finish collecting the "Constant"/"Profile" conditions and attach the extra
+!> rows and columns as the AddMatrix of the system. The AddMatrix rows beyond
+!> the original system are global unknowns shared by all partitions, so the
+!> conditions work also in parallel. An existing AddMatrix (e.g. circuits) is
+!> merged with the new rows.
+!------------------------------------------------------------------------------
+  SUBROUTINE ConstantGlobalDofsFinalize( Solver, A )
+!------------------------------------------------------------------------------
+    TYPE(Solver_t) :: Solver
+    TYPE(Matrix_t), TARGET :: A
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: M, Base
+    REAL(KIND=dp), POINTER CONTIG :: SaveValues(:)
+    INTEGER :: i, k, l, n, nb, nrows, Owner
+    CHARACTER(*), PARAMETER :: Caller = 'ConstantGlobalDofsFinalize'
+!------------------------------------------------------------------------------
+    IF( ConstSlots < 0 ) RETURN
+    n = ConstSlots
+    ConstSlots = -1
+    Base => ConstBase
+    ConstBase => NULL()
+
+    IF( n == 0 ) THEN
+      IF( ASSOCIATED( ConstAddM ) ) CALL FreeMatrix( ConstAddM )
+      ConstAddM => NULL()
+      IF( ALLOCATED( ConstRowTarget ) ) DEALLOCATE( ConstRowTarget, ConstRowScale, ConstRowKeep )
+      RETURN
+    END IF
+
+    M => ConstAddM
+    ConstAddM => NULL()
+    nrows = ConstNRows + n
+
+    nb = 0
+    IF( ASSOCIATED( Base ) ) THEN
+      IF( Base % FORMAT /= MATRIX_CRS ) THEN
+        CALL Fatal(Caller,'Constant conditions using global dofs need the additional matrix in CRS format!')
+      END IF
+      nb = Base % NumberOfRows
+      CALL MergeBaseRows( Base % Values )
+    END IF
+
+    ! Make sure that the last row exists in every partition so that the size is consistent.
+    IF( ConstComplex .AND. MOD( ConstNRows, 2 ) /= 0 ) THEN
+      CALL Fatal(Caller,'Complex system with odd number of rows: '//I2S(ConstNRows))
+    END IF
+    CALL ConstAddEntry( M, nrows, nrows, 0.0_dp )
+    CALL List_toCRSMatrix( M )
+    IF( M % NumberOfRows /= nrows ) THEN
+      CALL Fatal(Caller,'Inconsistent size of additional matrix: '&
+          //I2S(M % NumberOfRows)//' vs. '//I2S(nrows))
+    END IF
+
+    ALLOCATE( M % RHS(nrows) )
+    M % RHS = 0.0_dp
+    M % RHS(ConstNRows+1:nrows) = ConstRhs(1:n)
+
+    IF( ASSOCIATED( Base ) ) THEN
+      IF( ASSOCIATED( Base % RHS ) ) THEN
+        DO i = 1, MIN( nb, SIZE( Base % RHS ) )
+          CALL MergeRhs( i, Base % RHS(i) )
+        END DO
+      END IF
+
+      ! Mass and damping values of the base, transformed in the same way, into the
+      ! now fixed matrix structure.
+      SaveValues => M % Values
+      IF( ASSOCIATED( Base % MassValues ) ) THEN
+        ALLOCATE( M % MassValues( SIZE( SaveValues ) ) )
+        M % MassValues = 0.0_dp
+        M % Values => M % MassValues
+        CALL MergeBaseRows( Base % MassValues )
+      END IF
+      IF( ASSOCIATED( Base % DampValues ) ) THEN
+        ALLOCATE( M % DampValues( SIZE( SaveValues ) ) )
+        M % DampValues = 0.0_dp
+        M % Values => M % DampValues
+        CALL MergeBaseRows( Base % DampValues )
+      END IF
+      M % Values => SaveValues
+
+      ! Parallel info of the base rows. The new rows are shared by all partitions.
+      ! They are owned by the owner of the first extra row of the base, if given,
+      ! so that e.g. the circuit preconditioner finds the coupled rows in the same
+      ! partition. Otherwise by the last partition, as by default.
+      Owner = ParEnv % PEs - 1
+      IF( ALLOCATED( Base % RowOwner ) ) THEN
+        IF( nb > ConstNm .AND. SIZE( Base % RowOwner ) > ConstNm ) THEN
+          IF( Base % RowOwner(ConstNm+1) >= 0 ) Owner = Base % RowOwner(ConstNm+1)
+        END IF
+        ALLOCATE( M % RowOwner(nrows) )
+        M % RowOwner = -1
+        k = MIN( nb, SIZE( Base % RowOwner ) )
+        M % RowOwner(1:k) = Base % RowOwner(1:k)
+        M % RowOwner(ConstNRows+1:nrows) = Owner
+      END IF
+      IF( ASSOCIATED( Base % ParallelInfo ) ) THEN
+        IF( ASSOCIATED( Base % ParallelInfo % NeighbourList ) ) THEN
+          ALLOCATE( M % ParallelInfo )
+          ALLOCATE( M % ParallelInfo % NeighbourList(nrows) )
+          DO i = 1, nrows
+            M % ParallelInfo % NeighbourList(i) % Neighbours => NULL()
+          END DO
+          DO i = 1, MIN( nb, SIZE( Base % ParallelInfo % NeighbourList ) )
+            IF( .NOT. ASSOCIATED( Base % ParallelInfo % NeighbourList(i) % Neighbours ) ) CYCLE
+            k = SIZE( Base % ParallelInfo % NeighbourList(i) % Neighbours )
+            ALLOCATE( M % ParallelInfo % NeighbourList(i) % Neighbours(k) )
+            M % ParallelInfo % NeighbourList(i) % Neighbours = &
+                Base % ParallelInfo % NeighbourList(i) % Neighbours
+          END DO
+          DO i = ConstNRows+1, nrows
+            ALLOCATE( M % ParallelInfo % NeighbourList(i) % Neighbours( ParEnv % PEs ) )
+            M % ParallelInfo % NeighbourList(i) % Neighbours(1) = Owner
+            l = 1
+            DO k = ParEnv % PEs-1, 0, -1
+              IF( k == Owner ) CYCLE
+              l = l + 1
+              M % ParallelInfo % NeighbourList(i) % Neighbours(l) = k
+            END DO
+          END DO
+        END IF
+      END IF
+
+      M % COMPLEX = Base % COMPLEX
+      M % Parent => Base
+      Base % Child => M
+      IF( ALLOCATED( ConstRowTarget ) ) DEALLOCATE( ConstRowTarget, ConstRowScale, ConstRowKeep )
+      CALL Info(Caller,'Merged '//I2S(n)//' global dofs for constant conditions with additional matrix of '&
+          //I2S(nb)//' rows',Level=7)
+    ELSE
+      M % Parent => M
+      CALL Info(Caller,'Number of global dofs for constant conditions: '//I2S(n),Level=7)
+    END IF
+
+    A % AddMatrix => M
+
+  CONTAINS
+
+    ! Add the entries of the base to M. Rows of the constrained sets are summed to
+    ! the row of their global dof, and removed unless they have Dirichlet conditions.
+    SUBROUTINE MergeBaseRows( BValues )
+      REAL(KIND=dp) :: BValues(:)
+      INTEGER :: r, kk, t
+      LOGICAL :: Keep
+      DO r = 1, nb
+        t = 0
+        Keep = .TRUE.
+        IF( r <= ConstNm .AND. ALLOCATED( ConstRowTarget ) ) THEN
+          t = ConstRowTarget(r)
+          IF( t > 0 ) Keep = ConstRowKeep(r)
+        END IF
+        DO kk = Base % Rows(r), Base % Rows(r+1)-1
+          IF( Keep ) CALL ConstAddEntry( M, r, Base % Cols(kk), BValues(kk) )
+          IF( t > 0 ) CALL ConstAddEntry( M, t, Base % Cols(kk), &
+              ConstRowScale(r) * BValues(kk) )
+        END DO
+      END DO
+    END SUBROUTINE MergeBaseRows
+
+    SUBROUTINE MergeRhs( r, val )
+      INTEGER :: r
+      REAL(KIND=dp) :: val
+      INTEGER :: t
+      LOGICAL :: Keep
+      t = 0
+      Keep = .TRUE.
+      IF( r <= ConstNm .AND. ALLOCATED( ConstRowTarget ) ) THEN
+        t = ConstRowTarget(r)
+        IF( t > 0 ) Keep = ConstRowKeep(r)
+      END IF
+      IF( Keep ) M % RHS(r) = M % RHS(r) + val
+      IF( t > 0 ) M % RHS(t) = M % RHS(t) + ConstRowScale(r) * val
+    END SUBROUTINE MergeRhs
+!------------------------------------------------------------------------------
+  END SUBROUTINE ConstantGlobalDofsFinalize
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
+!> Add an entry to the AddMatrix of constant conditions. For complex systems also
+!> the rest of the 2x2 block is created, with zeros.
+!------------------------------------------------------------------------------
+  SUBROUTINE ConstAddEntry( M, r, col, val )
+!------------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: M
+    INTEGER :: r, col
+    REAL(KIND=dp) :: val
+!------------------------------------------------------------------------------
+    INTEGER :: r0, c0
+!------------------------------------------------------------------------------
+    IF( ConstComplex ) THEN
+      r0 = 2*((r+1)/2) - 1
+      c0 = 2*((col+1)/2) - 1
+      CALL AddToMatrixElement( M, r0, c0, 0.0_dp )
+      CALL AddToMatrixElement( M, r0, c0+1, 0.0_dp )
+      CALL AddToMatrixElement( M, r0+1, c0, 0.0_dp )
+      CALL AddToMatrixElement( M, r0+1, c0+1, 0.0_dp )
+    END IF
+    CALL AddToMatrixElement( M, r, col, val )
+!------------------------------------------------------------------------------
+  END SUBROUTINE ConstAddEntry
+!------------------------------------------------------------------------------
 
 !> Search faces between passive / non-passive domains; add to boundary
 !> elements with given bc-id.
@@ -354,7 +641,7 @@ CONTAINS
     INTEGER, ALLOCATABLE, SAVE :: NTelement(:,:)
 
     REAL(KIND=dp) :: Mult(Model % MaxElementNodes), MaxMult, ParMaxMult, MoveCoeff
-    LOGICAL :: GotMult
+    LOGICAL :: GotMult, UseGlobalDofs
     INTEGER :: maxind
 
 !------------------------------------------------------------------------------
@@ -1025,6 +1312,26 @@ CONTAINS
 
       IF( AnySingleBC .OR. AnySingleBF ) THEN
         GotMult = (l == 1 )
+
+        ! In parallel the lumping of rows to a single node cannot work. Instead the condition
+        ! is eliminated using an extra global unknown shared by all partitions.
+        ! In serial this is optional.
+        ! Also in serial if the system has an AddMatrix (e.g. circuits), which the
+        ! lumping of rows below would not account for.
+        UseGlobalDofs = Parallel .OR. ASSOCIATED( ConstBase )
+        IF( .NOT. UseGlobalDofs ) THEN
+          UseGlobalDofs = ListGetLogical( Model % Solver % Values, &
+              'Constant Condition Global Dofs', GotIt )
+        END IF
+        IF( UseGlobalDofs ) THEN
+          IF( ConstSlots < 0 .OR. Offset /= 0 .OR. OffDiagonal .OR. Model % Solver % DG ) THEN
+            CALL Fatal(Caller,'Global dofs for "'//TRIM(DirName)//&
+                '" only available for primary nodal fields in DefaultDirichletBCs!')
+          END IF
+          CALL SetConstantGlobalDofs( DirName, GotMult, AnySingleBC, AnySingleBF )
+          CYCLE
+        END IF
+
         ALLOCATE( LumpedNodeSet( SIZE( Perm ) ) )
 
         IF( AnySingleBC ) CALL Info(Caller,'Found BC constraint: '//TRIM(DirName),Level=6)
@@ -1819,6 +2126,248 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
+!> Eliminate "Constant" (u_i = c) or "Profile" (u_i = w_i c) conditions using an
+!> extra global unknown c for each condition and component. The system is
+!> modified so that
+!>   row c   : R * sum_{i in S} ( A_i u - b_i ), with u_j = w_j c for j in S
+!>   row i   : u_i - w_i c = 0, for i in S
+!> where R is the optional "Resistance" coefficient. This is exactly the system
+!> resulting from lumping the rows to a supernode in serial, except that the
+!> common value is a separate unknown. The rows c are stored in the AddMatrix,
+!> whose extra rows are global dofs shared by all partitions. Hence the local
+!> partial rows of shared nodes are summed consistently in parallel.
+!------------------------------------------------------------------------------
+    SUBROUTINE SetConstantGlobalDofs( CondName, IsProfile, DoBC, DoBF )
+!------------------------------------------------------------------------------
+      CHARACTER(*) :: CondName
+      LOGICAL :: IsProfile, DoBC, DoBF
+!------------------------------------------------------------------------------
+      INTEGER :: bcind, t, t1, t2, i, j, k, kk, p, pcol, ccol, c, comp, comp1, comp2, &
+          n, nperm, nset, slot, totset
+      INTEGER, POINTER :: pPerm(:)
+      REAL(KIND=dp), ALLOCATABLE :: InSet(:), Wgt(:), Wmin(:), NodeMult(:), TmpRhs(:)
+      REAL(KIND=dp), POINTER :: xval(:)
+      REAL(KIND=dp) :: MCoeff, MaxW, val, s, PrevFlux, Coeff
+      TYPE(ValueList_t), POINTER :: VList
+      TYPE(Element_t), POINTER :: Elem
+      LOGICAL :: IsBF, Found, HaveX, Constrained
+!------------------------------------------------------------------------------
+
+      IF( ConstComplex .AND. ( DOF > 0 .OR. MOD( NDOFs, 2 ) /= 0 ) ) THEN
+        CALL Fatal(Caller,'For complex systems "'//TRIM(CondName)//&
+            '" must be given for the whole variable, not for a component!')
+      END IF
+
+      nperm = MAXVAL( Perm )
+      ALLOCATE( InSet(nperm), Wgt(nperm), NodeMult(Mesh % MaxElementNodes) )
+      IF( Parallel ) THEN
+        ALLOCATE( pPerm(SIZE(Perm)), Wmin(nperm) )
+        pPerm = Perm
+      END IF
+
+      xval => NULL()
+      HaveX = ASSOCIATED( Model % Solver % Variable )
+      IF( HaveX ) THEN
+        xval => Model % Solver % Variable % Values
+        HaveX = ( SIZE(xval) >= A % NumberOfRows )
+      END IF
+
+      IF( DOF > 0 ) THEN
+        comp1 = DOF; comp2 = DOF
+      ELSE
+        comp1 = 1; comp2 = NDOFs
+      END IF
+
+      DO bcind = 1, Model % NumberOfBCs + Model % NumberOfBodyForces
+        IsBF = ( bcind > Model % NumberOfBCs )
+        IF( IsBF ) THEN
+          IF( .NOT. DoBF ) CYCLE
+          VList => Model % BodyForces(bcind - Model % NumberOfBCs) % Values
+        ELSE
+          IF( .NOT. DoBC ) CYCLE
+          VList => Model % BCs(bcind) % Values
+        END IF
+
+        ! The decision is based on the sif only, so that all partitions create the same
+        ! set of global dofs in the same order.
+        IF( IsProfile ) THEN
+          IF( .NOT. ListCheckPresent( VList, CondName ) ) CYCLE
+        ELSE
+          IF( .NOT. ListGetLogical( VList, CondName, Found ) ) CYCLE
+        END IF
+
+        ! Mark the nodes of the set and their weights.
+        !---------------------------------------------------------------------
+        InSet = 0.0_dp
+        Wgt = 0.0_dp
+        IF( IsBF ) THEN
+          t1 = 1
+          t2 = Mesh % NumberOfBulkElements
+        ELSE
+          t1 = Mesh % NumberOfBulkElements + 1
+          t2 = Mesh % NumberOfBulkElements + Mesh % NumberOfBoundaryElements
+        END IF
+        DO t = t1, t2
+          Elem => Mesh % Elements(t)
+          IF( IsBF ) THEN
+            i = ListGetInteger( Model % Bodies(Elem % BodyId) % Values, 'Body Force', Found )
+            IF( i /= bcind - Model % NumberOfBCs ) CYCLE
+          ELSE
+            IF( .NOT. ASSOCIATED( Elem % BoundaryInfo ) ) CYCLE
+            IF( Elem % BoundaryInfo % Constraint /= Model % BCs(bcind) % Tag ) CYCLE
+          END IF
+
+          n = Elem % TYPE % NumberOfNodes
+          IF( IsProfile ) THEN
+            NodeMult(1:n) = ListGetReal( VList, CondName, n, Elem % NodeIndexes, &
+                UnfoundFatal=.TRUE. )
+          ELSE
+            NodeMult(1:n) = 1.0_dp
+          END IF
+
+          DO i = 1, n
+            p = Perm( Elem % NodeIndexes(i) )
+            IF( p <= 0 ) CYCLE
+            InSet(p) = 1.0_dp
+            Wgt(p) = NodeMult(i)
+          END DO
+        END DO
+
+        ! Make the set and weights consistent for the shared nodes. A partition may
+        ! have a shared node without having any element of the set.
+        IF( Parallel ) THEN
+          CALL ParallelSumNodalVector( Mesh, InSet, pPerm, A, 2 )
+          Wmin = Wgt
+          CALL ParallelSumNodalVector( Mesh, Wgt, pPerm, A, 2 )
+          CALL ParallelSumNodalVector( Mesh, Wmin, pPerm, A, 1 )
+          WHERE( ABS(Wmin) > ABS(Wgt) ) Wgt = Wmin
+        END IF
+
+        nset = COUNT( InSet > 0.5_dp )
+        totset = nset
+        IF( Parallel ) totset = ParallelReduction( nset )
+        IF( totset == 0 ) THEN
+          CALL Warn(Caller,'Could not find nodes to set: '//TRIM(CondName))
+        END IF
+
+        IF( IsProfile ) THEN
+          ! Normalize so that the maximum weight is one. Its sign is irrelevant since
+          ! it only flips the sign of the common unknown.
+          MaxW = 0.0_dp
+          IF( nset > 0 ) MaxW = MAXVAL( ABS(Wgt), InSet > 0.5_dp )
+          IF( Parallel ) MaxW = ParallelReduction( MaxW, 2 )
+          IF( MaxW > TINY(MaxW) ) Wgt = Wgt / MaxW
+        END IF
+
+        MCoeff = ListGetCReal( VList, TRIM(CondName)//' Resistance', Found )
+        IF( .NOT. Found ) MCoeff = 1.0_dp
+
+        DO comp = comp1, comp2
+          slot = ConstSlots + 1
+          c = ConstNRows + slot
+
+          IF( .NOT. ASSOCIATED( ConstAddM ) ) THEN
+            ConstAddM => AllocateMatrix()
+            ConstAddM % FORMAT = MATRIX_LIST
+          END IF
+          IF( .NOT. ALLOCATED( ConstRhs ) ) THEN
+            ALLOCATE( ConstRhs(16) )
+          ELSE IF( SIZE( ConstRhs ) < slot ) THEN
+            ALLOCATE( TmpRhs( 2*SIZE(ConstRhs) ) )
+            TmpRhs(1:SIZE(ConstRhs)) = ConstRhs
+            CALL MOVE_ALLOC( TmpRhs, ConstRhs )
+          END IF
+          ConstRhs(slot) = 0.0_dp
+
+          PrevFlux = 0.0_dp
+
+          DO p = 1, nperm
+            IF( InSet(p) < 0.5_dp ) CYCLE
+            k = Offset + NDOFs*(p-1) + comp
+
+            ! Sum the row to the row of the global dof. Columns of the set are
+            ! replaced by the global dof weighted by the profile. As with the lumping
+            ! in serial this is done also for rows with Dirichlet conditions.
+            DO kk = A % Rows(k), A % Rows(k+1)-1
+              j = A % Cols(kk)
+              val = A % Values(kk)
+              IF( HaveX ) PrevFlux = PrevFlux + val * xval(j)
+              pcol = (j-Offset-1) / NDOFs + 1
+              ccol = j - Offset - NDOFs*(pcol-1)
+              ! Dofs with Dirichlet conditions keep their own value, not that of the global dof.
+              Found = .FALSE.
+              IF( ccol == comp .AND. pcol >= 1 .AND. pcol <= nperm ) Found = ( InSet(pcol) > 0.5_dp )
+              IF( Found .AND. ALLOCATED( A % ConstrainedDOF ) ) Found = .NOT. A % ConstrainedDOF(j)
+              IF( Found ) THEN
+                CALL ConstAddEntry( ConstAddM, c, c, MCoeff * val * Wgt(pcol) )
+              ELSE
+                CALL ConstAddEntry( ConstAddM, c, j, MCoeff * val )
+              END IF
+            END DO
+            ConstRhs(slot) = ConstRhs(slot) + MCoeff * b(k)
+
+            Constrained = .FALSE.
+            IF( ALLOCATED( A % ConstrainedDOF ) ) Constrained = A % ConstrainedDOF(k)
+
+            ! The rows of an existing AddMatrix (e.g. circuit couplings) are summed
+            ! likewise, when the matrices are merged at finalization.
+            IF( ASSOCIATED( ConstBase ) ) THEN
+              IF( .NOT. ALLOCATED( ConstRowTarget ) ) THEN
+                ALLOCATE( ConstRowTarget(ConstNm), ConstRowScale(ConstNm), ConstRowKeep(ConstNm) )
+                ConstRowTarget = 0
+                ConstRowScale = 0.0_dp
+                ConstRowKeep = .TRUE.
+              END IF
+              ConstRowTarget(k) = c
+              ConstRowScale(k) = MCoeff
+              ConstRowKeep(k) = Constrained
+            END IF
+
+            ! Rows with Dirichlet conditions are replaced later when the conditions are enforced.
+            IF( Constrained ) CYCLE
+
+            ! Replace the row by u_k - w_k c = 0. In parallel the shared rows are sums
+            ! of the partition contributions, so each one sets its share.
+            s = 1.0_dp
+            IF( Parallel ) s = s / SIZE( A % ParallelInfo % NeighbourList(k) % Neighbours )
+            CALL ZeroRow( A, k )
+            CALL SetMatrixElement( A, k, k, s )
+            b(k) = 0.0_dp
+            CALL ConstAddEntry( ConstAddM, k, c, -s * Wgt(p) )
+          END DO
+
+          ! Additional source and coefficient for the global dof, added only once.
+          IF( NDOFs == 1 .AND. ( .NOT. Parallel .OR. ParEnv % MyPe == 0 ) ) THEN
+            val = ListGetCReal( VList, TRIM(CondName)//' Flux', Found )
+            IF( Found ) ConstRhs(slot) = ConstRhs(slot) + val
+            Coeff = ListGetCReal( VList, TRIM(CondName)//' Coefficient', Found )
+            IF( Found ) CALL ConstAddEntry( ConstAddM, c, c, Coeff )
+          END IF
+          CALL ConstAddEntry( ConstAddM, c, c, 0.0_dp )
+
+          IF( NDOFs == 1 ) THEN
+            ! The flux from the previous solution, i.e. lumped residual without the coefficient.
+            PrevFlux = MCoeff * PrevFlux
+            IF( Parallel ) PrevFlux = ParallelReduction( PrevFlux )
+            CALL ListAddConstReal( VList, TRIM(CondName)//' Prev Flux', PrevFlux )
+            WRITE(Message,'(A,ES12.3)') 'Previous lumped flux for '//TRIM(CondName)//': ',PrevFlux
+            CALL Info(Caller,Message,Level=8)
+          END IF
+
+          ConstSlots = slot
+          CALL Info(Caller,'Global dof '//I2S(slot)//' for "'//TRIM(CondName)//'" with '&
+              //I2S(totset)//' nodes',Level=8)
+        END DO
+      END DO
+
+      DEALLOCATE( InSet, Wgt, NodeMult )
+      IF( Parallel ) DEALLOCATE( pPerm, Wmin )
+!------------------------------------------------------------------------------
+    END SUBROUTINE SetConstantGlobalDofs
+!------------------------------------------------------------------------------
+
+
+!------------------------------------------------------------------------------
 !> Set values related to a specific boundary or bulk element.
 !------------------------------------------------------------------------------
     SUBROUTINE SetLumpedRows(ind0,n)
@@ -2123,9 +2672,9 @@ CONTAINS
 !------------------------------------------------------------------------------
     INTEGER :: p,q,i,j,k,l,m,n,nn,ii,nlen,jmp,size0
     INTEGER, POINTER :: PPerm(:)
-    LOGICAL :: GotIt, Found, Jump
+    LOGICAL :: GotIt, Found, Jump, MoveMass, MoveDamp, EigHarm, Damped
     REAL(KIND=dp) :: Scale, weight, coeff
-    TYPE(Matrix_t), POINTER :: F, G, Projector, Projector1
+    TYPE(Matrix_t), POINTER :: F, G, H, Projector, Projector1
     TYPE(Variable_t), POINTER :: Var, WeightVar
     TYPE(ValueList_t), POINTER :: BC
     TYPE(MortarBC_t), POINTER :: MortarBC
@@ -2296,6 +2845,33 @@ CONTAINS
       F % RHS => F % BulkRHS
       F % Values => F % BulkValues
 
+      ! The slave rows of the mass and damping matrices are summed to the master
+      ! rows likewise, when they are used. These are the conditions where the
+      ! slave rows are zeroed at the second pass (see CRS_ZeroRow).
+      MoveMass = .FALSE.; MoveDamp = .FALSE.
+      IF( ASSOCIATED( A % Solver ) ) THEN
+        IF( A % Solver % NOFEigenValues > 0 ) THEN
+          EigHarm = ListGetLogical( A % Solver % Values, 'Eigen Analysis', Found ) .OR. &
+              ListGetLogical( A % Solver % Values, 'Harmonic Analysis', Found )
+          Damped = ListGetLogical( A % Solver % Values, 'Eigen Analysis', Found ) .AND. &
+              ListGetLogical( A % Solver % Values, 'Eigen System Damped', Found )
+          IF( EigHarm .AND. .NOT. Damped .AND. ASSOCIATED( A % MassValues ) ) &
+              MoveMass = ( SIZE( A % MassValues ) == SIZE( A % Values ) )
+          IF( EigHarm .AND. ASSOCIATED( A % DampValues ) ) &
+              MoveDamp = ( SIZE( A % DampValues ) == SIZE( A % Values ) )
+        END IF
+      END IF
+      IF( MoveMass ) THEN
+        ALLOCATE(G)
+        G = A
+        G % Values => G % MassValues
+      END IF
+      IF( MoveDamp ) THEN
+        ALLOCATE(H)
+        H = A
+        H % Values => H % DampValues
+      END IF
+
       DO i=1,Projector % NumberOfRows
          ii = Projector % InvPerm(i)
          IF( ii == 0 ) CYCLE
@@ -2315,6 +2891,10 @@ CONTAINS
                      CALL AddToMatrixElement( F, m, F % Cols(nn), &
                           -scale*Projector % Values(l) * F % Values(nn) )
                    END IF
+                   IF( MoveMass ) CALL AddToMatrixElement( G, m, G % Cols(nn), &
+                       -scale*Projector % Values(l) * G % Values(nn) )
+                   IF( MoveDamp ) CALL AddToMatrixElement( H, m, H % Cols(nn), &
+                       -scale*Projector % Values(l) * H % Values(nn) )
                 END DO
                 b(m)=b(m) - scale*Projector % Values(l)*b(k)
                 IF (ASSOCIATED(F % RHS)) THEN
@@ -2326,6 +2906,8 @@ CONTAINS
          Done(ii) = .TRUE.
       END DO
       DEALLOCATE(F)
+      IF( MoveMass ) DEALLOCATE(G)
+      IF( MoveDamp ) DEALLOCATE(H)
     END IF
 
 !------------------------------------------------------------------------------

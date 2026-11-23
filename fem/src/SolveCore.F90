@@ -3433,7 +3433,7 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     INTEGER :: i,j,k,n, AllocStat
     TYPE(Matrix_t), POINTER :: A
     TYPE(Variable_t), POINTER :: Var
-    LOGICAL :: Damped, Direct, Found
+    LOGICAL :: Damped, Direct, Found, Truncate
     CHARACTER(LEN=MAX_NAME_LEN) :: str
     !------------------------------------------------------------------------------
     n = StiffMatrix % NumberOfRows
@@ -3444,10 +3444,20 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
     Damped = ListGetLogical( Solver % Values, 'Eigen System Damped', Found)
     Direct = ListGetString( Solver % Values, 'Linear System Solver', Found) == 'direct'
 
+    Truncate = .FALSE.
     IF( Damped .AND. Direct ) THEN
       A => GenerateStateEquationSystem(Solver,A,n)
       ALLOCATE(EVecs(NOFEigen,n)); EVecs=0
       CALL ListAddLogical( Solver % Values,'Eigen System Damped', .FALSE. )
+    ELSE
+      ! The matrix may have more rows than the variable, e.g. a collection matrix
+      ! with the rows of constraints. Only the primary part of the vectors is kept.
+      k = n
+      IF( A % Complex ) k = n/2
+      IF( SIZE( EigenVectors, 2 ) < k ) THEN
+        ALLOCATE(EVecs(NOFEigen,k)); EVecs=0
+        Truncate = .TRUE.
+      END IF
     END IF
 
     IF ( .NOT. A % Complex ) THEN
@@ -3476,6 +3486,10 @@ SUBROUTINE SolveEigenSystem( StiffMatrix, NOFEigen, &
       END DO
       DEALLOCATE(EVecs)
       CALL ListAddLogical( Solver % Values,'Eigen System Damped', .TRUE. )
+    ELSE IF( Truncate ) THEN
+      k = SIZE( EigenVectors, 2 )
+      EigenVectors(1:NOFEigen,1:k) = EVecs(1:NOFEigen,1:k)
+      DEALLOCATE(EVecs)
     END IF
 
  CONTAINS
@@ -6341,24 +6355,29 @@ CONTAINS
 !------------------------------------------------------------------------------
    SUBROUTINE CopyMassDampValues(A,B,C)
 !------------------------------------------------------------------------------
-     TYPE(Matrix_t)  :: A,B,C
+     TYPE(Matrix_t)  :: A,B
+     TYPE(Matrix_t), POINTER :: C   !< additional matrix, may be absent
 !------------------------------------------------------------------------------
      INTEGER :: i,j,n
+     LOGICAL :: HaveC, Need
 !------------------------------------------------------------------------------
      REAL(KIND=dp), POINTER :: svals(:)
 !------------------------------------------------------------------------------
      n = SIZE(A % Values)
+     HaveC = ASSOCIATED(C)
 
-     IF(ASSOCIATED(B % MassValues) .OR. ASSOCIATED(C % MassValues)) THEN
-       IF(.NOT.ASSOCIATED(A % MassValues)) THEN
-         ALLOCATE(A % MassValues(n)); A % MassValues = 0._dp
-       END IF
+     ! No short-circuit evaluation in Fortran: C may be null, test it separately.
+     Need = ASSOCIATED(B % MassValues)
+     IF(.NOT. Need .AND. HaveC) Need = ASSOCIATED(C % MassValues)
+     IF(Need .AND. .NOT.ASSOCIATED(A % MassValues)) THEN
+       ALLOCATE(A % MassValues(n)); A % MassValues = 0._dp
      END IF
 
-     IF(ASSOCIATED(B % DampValues) .OR. ASSOCIATED(C % DampValues)) THEN
-       IF(.NOT.ASSOCIATED(A % DampValues)) THEN
-         ALLOCATE(A % DampValues(n)); A % DampValues = 0._dp
-       END IF
+     ! No short-circuit evaluation in Fortran: C may be null, test it separately.
+     Need = ASSOCIATED(B % DampValues)
+     IF(.NOT. Need .AND. HaveC) Need = ASSOCIATED(C % DampValues)
+     IF(Need .AND. .NOT.ASSOCIATED(A % DampValues)) THEN
+       ALLOCATE(A % DampValues(n)); A % DampValues = 0._dp
      END IF
 
      svals => A % Values
@@ -6367,18 +6386,20 @@ CONTAINS
        A % Values => A % MassValues
        DO i=B % NumberOfRows,1,-1
          DO j=B % Rows(i+1)-1,B % Rows(i),-1
-           CALL AddToMatrixElement( A, i, B % Cols(j), B % Values(j) )
+           CALL AddToMatrixElement( A, i, B % Cols(j), B % MassValues(j) )
          END DO
        END DO
      END IF
 
-     IF(ASSOCIATED(C % MassValues)) THEN
-       A % Values => A % MassValues
-       DO i=C % NumberOfRows,1,-1
-         DO j=C % Rows(i+1)-1,C % Rows(i),-1
-           CALL AddToMatrixElement( A, i, C % Cols(j), C % Values(j) )
+     IF(HaveC) THEN
+       IF(ASSOCIATED(C % MassValues)) THEN
+         A % Values => A % MassValues
+         DO i=C % NumberOfRows,1,-1
+           DO j=C % Rows(i+1)-1,C % Rows(i),-1
+             CALL AddToMatrixElement( A, i, C % Cols(j), C % MassValues(j) )
+           END DO
          END DO
-       END DO
+       END IF
      END IF
 
      IF(ASSOCIATED(B % DampValues)) THEN
@@ -6390,13 +6411,15 @@ CONTAINS
        END DO
      END IF
 
-     IF(ASSOCIATED(C % DampValues)) THEN
-       A % Values => A % DampValues
-       DO i=C % NumberOfRows,1,-1
-         DO j=C % Rows(i+1)-1,C % Rows(i),-1
-           CALL AddToMatrixElement( A, i, C % Cols(j), C % DampValues(j) )
+     IF(HaveC) THEN
+       IF(ASSOCIATED(C % DampValues)) THEN
+         A % Values => A % DampValues
+         DO i=C % NumberOfRows,1,-1
+           DO j=C % Rows(i+1)-1,C % Rows(i),-1
+             CALL AddToMatrixElement( A, i, C % Cols(j), C % DampValues(j) )
+           END DO
          END DO
-       END DO
+       END IF
      END IF
 
      A % Values => svals

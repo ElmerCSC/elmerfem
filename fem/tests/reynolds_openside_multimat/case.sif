@@ -1,0 +1,113 @@
+! Open Side BC in a two-material Reynolds problem.
+! Checks that the boundary assembly uses the parent element's material
+! models and the current pressure, not those left over from the last
+! bulk element.
+!
+! Isothermal ideal gas, h=1, mu=1, Reference Pressure=1, P = 1 + p.
+!   Body 1 (y<5,  Material 1): rarefied, Mean Free Path 0.5 -> Kn = 0.5/P
+!   Body 2 (y>5,  Material 2): newtonian
+! p = 1 at the top (y=10), Open Side at the bottom (y=0).
+! In 1D the mass flux G(P) P' is constant, with G1 = P (1+9.638 Kn^1.159)
+! and G2 = P. At the open side the density and the effective viscosity
+! cancel, leaving p'(0) = p0/(dl0 h), dl0 = 0.8488 (1+2.676 Kn0^0.659).
+! Integrating G gives a scalar equation for p0, whose root is
+!   p0 = min FilmPressure = 0.0944489772
+! The FE nodal values reproduce it to ~1e-10 on this mesh.
+! With the boundary using material 2 and the pressure of the last bulk
+! element, p0 ~ 0.0970 instead.
+
+Header
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+End
+
+Body 1
+  Name = "Rarefied"
+  Equation = 1
+  Material = 1
+End
+
+Body 2
+  Name = "Continuum"
+  Equation = 1
+  Material = 2
+End
+
+Equation 1
+  Name = "Eqs"
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "Reynolds"
+  Procedure = File "ReynoldsSolver" "ReynoldsSolver"
+  Variable = FilmPressure
+
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1.0e-12
+End
+
+Solver 2
+  Exec Solver = after all
+  Equation = "SavePressure"
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = FilmPressure
+  Operator 1 = min
+  Show Norm Index = 1
+End
+
+Material 1
+  Name = "RarefiedGas"
+  Viscosity = Real 1.0
+  Gap Height = Real 1.0
+  Reference Pressure = Real 1.0
+  Compressibility Model = String "isothermal ideal gas"
+  Viscosity Model = String "rarefied"
+  Mean Free Path = Real 0.5
+End
+
+Material 2
+  Name = "ContinuumGas"
+  Viscosity = Real 1.0
+  Gap Height = Real 1.0
+  Reference Pressure = Real 1.0
+  Compressibility Model = String "isothermal ideal gas"
+  Viscosity Model = String "newtonian"
+End
+
+Boundary Condition 1
+  Name = "bottom"
+  Target Boundaries(1) = 1
+  Open Side = Logical True
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "top"
+  Target Boundaries(1) = 3
+  FilmPressure = Real 1.0
+End
+
+Boundary Condition 4
+  Name = "left"
+  Target Boundaries(1) = 4
+End
+
+Solver 2 :: Reference Norm = 0.0944489772
+Solver 2 :: Reference Norm Tolerance = 1.0e-5

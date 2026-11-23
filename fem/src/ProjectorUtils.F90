@@ -1853,6 +1853,15 @@ CONTAINS
      ! We assume that the given ConstraintMatrix is constant but we have consider it the 1st time
      IF( ASSOCIATED( Solver % Matrix % AddMatrix ) ) THEN
        CALL Info(Caller,'Releasing previous AddMatrix!',Level=12)
+       ! It may be a copy merged with the global dofs of "Constant" conditions,
+       ! then also release the previous matrix of ours it was built on.
+       Btmp => Solver % Matrix % AddMatrix % Parent
+       IF( ASSOCIATED( Btmp ) ) THEN
+         IF( ASSOCIATED( Btmp % Child, Solver % Matrix % AddMatrix ) ) THEN
+           Btmp % Child => NULL()
+           CALL FreeMatrix( Btmp )
+         END IF
+       END IF
        CALL FreeMatrix( Solver % Matrix % AddMatrix )
      END IF
 

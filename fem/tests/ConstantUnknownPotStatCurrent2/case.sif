@@ -44,6 +44,7 @@ Solver 1
   Variable = "Potential"
   Procedure = "StatCurrentSolve" "StatCurrentSolver"
 
+  Nonlinear System Consistent Norm = True
   Linear System Solver = "Iterative"
   Linear System Iterative Method = "bicgstab"
   Linear System Max Iterations = 500
@@ -55,6 +56,7 @@ End
 Solver 2
   Equation = "SaveScalars"
   Procedure = "SaveData" "SaveScalars"
+  Parallel Reduce = Logical True
   Filename = f.dat
   Mask Name 1 = Right BC
   Variable 1 = Potential

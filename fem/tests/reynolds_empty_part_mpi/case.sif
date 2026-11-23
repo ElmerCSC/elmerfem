@@ -1,0 +1,129 @@
+! Reynolds solved in body 1 only, on 2 partitions split at the body
+! interface: partition 1 (rank 1) has no Reynolds elements, so neither
+! ReynoldsSolver nor ReynoldsPostprocess is run there and the "res:"
+! totals exist only on rank 0. SaveScalars on rank 1 then finds no values
+! to save, and used to return before its final parallel sync, leaving
+! rank 0 waiting there forever.
+! Reference norms are the serial values.
+
+Header
+  Mesh DB "." "rect"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 2D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Output Intervals = 0
+!  Post File = "case.vtu"
+End
+
+Body 1
+  Name = "Lower"
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+
+Body 2
+  Name = "Upper"
+  Equation = 2
+  Material = 1
+  Body Force = 2
+End
+
+Equation 1
+  Name = "Eqs"
+  Active Solvers(2) = 1 2
+End
+
+Equation 2
+  Name = "Nothing"
+End
+
+Solver 1
+  Equation = "Reynolds"
+  Procedure = File "ReynoldsSolver" "ReynoldsSolver"
+  Variable = FilmPressure
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = CG
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-12
+
+  Nonlinear System Max Iterations = 1
+End
+
+Solver 2
+  Equation = "ReynoldsPost"
+  Procedure = File "ReynoldsSolver" "ReynoldsPostprocess"
+  Calculate Heating = Logical True
+  Calculate Force = Logical True
+  Calculate Force Dim = Integer 3
+  Moment About(2) = Real 5.0 50.0
+
+  Linear System Solver = Iterative
+  Linear System Iterative Method = CG
+  Linear System Preconditioning = ILU0
+  Linear System Max Iterations = 1000
+  Linear System Convergence Tolerance = 1.0e-12
+End
+
+Solver 3
+  Exec Solver = after all
+  Equation = "SaveHeating"
+  Procedure = "SaveData" "SaveScalars"
+  Show Norm Name = String "res: reynolds heating"
+End
+
+Solver 4
+  Exec Solver = after all
+  Equation = "SaveMoment"
+  Procedure = "SaveData" "SaveScalars"
+  Show Norm Name = String "res: reynolds moment 1"
+End
+
+Material 1
+  Name = "Viscous"
+  Viscosity = Real 1.0e-2
+  Gap Height = Real 1.0
+End
+
+Body Force 1
+  Normal Velocity = Real -1.0e-3
+  Tangent Velocity 1 = Real 0.2
+End
+
+Body Force 2
+  Normal Velocity = Real -3.0e-3
+  Tangent Velocity 1 = Real 0.6
+End
+
+Boundary Condition 1
+  Name = "bottom"
+  Target Boundaries(1) = 1
+  FilmPressure = 0.0
+End
+
+Boundary Condition 2
+  Name = "right"
+  Target Boundaries(1) = 2
+End
+
+Boundary Condition 3
+  Name = "top"
+  Target Boundaries(1) = 3
+  FilmPressure = 0.0
+End
+
+Boundary Condition 4
+  Name = "left"
+  Target Boundaries(1) = 4
+End
+
+Solver 3 :: Reference Norm = 2.49995000E-01
+Solver 4 :: Reference Norm = 9.37375000E+02

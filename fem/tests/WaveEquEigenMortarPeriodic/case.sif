@@ -1,0 +1,76 @@
+! Eigenmodes of the wave equation on a unit square, periodic in x by a mortar
+! condition and free (Neumann) in y. The mortar constraint makes the eigen
+! problem go through the collection matrix of SolveWithLinearRestriction.
+!
+! For bilinear elements on the regular 20x20 mesh the discrete eigenvalues are
+! sums of the 1D periodic and 1D Neumann ones. The 10th eigenvalue (a simple
+! one) is compared against that exact discrete value, 90.4821001818.
+
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "sq"
+End
+
+Simulation
+  Coordinate System = "Cartesian"
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+  Max Output Level = 5
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Sound Speed = 1.0
+  Density = 1.0
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Solver 1
+  Equation = "WaveEq"
+  Variable = "Potential"
+  Procedure = "WaveSolver" "WaveSolver"
+
+  Linear System Solver = "Direct"
+  Linear System Direct Method = Umfpack
+
+  Apply Mortar BCs = Logical True
+
+  Eigen Analysis = True
+  Eigen System Values = 12
+  Eigen System Select = smallest magnitude
+! The stiffness matrix is singular (constant mode), so shift it for the factorization.
+  Eigen System Shift = Real -1.0
+  Eigen System Convergence Tolerance = Real 1.0e-9
+End
+
+Solver 2
+  Equation = "SaveScalars"
+  Procedure = "SaveData" "SaveScalars"
+  Save EigenValues = True
+
+! The 10th eigenvalue is simple, unlike its neighbours.
+  Show Norm Index = 10
+End
+
+Boundary Condition 1
+  Name = "Left"
+  Target Boundaries(1) = 4
+End
+
+Boundary Condition 2
+  Name = "Right"
+  Target Boundaries(1) = 2
+  Mortar BC = 1
+  Mortar BC Static = Logical True
+End
+
+Solver 2 :: Reference Norm = 9.048210018182E+01
+Solver 2 :: Reference Norm Tolerance = 1.0e-7

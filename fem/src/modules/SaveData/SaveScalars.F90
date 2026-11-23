@@ -188,7 +188,8 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   INTEGER :: PrevComm, CommRank, CommSize, nSlices, nTimes
   REAL(KIND=dp) :: Vals(100)
   LOGICAL :: GotEigen, GotEdge
-  INTEGER :: NoVals
+  INTEGER :: NoVals, nImported
+  CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: ImportedNames(:)
   CHARACTER(*), PARAMETER :: Caller = 'SaveScalars'
 
   SAVE :: jsonpos, PrevRunInd
@@ -215,6 +216,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   IF( ASSOCIATED( Var ) ) RunInd = NINT( Var % Values(1) )
 
   SimulationVisited = .FALSE.
+  nImported = 0
 
   ScalarsFile = ListGetString(Params,'Filename',SaveToFile )
   IF( SaveToFile ) THEN
@@ -1211,18 +1213,7 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Read the scalars defined in other modules
   !------------------------------------------------------------------------------
-  Lst => ListHead(Model % Simulation)
-  l = 0
-  DO WHILE( ASSOCIATED( Lst ) )
-    IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
-      IF ( ASSOCIATED(Lst % Fvalues) ) THEN
-        CALL AddToSaveList(Lst % Name, Lst % Fvalues(1,1,1), &
-            CheckForDuplicates = SimulationVisited )
-        l = l + 1
-      END IF
-    END IF
-    Lst => Lst % Next
-  END DO
+  CALL AddResultScalars( l )
   IF(l > 0 ) THEN
     WRITE (Message,'(A,I0,A)') 'Found ',l,' result scalars in simulation section'
     CALL Info(Caller,Message,Level=7)
@@ -1272,6 +1263,11 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   IF( NoValues == 0 ) THEN
     CALL Warn(Caller,'Found no values to save')
+    ! Other partitions may have values (e.g. "res:" keywords of a solver
+    ! active only there) and wait in the final sync below: join it.
+    n = 1
+    n = ParallelReduction(n)
+    IF( PrevComm > 0 ) ParEnv % ActiveComm = PrevComm
     RETURN
   ELSE
     CALL Info(Caller,'Found '//I2S(NoValues)//' values to save in total',Level=6)
@@ -1528,7 +1524,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
   !------------------------------------------------------------------------------
   ! Add data to the Simulation block for possible future use
   !------------------------------------------------------------------------------
+  ! Result scalars received from other partitions are not stored: they
+  ! belong to the solvers of those partitions.
   DO No=1,NoValues
+    IF( nImported > 0 ) THEN
+      IF( ANY( ImportedNames(1:nImported) == ValueNames(No) ) ) CYCLE
+    END IF
     CALL ListAddConstReal(Model % Simulation,TRIM(ValueNames(No)),Values(No))
   END DO
 
@@ -1576,6 +1577,110 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
 
 CONTAINS
+
+
+!------------------------------------------------------------------------------
+!> Add the result scalars ("res:" keywords of the Simulation section) to the
+!> list of saved values. Without "Parallel Reduce" each partition saves its
+!> own scalars only. With it the saved scalars are global, but a solver may
+!> have been run only on some partitions and only those have its result
+!> scalars. Hence the union of the scalars over the partitions is saved, in the
+!> same order everywhere (so that parallel operators and indexes match). A
+!> partition uses its own value if it has one, otherwise the value of the
+!> lowest partition having it. The values received are only saved, not added
+!> to the Simulation section.
+!------------------------------------------------------------------------------
+  SUBROUTINE AddResultScalars( nres )
+    INTEGER :: nres
+!------------------------------------------------------------------------------
+    CHARACTER(LEN=MAX_NAME_LEN), ALLOCATABLE :: LocNames(:), AllNames(:), ResNames(:)
+    REAL(KIND=dp), ALLOCATABLE :: LocVals(:), AllVals(:), ResVals(:)
+    LOGICAL, ALLOCATABLE :: ResImported(:)
+    INTEGER, ALLOCATABLE :: Counts(:), Displs(:)
+    INTEGER :: nloc, nall, j, k, m, ip, comm, csize, PrevNo
+
+    ! Local result scalars
+    nloc = 0
+    DO k=1,2
+      Lst => ListHead(Model % Simulation)
+      nloc = 0
+      DO WHILE( ASSOCIATED( Lst ) )
+        IF ( Lst % Name(1:4) == TRIM(ResultPrefix) ) THEN
+          IF ( ASSOCIATED(Lst % Fvalues) ) THEN
+            nloc = nloc + 1
+            IF( k == 2 ) THEN
+              LocNames(nloc) = Lst % Name
+              LocVals(nloc) = Lst % Fvalues(1,1,1)
+            END IF
+          END IF
+        END IF
+        Lst => Lst % Next
+      END DO
+      IF( k == 1 ) ALLOCATE( LocNames(nloc), LocVals(nloc) )
+    END DO
+
+    IF( .NOT. ParallelReduce ) THEN
+      DO m=1,nloc
+        CALL AddToSaveList(LocNames(m), LocVals(m), CheckForDuplicates = SimulationVisited )
+      END DO
+      nres = nloc
+      RETURN
+    END IF
+
+    ! Gather the result scalars of all partitions
+    comm = ParEnv % ActiveComm
+    CALL MPI_COMM_SIZE( comm, csize, ierr )
+    ALLOCATE( Counts(csize), Displs(csize) )
+    CALL MPI_ALLGATHER( nloc, 1, MPI_INTEGER, Counts, 1, MPI_INTEGER, comm, ierr )
+    Displs(1) = 0
+    DO ip=2,csize
+      Displs(ip) = Displs(ip-1) + Counts(ip-1)
+    END DO
+    nall = SUM(Counts)
+
+    ALLOCATE( AllNames(MAX(nall,1)), AllVals(MAX(nall,1)) )
+    CALL MPI_ALLGATHERV( LocVals, nloc, MPI_DOUBLE_PRECISION, &
+        AllVals, Counts, Displs, MPI_DOUBLE_PRECISION, comm, ierr )
+    Counts = Counts * MAX_NAME_LEN
+    Displs = Displs * MAX_NAME_LEN
+    CALL MPI_ALLGATHERV( LocNames, nloc*MAX_NAME_LEN, MPI_CHARACTER, &
+        AllNames, Counts, Displs, MPI_CHARACTER, comm, ierr )
+
+    ! Union in the order of the partitions, own values preferred
+    ALLOCATE( ResNames(MAX(nall,1)), ResVals(MAX(nall,1)), ResImported(MAX(nall,1)) )
+    nres = 0
+    DO j=1,nall
+      IF( ANY( ResNames(1:nres) == AllNames(j) ) ) CYCLE
+      nres = nres + 1
+      ResNames(nres) = AllNames(j)
+      ResVals(nres) = AllVals(j)
+      ResImported(nres) = .TRUE.
+      DO m=1,nloc
+        IF( LocNames(m) == AllNames(j) ) THEN
+          ResVals(nres) = LocVals(m)
+          ResImported(nres) = .FALSE.
+          EXIT
+        END IF
+      END DO
+    END DO
+
+    IF( COUNT(ResImported(1:nres)) > 0 ) THEN
+      CALL Info(Caller,'Received '//I2S(COUNT(ResImported(1:nres)))//&
+          ' result scalars from other partitions',Level=8)
+      ALLOCATE( ImportedNames(COUNT(ResImported(1:nres))) )
+    END IF
+
+    DO m=1,nres
+      PrevNo = NoValues
+      CALL AddToSaveList(ResNames(m), ResVals(m), CheckForDuplicates = SimulationVisited )
+      IF( ResImported(m) .AND. NoValues > PrevNo ) THEN
+        nImported = nImported + 1
+        ImportedNames(nImported) = ResNames(m)
+      END IF
+    END DO
+!------------------------------------------------------------------------------
+  END SUBROUTINE AddResultScalars
+!------------------------------------------------------------------------------
 
 
   FUNCTION OperToParOperMap( LocalOper ) RESULT ( ParOper )

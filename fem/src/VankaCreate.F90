@@ -1039,6 +1039,8 @@
            k = A % Cols(j) - nm
            IF(k <= 0)  EXIT
            IF(k >  n) CYCLE
+           ! Rows owned by another partition are not part of the local block.
+           IF(Perm((k-1) / 2 + 1) == 0) CYCLE
            jj = 2*(Perm((k-1) / 2 + 1) - 1)
            c = CMPLX( TotValues(j), -TotValues(j+1), KIND=dp )
 
@@ -1070,6 +1072,8 @@
            k = A % Cols(j) - nm
            IF(k <= 0) EXIT
            IF(k  > n) CYCLE
+           ! Rows owned by another partition are not part of the local block.
+           IF(Perm(k) == 0) CYCLE
            jj = Perm(k)
            CALL AddToMatrixElement(tm, ii, jj,  TotValues(j))
          END DO
