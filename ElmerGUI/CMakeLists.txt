@@ -105,6 +105,8 @@ ENDIF()
 
 IF(WITH_OCC)
 
+  # The CAD viewer (Application/cad/cadview.cpp) renders with VTK, so OCC
+  # needs VTK regardless. WITH_VTK=OFF only leaves out VtkPost.
   IF(NOT WITH_VTK)
     SET(WITHOUT_VTKPOST TRUE)
   ENDIF()
@@ -142,7 +144,15 @@ IF(WITH_OCC)
 ENDIF()
 
 IF(WITH_VTK)
-  FIND_PACKAGE(VTK REQUIRED)
+  IF(WITHOUT_VTKPOST)
+    FIND_PACKAGE(VTK)
+    IF(NOT VTK_FOUND)
+      MESSAGE(FATAL_ERROR "ElmerGUI: WITH_OCC needs VTK for the CAD viewer, even with "
+        "WITH_VTK=OFF (which only leaves out VtkPost). Install VTK or set WITH_OCC=OFF.")
+    ENDIF()
+  ELSE()
+    FIND_PACKAGE(VTK REQUIRED)
+  ENDIF()
 
   # We do not use Java wrappings and they make linking very difficult when
   # building Debian/Ubuntu packages
