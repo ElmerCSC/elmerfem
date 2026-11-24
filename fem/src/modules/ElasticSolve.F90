@@ -565,6 +565,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   REAL(KIND=dp), POINTER :: UmatInitDone(:)
   ! The smallest PNEWDT the UMAT returned in the latest assembly
   REAL(KIND=dp) :: UmatPnewdt
+  ! The UMAT iteration broke down (a residual not finite, an inverted element)
+  ! or ended at the iteration limit without converging.
+  LOGICAL :: UmatInverted, UmatBroken, UmatNotConverged
+  ! Backtracking line search of the UMAT Newton iteration, see UmatLinesearchRetry.
+  LOGICAL :: LsActive, LsTrial, LsFound
+  INTEGER :: LsCount, LsMaxCount
+  REAL(KIND=dp) :: LsAlpha, LsSlope0, LsFactor, LsLimit
+  REAL(KIND=dp), ALLOCATABLE :: LsBase(:), LsDir(:), LsDirRot(:)
   REAL(KIND=dp), PARAMETER :: UmatNoPnewdt = 1.0d30
   LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta, NeedMass
   REAL(KIND=dp) :: RayleighAlpha, RayleighBeta
@@ -1692,6 +1700,24 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      IF (UseUMAT) THEN
        TotalSol(:) = Displacement(:)
        UmatPnewdt = HUGE(UmatPnewdt)
+       UmatInverted = .FALSE.
+       IF( iter == 1 ) THEN
+         UmatBroken = .FALSE.
+         UmatNotConverged = .FALSE.
+         LsTrial = .FALSE.
+         LsActive = ListGetLogical( SolverParams,'Nonlinear System Linesearch',LsFound )
+         IF( LsActive ) THEN
+           LsMaxCount = ListGetInteger( SolverParams,'Nonlinear System Linesearch Iterations',LsFound )
+           IF( .NOT. LsFound ) LsMaxCount = 10
+           LsFactor = ListGetCReal( SolverParams,'Nonlinear System Linesearch Factor',LsFound )
+           IF( .NOT. LsFound ) LsFactor = 0.5_dp
+           LsLimit = ListGetCReal( SolverParams,'Nonlinear System Linesearch Limit',LsFound )
+           IF( .NOT. LsFound ) LsLimit = 0.5_dp
+           IF( ALLOCATED( LsBase ) ) DEALLOCATE( LsBase, LsDir, LsDirRot )
+           ALLOCATE( LsBase( SIZE(Displacement) ), LsDir( SIZE(Displacement) ), &
+               LsDirRot( SIZE(Displacement) ) )
+         END IF
+       END IF
      END IF
 
      !------------------------------------------------------------------------------
@@ -1835,7 +1861,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
 
        IF (Parallel) THEN
-         ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
+         ! Employ BulkRHS vector to estimate the size of the current residual (RHS).
+         ! The parallel structures are renewed by the first linear solve: take
+         ! the pointers to them again on every iteration, else the residual is
+         ! read from a stale vector and the first solve never converges.
+         PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
+         IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+             ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+         Pb => PMatrix % RHS
          Solver % Matrix % BulkRHS = Solver % Matrix % RHS
          CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
          Norm = 0.0d0
@@ -1849,6 +1882,30 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        WRITE(Message,'(A,ES12.3)') 'Residual for nonlinear iterate '&
            //I2S(Iter-1)//': ',NonLinRes
        CALL Info('ElasticitySolver', Message, Level=5)
+
+       ! An inverted element, or a residual that is not finite: the iterate is
+       ! beyond repair. Stop before solving and assembling with it again, and
+       ! report the divergence, see the end of the iteration.
+       IF( Parallel ) THEN
+         i = 0
+         IF( UmatInverted ) i = 1
+         UmatInverted = ( ParallelReduction( i, 2 ) > 0 )
+       END IF
+
+       ! A Newton step that made things worse is shortened, and the shorter one
+       ! assembled again, before anything is solved.
+       IF( UmatLinesearchRetry() ) GOTO 100
+
+       IF( UmatInverted .OR. .NOT. ( NonlinRes <= HUGE( NonlinRes ) ) ) THEN
+         IF( UmatInverted ) THEN
+           CALL Warn('ElasticitySolver','Nonlinear iteration diverged: an element is inverted')
+         ELSE
+           CALL Warn('ElasticitySolver','Nonlinear iteration diverged: the residual is not finite')
+         END IF
+         UmatBroken = .TRUE.
+         Displacement(:) = TotalSol(:)
+         EXIT
+       END IF
 
        IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
          CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
@@ -1882,10 +1939,33 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      IF ( UseModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
 
      IF (UseUmat) THEN
+       IF( Solver % Variable % LinConverged == 2 ) THEN
+         ! The increment is garbage: keep the last iterate and stop, see UmatConvergenceStatus.
+         CALL Warn('ElasticitySolver','Nonlinear iteration diverged: the linear system solver diverged')
+         UmatBroken = .TRUE.
+         Displacement(:) = TotalSol(:)
+         EXIT
+       END IF
+       IF( LsActive ) THEN
+         ! The full Newton step is the first trial, judged at the next assembly.
+         ! The slope s(0) = du.R(u_k) is taken from the residual just solved for,
+         ! in the frame of the system (normal-tangential where so rotated).
+         LsBase(:) = TotalSol(:)
+         LsDir(:) = Displacement(:)
+         LsDirRot(:) = Displacement(:)
+         CALL RotateNTSystemAll(LsDirRot, StressPerm, STDOFs)
+         LsSlope0 = UmatLsSlope()
+         LsAlpha = 1.0_dp
+         LsCount = 0
+         ! Not a descent direction (should not happen with a positive definite
+         ! tangent): nothing to search along.
+         LsTrial = ( LsSlope0 > 0.0_dp )
+       END IF
        Displacement(:) = TotalSol(:) + Displacement(:)
        IF (iter==NonlinearIter) THEN
          CALL Info('ElasticitySolver', &
              'The maximum of nonlinear iterations reached: Terminating...', Level=5)
+         UmatNotConverged = ( NonlinearIter > 1 )
 
          ! Save the state variables corresponding to the converged nonlinear
          ! solution to the array holding the previous solution state. In a
@@ -1897,6 +1977,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        END IF
      ELSE
        !----------------------------------------------------------------------------------
+       IF ( Solver % Variable % NonlinConverged == 2 ) EXIT
        IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
            ( iter >= MinNonlinearIter ) ) EXIT
      END IF
@@ -1905,6 +1986,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   END DO ! of nonlinear iter
   !------------------------------------------------------------------------------
 
+  IF ( UseUMAT ) CALL UmatConvergenceStatus()
   IF ( UseUMAT .AND. TransientSimulation ) CALL UmatEndTimestep()
 
   CALL PostProcess()
@@ -1946,6 +2028,90 @@ CONTAINS
     END IF
     Prev => Var % PrevValues(:,1)
   END FUNCTION UmatPrevValues
+
+!------------------------------------------------------------------------------
+!> Line search of the UMAT Newton iteration, with "Nonlinear System
+!> Linesearch = True". The trial iterate u_k + alpha*du has just been
+!> assembled. It is judged by the slope s(alpha) = du.R(u_k + alpha*du), the
+!> derivative of the potential energy along the search direction (Crisfield;
+!> also what Abaqus uses), not by the norm of the residual: a Newton step of a
+!> bending structure raises large residuals orthogonal to du, such as axial
+!> forces, which the norm counts but which the iteration removes by itself.
+!>
+!> The trial is rejected if an element inverted or the residual is not finite
+!> (alpha is reduced by "Linesearch Factor"), or if it went beyond the energy
+!> minimum along du, s(alpha) < -Limit*s(0) (alpha is set to the root of the
+!> secant of s, kept within [0.1,0.9]*alpha). True is then returned and the
+!> caller assembles again at the shorter step, without solving. A trial short
+!> of the minimum (s > 0) is accepted, as is the last one after "Linesearch
+!> Iterations" reductions. The UMAT always starts from the committed state of
+!> the step, so a rejected trial leaves nothing behind. The decision is the
+!> same on all partitions: the slope, the residual and the inversion flag are
+!> all reduced over them.
+!------------------------------------------------------------------------------
+  FUNCTION UmatLinesearchRetry() RESULT( Retry )
+    LOGICAL :: Retry
+    LOGICAL :: Broken, Bad
+    REAL(KIND=dp) :: r, NewAlpha
+
+    Retry = .FALSE.
+    IF( .NOT. LsTrial ) RETURN
+
+    Broken = UmatInverted .OR. .NOT. ( NonlinRes <= HUGE( NonlinRes ) )
+    r = 0.0_dp
+    Bad = Broken
+    IF( .NOT. Broken .AND. NonlinRes >= NonlinTol ) THEN
+      r = UmatLsSlope() / LsSlope0
+      Bad = ( r < -LsLimit )
+    END IF
+
+    IF( .NOT. Bad .OR. LsCount >= LsMaxCount ) THEN
+      IF( Bad ) CALL Info('ElasticitySolver','Line search exhausted: taking the last step',Level=5)
+      LsTrial = .FALSE.
+      RETURN
+    END IF
+
+    IF( Broken ) THEN
+      NewAlpha = LsFactor * LsAlpha
+    ELSE
+      ! s is linear in alpha to first order: its root between 0 and alpha.
+      NewAlpha = LsAlpha / ( 1.0_dp - r )
+      NewAlpha = MAX( 0.1_dp * LsAlpha, MIN( 0.9_dp * LsAlpha, NewAlpha ) )
+    END IF
+    LsCount = LsCount + 1
+    LsAlpha = NewAlpha
+    WRITE(Message,'(A,I0,A,ES12.4,A,ES12.4)') 'Line search ',LsCount,': step length ',LsAlpha,&
+        ', slope ratio ',r
+    CALL Info('ElasticitySolver',Message,Level=5)
+
+    Displacement(:) = LsBase(:) + LsAlpha * LsDir(:)
+    TotalSol(:) = Displacement(:)
+    UmatPnewdt = HUGE(UmatPnewdt)
+    UmatInverted = .FALSE.
+    Retry = .TRUE.
+  END FUNCTION UmatLinesearchRetry
+
+!------------------------------------------------------------------------------
+!> The slope du.R of the line search: the search direction times the residual
+!> of the current system, over the unconstrained dofs. In parallel the local
+!> residual holds the partition's own contributions only, so the sum over the
+!> partitions counts each shared dof once.
+!------------------------------------------------------------------------------
+  FUNCTION UmatLsSlope() RESULT( Slope )
+    REAL(KIND=dp) :: Slope
+    INTEGER :: i
+    LOGICAL :: Constrained
+
+    Constrained = ALLOCATED( StiffMatrix % ConstrainedDOF )
+    Slope = 0.0_dp
+    DO i=1,SIZE(LsDirRot)
+      IF( Constrained ) THEN
+        IF( StiffMatrix % ConstrainedDOF(i) ) CYCLE
+      END IF
+      Slope = Slope + LsDirRot(i) * StiffMatrix % RHS(i)
+    END DO
+    IF( Parallel ) Slope = ParallelReduction( Slope )
+  END FUNCTION UmatLsSlope
 
 !------------------------------------------------------------------------------
 !> Make the UMAT state of the converged solution the previous state.
@@ -2017,6 +2183,36 @@ CONTAINS
     END DO
     LocalForce(1:m) = LocalForce(1:m) - MATMUL( LocalStiffMatrix(1:m,1:m), uk )
   END SUBROUTINE UmatSpringResidual
+
+!------------------------------------------------------------------------------
+!> Report how the UMAT iteration ended, in the convergence flag of the variable:
+!> 2 diverged (an inverted element or a residual not finite), 0 the iteration
+!> limit reached (only when "Adaptive Reject Not Converged" asks for it). Adaptive timestepping rejects a diverged step
+!> ("Adaptive Reject Not Converged" also one not converged), as does
+!> "Convergence Control". Without either a diverged iteration cannot go on.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatConvergenceStatus()
+    LOGICAL :: StepControl, Found
+
+    ! Otherwise the flag is left at -1: the iteration is over the increment, and
+    ! -1 tells SolveCoupled to compute the norm of the displacement itself.
+    Solver % Variable % NonlinConverged = -1
+    IF( UmatBroken ) THEN
+      Solver % Variable % NonlinConverged = 2
+    ELSE IF( UmatNotConverged ) THEN
+      CALL Warn('ElasticitySolver','Nonlinear iteration did not converge to tolerance')
+      IF( ListGetLogical( Model % Simulation,'Adaptive Reject Not Converged', Found ) ) &
+          Solver % Variable % NonlinConverged = 0
+    END IF
+
+    IF( UmatBroken ) THEN
+      StepControl = ListGetLogical( Model % Simulation,'Adaptive Timestepping', Found )
+      IF( .NOT. StepControl ) StepControl = &
+          ListGetLogical( Model % Simulation,'Convergence Control', Found )
+      IF( .NOT. StepControl ) CALL Fatal('ElasticitySolver', &
+          'Nonlinear iteration diverged: use a smaller timestep or "Adaptive Timestepping"')
+    END IF
+  END SUBROUTINE UmatConvergenceStatus
 
 !------------------------------------------------------------------------------
 !> The end of a transient timestep with UMAT. The velocity and acceleration of
@@ -3434,6 +3630,13 @@ CONTAINS
               DefG(1,2) * ( DefG(2,3)*DefG(3,1) - DefG(2,1)*DefG(3,3) ) + &
               DefG(1,3) * ( DefG(2,1)*DefG(3,2) - DefG(2,2)*DefG(3,1) )
         END SELECT
+
+        ! An inverted element (or one not finite): its iterate cannot be used.
+        ! Skip the point and let the nonlinear iteration stop, see UmatInverted.
+        IF( .NOT. ( DetDefG > 0.0_dp .AND. DetDefG <= HUGE(DetDefG) ) ) THEN
+          UmatInverted = .TRUE.
+          CYCLE
+        END IF
 
         !-------------------------------------------------------------
         !  InvDefG will be the inverse of the deformation gradient

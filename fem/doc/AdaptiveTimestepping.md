@@ -46,12 +46,9 @@ All other keywords have defaults suitable for most cases.
 
 | Value | Cost per try | Description |
 |---|---|---|
-| `predictor` (default) | 1 solve | The solution is compared to its extrapolation from the previous
-   accepted steps (Milne's device). Works for BDF (and implicit Euler). Step doubling is used
-    for the first steps, until the history is long enough, and for methods other than BDF. |
+| `predictor` (default) | 1 solve | The solution is compared to its extrapolation from the previous accepted steps (Milne's device). Works for BDF (and implicit Euler). Step doubling is used for the first steps, until the history is long enough, and for methods other than BDF. |
 | `weighted` | 3 solves | Step doubling: one full step and two half steps, compared with the weighted norm below. |
-| `norm` | 3 solves | The original estimate: step doubling, with the error the largest relative
-   change of the solver *norms*. Kept for compatibility, it tracks the true error poorly. |
+| `norm` | 3 solves | The original estimate: step doubling, with the error the largest relative change of the solver *norms*. Kept for compatibility, it tracks the true error poorly. |
 
 With `predictor` and `weighted`, the error is a weighted RMS norm over the
 degrees of freedom of each solver:
@@ -88,17 +85,14 @@ partitions take the same steps as a serial run.
 | `Adaptive Increase Coefficient` | Real | 2.0 | Largest growth factor of the step. |
 | `Adaptive Decrease Coefficient` | Real | 0.5 | Smallest reduction factor of the step. |
 | `Adaptive Max Timestep` | Real | `dt` | Largest substep. It is never larger than the user timestep `dt`. |
-| `Adaptive Min Timestep` | Real | 1e-8 × max | Smallest substep. A try at the minimum size is accepted whatever
-   its error, with a warning. |
+| `Adaptive Min Timestep` | Real | 1e-8 × max | Smallest substep. A try at the minimum size is accepted whatever its error, with a warning. |
 | `Adaptive Keep Smallest` | Integer | 0 | After a rejection, keep the reduced size for this many steps before letting it grow. |
 | `Adaptive Initial Timestep` | Real | – | Size of the first substep. If not given, it is found by the probe step. |
-| `Adaptive Initial Probe` | Logical | True | Estimate the first substep by a discarded trial step of 1e-3 × max size.
-    False starts from the max size instead. |
+| `Adaptive Initial Probe` | Logical | True | Estimate the first substep by a discarded trial step of 1e-3 × max size. False starts from the max size instead. |
 | `Adaptive Timestep Stretch` | Real | 0.1 | How much a step may be stretched to reach the end of a user timestep (see below). |
-| `Adaptive Smart Timestep` | Logical | – | Old ways at the end of a user timestep: True splits the rest into two equal steps,
-   False takes it as is. Giving it at all turns off the default look-ahead. |
-| `Adaptive Rough Timestep` | Logical | False | Do not shorten the last substep to end exactly at the user timestep. The solution
-  is labelled with its true time, and the next timestep is shortened by the overshoot. |
+| `Adaptive Smart Timestep` | Logical | – | Old ways at the end of a user timestep: True splits the rest into two equal steps, False takes it as is. Giving it at all turns off the default look-ahead. |
+| `Adaptive Rough Timestep` | Logical | False | Do not shorten the last substep to end exactly at the user timestep. The solution is labelled with its true time, and the next timestep is shortened by the overshoot. |
+| `Adaptive Reject Not Converged` | Logical | False | Reject a try also when a solver's nonlinear iteration ends at its iteration limit without converging (see below). A diverged iteration always rejects the try. |
 
 ### Solver section
 
@@ -106,8 +100,7 @@ partitions take the same steps as a serial run.
 |---|---|---|---|
 | `Adaptive Time Error` | Real | Simulation value | Relative tolerance for this solver. |
 | `Adaptive Time Error Absolute` | Real | Simulation value | Absolute tolerance for this solver. |
-| `Adaptive Error Exclude` | Logical | – | True leaves the solver out of the error estimate. False forces it in, for
-   solvers that integrate in time on their own. |
+| `Adaptive Error Exclude` | Logical | – | True leaves the solver out of the error estimate. False forces it in, for solvers that integrate in time on their own. |
 | `Adaptive Error Components` | Integer array | all but pressure | The components of a vector variable that are included. |
 
 ### Set by the code (not by the user)
@@ -115,8 +108,7 @@ partitions take the same steps as a serial run.
 | Keyword | Section | Meaning |
 |---|---|---|
 | `Adaptive Error Measure` | Simulation | Error estimate supplied by a solver (Runge-Kutta 2 sets it). |
-| `Adaptive Timestep Request` | Simulation | Largest step a solver accepts for the current try (absolute time).
-   If the try was longer it is rejected, and the next steps are limited to it. ElasticSolve sets it from the `PNEWDT` of a UMAT. |
+| `Adaptive Timestep Request` | Simulation | Largest step a solver accepts for the current try (absolute time). If the try was longer it is rejected, and the next steps are limited to it. ElasticSolve sets it from the `PNEWDT` of a UMAT. |
 
 
 ## Absolute tolerance
@@ -145,6 +137,82 @@ The last substep is shortened to end exactly at the user timestep (unless
   the shortening (growth still limited by `Adaptive Increase Coefficient`).
 
 
+## Nonlinear divergence
+
+A try is also rejected when the nonlinear iteration of a solver diverges. The
+rest of the try's solves are skipped, and the step is reduced by `Adaptive
+Decrease Coefficient`. The log line of the try is marked `(diverged)`. A
+solver reports divergence:
+- through `Nonlinear System Divergence Limit` (any solver using the standard
+  convergence test);
+- in ElasticSolve with a UMAT, when the residual is not finite or an element
+  is inverted (`det F <= 0`). The iteration stops there, before the next
+  assembly. Without adaptive timestepping or `Convergence Control` this is
+  fatal;
+- when an iterative linear solver diverges and `Linear System Abort Not
+  Converged = False` (otherwise this is fatal already).
+
+An iteration that only reaches `Nonlinear System Max Iterations` without
+converging is accepted with a warning. With `Adaptive Reject Not Converged =
+True` it is rejected too. This is useful when the step size is limited by the
+nonlinear iteration rather than by the time discretization error. Examples are
+quasi-static plasticity driven through time, or any case without mass, where
+the error estimate is close to zero. Use it only with solvers that have a
+`Nonlinear System Convergence Tolerance`: without one, a solver never reports
+convergence.
+
+If a try diverges even at `Adaptive Min Timestep`, it is accepted with a
+warning.
+
+### Line search with a UMAT
+
+Near a limit load a full Newton step of a plastic material often overshoots,
+typically into inverted elements, and the try diverges although a solution
+exists. Then the steps shrink far below what the error tolerance would allow.
+In ElasticSolve with a UMAT, a line search avoids this:
+
+    Nonlinear System Linesearch = True
+
+After each Newton solve the full step `du` is tried first. It is judged by the
+slope `s(alpha) = du . R(u + alpha*du)`, the derivative of the potential
+energy along the step, as in Crisfield's method (and Abaqus). The residual
+norm would be a poor measure: a Newton step of a bending structure raises
+large residuals across `du`, such as axial forces, which the iteration then
+removes by itself. The step is shortened, and the iterate assembled again
+without a new linear solve, when
+- an element is inverted or the residual is not finite: `alpha` is reduced by
+  `Linesearch Factor`;
+- the step went beyond the energy minimum along `du`, `s(alpha) < -Limit *
+  s(0)`: `alpha` is set to the root of the secant of `s`.
+
+A step short of the minimum is accepted, and after the given number of
+reductions the last step is taken as it is. The UMAT always starts from the
+state of the beginning of the step, so a rejected trial leaves nothing behind.
+
+| Keyword (Solver section) | Type | Default | Meaning |
+|---|---|---|---|
+| `Nonlinear System Linesearch` | Logical | False | Turns the line search on. |
+| `Nonlinear System Linesearch Iterations` | Integer | 10 | Largest number of step reductions per Newton iteration. |
+| `Nonlinear System Linesearch Factor` | Real | 0.5 | Reduction of the step length after an inverted element or a non-finite residual. |
+| `Nonlinear System Linesearch Limit` | Real | 0.5 | How far beyond the energy minimum a step may go, as a fraction of the initial slope. |
+
+In a quasi-static plasticity case driven through time this allowed steps
+about 60 times longer, with the same results. The test `UMAT_linesearch`
+applies a load in one step that plain Newton cannot.
+
+### Quasi-static cases
+
+For a case without inertia, give the solver
+
+    Time Derivative Order = 1
+    Quasi Stationary = True
+
+Then the time derivative is of first order and the `predictor` estimate can
+be used, at one solve per try. The estimate then measures how well the
+solution follows its extrapolation along the load path. Without these the
+solver is of second order and step doubling is used, at three solves per try.
+
+
 ## Notes and limitations
 
 - The `predictor` estimate needs BDF (or implicit Euler). With Newmark, Bossak
@@ -169,3 +237,4 @@ The last substep is shortened to end exactly at the user timestep (unless
 | `TimeAdaptRough` | `Adaptive Rough Timestep` |
 | `TimeAdaptMeshUpdate` | a moving mesh, state restored on rejection |
 | `UMAT_viscoelastic_adaptive` | a UMAT with state variables and `PNEWDT` |
+| `UMAT_linesearch` | the line search of the UMAT Newton iteration |

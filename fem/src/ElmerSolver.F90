@@ -161,6 +161,8 @@
        LOGICAL :: PushSize
      END TYPE TimeState_t
      TYPE(TimeState_t), SAVE, TARGET :: SubstepState
+     ! "Adaptive Reject Not Converged", see SolversDiverged
+     LOGICAL, SAVE :: RejectNotConverged = .FALSE.
      ! Solutions of the full step of adaptive timestepping
      TYPE(TimeVarState_t), ALLOCATABLE, SAVE, TARGET :: FullStep(:)
      ! History of accepted solutions of the solvers for the predictor error
@@ -2840,6 +2842,8 @@
      ! stretched it, and how much a step may be stretched to reach the end.
      REAL(KIND=dp) :: DdtWanted, AdaptiveStretch, Remains, StretchLimit
      LOGICAL :: AdaptiveLookahead, GotSmart
+     ! A solver of the try diverged (or did not converge, if so asked)
+     LOGICAL :: TryDiverged
      LOGICAL :: GotReq
      INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
      LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found, DoIt
@@ -3193,6 +3197,9 @@
            AdaptiveStretch = ListGetConstReal( CurrentModel % Simulation, &
                'Adaptive Timestep Stretch', GotIt )
            IF(.NOT. GotIt) AdaptiveStretch = 0.1_dp
+
+           RejectNotConverged = ListGetLogical( CurrentModel % Simulation, &
+               'Adaptive Reject Not Converged', GotIt )
          END IF
 
 
@@ -3378,6 +3385,7 @@
                   ProbeStep = MAX( 1.0d-3 * AdaptiveMaxTimestep, AdaptiveMinTimestep )
                   CALL SaveTimeState( SubstepState )
                   CALL ListRemove( CurrentModel % Simulation,'Adaptive Timestep Request')
+                  CALL ResetConvergence()
                   CALL SetSubstep( ProbeStep, s + ProbeStep )
                   CALL SolveEquations( CurrentModel, ProbeStep, Transient, &
                       CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
@@ -3398,6 +3406,8 @@
                     MaxErr = MAX( MaxErr, ListGetConstReal( CurrentModel % Simulation, &
                         'Adaptive Error Measure' ) / AdaptiveLimit )
                   END IF
+                  ! A diverged probe gives no error: start below its size
+                  IF( SolversDiverged() ) MaxErr = HUGE( MaxErr )
                   CALL RestoreTimeState( SubstepState )
 
                   IF( MaxErr /= MaxErr .OR. MaxErr > HUGE(MaxErr) ) THEN
@@ -3465,47 +3475,60 @@
                IF( PredictorError ) UsePredictor = PredictorReady()
 
                ! Solve with full timestep
+               CALL ResetConvergence()
                CALL SetSubstep( ddt, s + CumTime + ddt )
                CALL SolveEquations( CurrentModel, ddt, Transient, &
                    CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
                    BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
 
-               IF( UsePredictor ) THEN
-                 CALL PredictorTimeError( AdaptiveLimit, AdaptiveAbsError, GotAbsError, &
-                     MaxErr, ErrorOrder, ErrorSolver )
+               ! A solver that diverged rejects the try, without its error estimate
+               ! and the rest of its solves.
+               TryDiverged = SolversDiverged()
+               IF( .NOT. TryDiverged ) THEN
+
+                 IF( UsePredictor ) THEN
+                   CALL PredictorTimeError( AdaptiveLimit, AdaptiveAbsError, GotAbsError, &
+                       MaxErr, ErrorOrder, ErrorSolver )
+                 ELSE IF( WeightedError ) THEN
+                   CALL StoreFullStep()
+                 ELSE
+                   ! External adaptive error given
+                   MaxErr = ListGetConstReal( CurrentModel % Simulation, &
+                       'Adaptive Error Measure', GotIt )
+
+                   FullNorm = 0.0_dp
+                   DO i=1,nSolvers
+                     Solver => CurrentModel % Solvers(i)
+                     IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
+                     IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
+                     FullNorm(i) = Solver % Variable % Norm
+                   END DO
+                 END IF
+
+                 IF( .NOT. UsePredictor ) THEN
+                   ! Test the error for two steps of half the size
+                   CALL RestoreTimeState( SubstepState )
+
+                   CALL ResetConvergence()
+                   CALL SetSubstep( ddt/2, s + CumTime + ddt/2 )
+                   CALL SolveEquations( CurrentModel, ddt/2, Transient, &
+                       CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                       BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                   IF( PredictorError ) CALL StoreHalfStep()
+
+                   CALL SetSubstep( ddt/2, s + CumTime + ddt )
+                   CALL SolveEquations( CurrentModel, ddt/2, Transient, &
+                       CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
+                       BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
+                 END IF
+                 TryDiverged = SolversDiverged()
+               END IF
+
+               IF( TryDiverged ) THEN
+                 StepAccepted = .FALSE.
+                 MaxErr = HUGE( MaxErr )
+                 StepFactor = AdaptiveDecrease
                ELSE IF( WeightedError ) THEN
-                 CALL StoreFullStep()
-               ELSE
-                 ! External adaptive error given
-                 MaxErr = ListGetConstReal( CurrentModel % Simulation, &
-                     'Adaptive Error Measure', GotIt )
-
-                 FullNorm = 0.0_dp
-                 DO i=1,nSolvers
-                   Solver => CurrentModel % Solvers(i)
-                   IF ( .NOT. ASSOCIATED( Solver % Variable ) ) CYCLE
-                   IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) CYCLE
-                   FullNorm(i) = Solver % Variable % Norm
-                 END DO
-               END IF
-
-               IF( .NOT. UsePredictor ) THEN
-                 ! Test the error for two steps of half the size
-                 CALL RestoreTimeState( SubstepState )
-
-                 CALL SetSubstep( ddt/2, s + CumTime + ddt/2 )
-                 CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                     CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
-                     BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
-                 IF( PredictorError ) CALL StoreHalfStep()
-
-                 CALL SetSubstep( ddt/2, s + CumTime + ddt )
-                 CALL SolveEquations( CurrentModel, ddt/2, Transient, &
-                     CoupledMinIter, CoupledMaxIter, SteadyStateReached, RealTimestep, &
-                     BeforeTime = .TRUE., AtTime = .TRUE., AfterTime = .FALSE.)
-               END IF
-
-               IF( WeightedError ) THEN
                  ! Error relative to the tolerances, the step is fine if it is <= 1
                  IF( .NOT. UsePredictor ) CALL WeightedTimeError( AdaptiveLimit, &
                      AdaptiveAbsError, GotAbsError, MaxErr, ErrorOrder, ErrorSolver )
@@ -3563,6 +3586,7 @@
 
                WRITE(Message,'(A,3ES20.12)') 'Adaptive(cum,ddt,err): ', CumTime, ddt, MaxErr
                IF( UsePredictor ) Message = TRIM(Message)//' (predictor)'
+               IF( TryDiverged ) Message = TRIM(Message)//' (diverged)'
                IF( GotReq ) THEN
                  WRITE(Message,'(A,ES12.4)') TRIM(Message)//' request ',ReqStep
                END IF
@@ -3574,6 +3598,7 @@
                    WRITE(Message,'(A,ES12.4,A,ES12.4)') 'Accepting timestep ',ddt,&
                        ' at the minimum size with error ',MaxErr
                    CALL Warn(Caller, Message)
+                   IF( TryDiverged ) CALL Warn(Caller,'A solver diverged even at the minimum timestep size')
                    IF( WeightedError .AND. ErrorSolver > 0 ) THEN
                      CALL Warn(Caller,'The error is from solver '//I2S(ErrorSolver)//&
                          ': if its field starts from zero give it "Adaptive Time Error Absolute"')
@@ -4404,6 +4429,41 @@
 !> error estimate must use BDF methods at their full order, and their histories
 !> of accepted solutions must be long enough. The partitions decide together.
 !------------------------------------------------------------------------------
+   !------------------------------------------------------------------------------
+   !> Forget the convergence of the solvers before the solves of a try, so that
+   !> SolversDiverged sees only what this try did.
+   !------------------------------------------------------------------------------
+   SUBROUTINE ResetConvergence()
+     INTEGER :: i
+     DO i=1,CurrentModel % NumberOfSolvers
+       IF( ASSOCIATED( CurrentModel % Solvers(i) % Variable ) ) &
+           CurrentModel % Solvers(i) % Variable % NonlinConverged = -1
+     END DO
+   END SUBROUTINE ResetConvergence
+
+   !------------------------------------------------------------------------------
+   !> Did the nonlinear iteration of a solver diverge in the try (NonlinConverged
+   !> 2, see ComputeChange and ElasticSolve)? With "Adaptive Reject Not
+   !> Converged" also an iteration that ended at its limit (0) counts.
+   !------------------------------------------------------------------------------
+   FUNCTION SolversDiverged() RESULT ( Diverged )
+     USE ParallelUtils, ONLY : ParallelReduction
+     LOGICAL :: Diverged
+     INTEGER :: i, d
+     d = 0
+     DO i=1,CurrentModel % NumberOfSolvers
+       IF( .NOT. ASSOCIATED( CurrentModel % Solvers(i) % Variable ) ) CYCLE
+       SELECT CASE( CurrentModel % Solvers(i) % Variable % NonlinConverged )
+       CASE( 2 )
+         d = 1
+       CASE( 0 )
+         IF( RejectNotConverged ) d = 1
+       END SELECT
+     END DO
+     IF( ParEnv % PEs > 1 ) d = ParallelReduction( d, 2 )
+     Diverged = ( d > 0 )
+   END FUNCTION SolversDiverged
+
    FUNCTION PredictorReady() RESULT ( Ready )
      USE ParallelUtils, ONLY : ParallelReduction
      LOGICAL :: Ready

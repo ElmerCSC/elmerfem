@@ -4123,6 +4123,15 @@ END FUNCTION SearchNodeL
         END IF
       END IF
 
+      ! The linear solver diverged ("Linear System Abort Not Converged = False"):
+      ! the solution is garbage, so iterating further is pointless. Report the
+      ! nonlinear iteration as diverged, which ends it and lets adaptive
+      ! timestepping or "Convergence Control" reduce the step.
+      IF( Solver % Variable % LinConverged == 2 ) THEN
+        CALL Warn(Caller,'Linear system solver diverged: nonlinear iteration diverged')
+        Solver % Variable % NonlinConverged = 2
+      END IF
+
       IF( .NOT. Solver % NewtonActive ) THEN
         Tolerance = ListGetCReal( SolverParams, 'Nonlinear System Newton After Tolerance',Stat )
         IF( Stat .AND. Change < Tolerance ) Solver % NewtonActive = .TRUE.

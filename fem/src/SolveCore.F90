@@ -1584,6 +1584,9 @@ CONTAINS
       CALL Fatal(Caller,'Give "Linear System Solver", e.g. "iterative" or "direct"')
     END IF
 
+    ! Not every linear solver reports its status: forget the one of an earlier solve.
+    IF( ASSOCIATED( Solver % Variable ) ) Solver % Variable % LinConverged = -1
+
     IF( ListGetLogical( Params,'Linear System Skip Mask',Found ) ) THEN
       IF(.NOT. ASSOCIATED(A % SkipMask)) THEN
         CALL Info('IterSolver','Creating edge skip mask for linear system solver!')

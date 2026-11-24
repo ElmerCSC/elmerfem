@@ -4599,7 +4599,7 @@ CONTAINS
     END IF
 
     IF( LinearSystemTrialing ) THEN
-      IF( x % LinConverged > 0 ) THEN
+      IF( x % LinConverged == 1 ) THEN
         IF( ListGetLogical( Params,'Linear System Trialing Conserve',Found ) ) THEN
           MaxCount = ListGetInteger( Params,'Linear System Trialing Conserve Rounds',Found )
           IF( Found ) THEN
