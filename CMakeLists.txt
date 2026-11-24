@@ -102,7 +102,6 @@ SET(ELMER_INSTALL_LIB_DIR "lib/elmersolver" CACHE PATH "Location of elmer shared
 SET(WITH_Trilinos FALSE CACHE BOOL "Use Trilinos")
 SET(WITH_FETI4I FALSE CACHE BOOL "Use FETI4I")
 SET(WITH_PERMON FALSE CACHE BOOL "Use PERMON")
-SET(WITH_ELMERPOST FALSE CACHE BOOL "Include ElmerPost (DEPRECATED)")
 SET(WITH_CONTRIB FALSE CACHE BOOL "Include contributed solvers")
 
 SET(WITH_LUA FALSE CACHE BOOL "Include LUA extensions.")
@@ -122,8 +121,6 @@ OPTION(EXTERNAL_METIS "Link to external Metis library" OFF)
 
 # Optionally, relocate the installation prefix based on binary location
 OPTION(RELOCATE_PREFIX "Relocate installation prefix on runtime" OFF)
-
-MARK_AS_ADVANCED(WITH_ELMERPOST)
 
 # if("${CMAKE_VERSION}" VERSION_GREATER 2.8.12)
 #   CMAKE_POLICY(SET CMP0022 OLD)
@@ -1066,12 +1063,6 @@ IF(WITH_ELMERGUILOGGER)
   MESSAGE(STATUS "  Building ElmerGUI logger")
   MESSAGE(STATUS "------------------------------------------------")
 ENDIF(WITH_ELMERGUILOGGER)
-
-IF(WITH_ELMERPOST)
-  MESSAGE(WARNING "  Building ElmerPost")
-  MESSAGE(STATUS "------------------------------------------------")
-  ADD_SUBDIRECTORY(post)
-ENDIF(WITH_ELMERPOST)
 
 IF(HAVE_LUA)
   MESSAGE(STATUS "  Building Lua")
