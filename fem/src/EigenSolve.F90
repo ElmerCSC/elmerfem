@@ -220,7 +220,7 @@ CONTAINS
 !     %----------------------------------------------------%
 !
       NCV = ListGetInteger( Params, 'Eigen System Lanczos Vectors', stat )
-      IF ( .NOT. stat ) NCV = 3*NEIG + 1
+      IF ( .NOT. stat ) NCV = MIN( 3*NEIG + 1, n )
 
       IF ( NCV <=  NEIG ) THEN
          CALL Fatal( Caller, &
@@ -939,7 +939,7 @@ END SUBROUTINE CheckResiduals
          CALL Error(Caller,'Lumped matrices are not allowed in stability analysis.' )
       END IF
 
-      NCV = 3 * NEIG + 1
+      NCV = MIN( 3*NEIG + 1, n )
 
       lWORKL = NCV*(NCV+8)
 
@@ -1292,7 +1292,7 @@ END SUBROUTINE CheckResiduals
       Params => Solver % Values
 
       NCV = ListGetInteger( Params, 'Eigen System Lanczos Vectors', stat )
-      IF ( .NOT. stat ) NCV = 3*NEIG + 1
+      IF ( .NOT. stat ) NCV = MIN( 3*NEIG + 1, n )
 
       IF ( NCV <=  NEIG ) THEN
         CALL Fatal( 'EigenSolve', &
@@ -1348,8 +1348,7 @@ END SUBROUTINE CheckResiduals
 
       CALL ArpackSetWhich( Params, .FALSE., Mode, Which )
 
-      Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat )
-      IF ( .NOT. stat ) Maxitr = 300
+      Maxitr = ListGetInteger( Params, 'Eigen System Max Iterations', stat, DefValue = 300 )
 
       IPARAM = 0
       IPARAM(1) = 1
@@ -1829,7 +1828,7 @@ END SUBROUTINE CheckResidualsComplex
 !     |               NEV + 1 <= NCV <= MAXNCV             |
 !     %----------------------------------------------------%
 
-      NCV = 3 * NEIG + 1
+      NCV = MIN( 3*NEIG + 1, n )
 
       ALLOCATE( workd(3*n), resid(n), dperm(n), stat=istat )
       IF ( istat /= 0 ) CALL Fatal( Caller, 'Memory allocation error.' )
