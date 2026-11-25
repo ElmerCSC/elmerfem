@@ -655,7 +655,7 @@ CONTAINS
 !
       CHARACTER ::     BMAT*1, Which*2, DirectMethod*32
       INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, pn, IERR, iter, &
-                       NCONV, maxitr, ishfts, mode, istat, DOFs, LinIter
+                       NCONV, maxitr, ishfts, mode, istat, DOFs, LinIter, MinPn
       LOGICAL   ::     First, Stat, Direct = .FALSE., &
                        Iterative = .FALSE., NewSystem
 
@@ -701,13 +701,36 @@ CONTAINS
 !     |               NEV + 1 <= NCV <= MAXNCV             |
 !     %----------------------------------------------------%
 !
+      ! pzneupd checks NCV against the local size pn (ncv > n gives ierr = -3),
+      ! so NCV is limited by the smallest partition. It seems that this check
+      ! should be corrected on PARPACK side, but now we just inform what can
+      ! go wrong:
+      MinPn = ParallelReduction(pn,1)
       NCV = ListGetInteger( Solver % Values, 'Eigen System Lanczos Vectors', stat )
-      IF ( .NOT. stat ) NCV = MIN( 3*NEIG + 1, pn )
-      NCV = ParallelReduction(NCV,1)
+      IF ( stat ) THEN
+        IF ( NCV > MinPn ) THEN
+          CALL Fatal( Caller, 'Eigen System Lanczos Vectors ('//I2S(NCV)// &
+              ') exceeds the size of the smallest partition ('//I2S(MinPn)// &
+              '), which PARPACK (pzneupd) does not allow' )
+        END IF
+      ELSE
+        NCV = MIN( 3*NEIG + 1, MinPn )
+        IF ( NCV < 3*NEIG + 1 ) THEN
+          CALL Warn( Caller, 'Default number of Lanczos vectors reduced from '// &
+              I2S(3*NEIG+1)//' to '//I2S(NCV)//' by the size of the smallest partition' )
+          CALL Warn( Caller, 'Convergence may suffer, consider fewer or better balanced partitions' )
+        END IF
+      END IF
 
-      IF ( NCV <=  NEIG ) THEN
-         CALL Fatal( 'ParallelEigenSolve', &
-               'Number of Lanczos vectors must exceed the number of eigenvalues.' )
+      ! pzneupd also requires NCV >= NEIG+2
+      IF ( NCV <= NEIG + 1 ) THEN
+        IF ( .NOT. stat .AND. NCV == MinPn ) THEN
+          CALL Fatal( Caller, 'Smallest partition ('//I2S(MinPn)// &
+              ' rows) is too small for '//I2S(NEIG)//' eigenvalues, NCV >= NEIG+2 is needed' )
+        ELSE
+          CALL Fatal( Caller, 'Number of Lanczos vectors must be at least '// &
+              'the number of eigenvalues plus two.' )
+        END IF
       END IF
 
       ALLOCATE( WORKL(3*NCV**2 + 6*NCV), D(NCV), &
