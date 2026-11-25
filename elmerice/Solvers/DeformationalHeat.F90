@@ -152,6 +152,7 @@ CONTAINS
   SUBROUTINE LocalMatrix(  STIFF, FORCE, Element,  n, Velo, Viscosity)
 !------------------------------------------------------------------------------
     USE MaterialModels
+    USE CoordinateSystems, ONLY : CoordinateSystemDimension
 
     REAL(KIND=dp) :: STIFF(:,:), FORCE(:), Velo(:,:), Viscosity(:)
     INTEGER :: n,dim

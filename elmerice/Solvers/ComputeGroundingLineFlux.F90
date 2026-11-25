@@ -88,6 +88,7 @@ END SUBROUTINE ComputeGroundingLineFlux_Init
 SUBROUTINE ComputeGroundingLineFlux( Model,Solver,dt,TransientSimulation )
 !------------------------------------------------------------------------------
   USE DefUtils
+  USE CoordinateSystems, ONLY : CoordinateSystemDimension
   USE MeshUtils
   USE MeshTransform, ONLY : DetectExtrudedStructure
   IMPLICIT NONE

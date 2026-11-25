@@ -55,6 +55,9 @@
   FUNCTION SourceCalc (Model, NodeNumber, SomeVariable) RESULT(Source)
 !------------------------------------------------------------------------------
     USE DefUtils
+#ifdef __NVCOMPILER
+    USE IEEE_ARITHMETIC, ONLY : ISNAN => IEEE_IS_NAN
+#endif
     IMPLICIT NONE
 
     TYPE(Model_t) :: Model
