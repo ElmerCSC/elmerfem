@@ -79,7 +79,8 @@ MODULE MainUtils
 
   USE SplitFEMUtils, ONLY: CreateSplitFEMMatrix, CreateSplitFEMAddMesh, &
       CreateSplitFEMPerm, CreateSplitFEMVariable, SplitFEMRevert, &
-      SplitFEMLevelsetUpdate, SplitFEMOutput
+      SplitFEMLevelsetUpdate, SplitFEMOutput, SplitFEMSetBodies, SplitFEMRevertBodies, &
+      SplitFEMSwapVariables
   
   USE DefUtils, ONLY : GetString, GetCReal, GetElementNOFNodes, GetLogical, &
       DefaultDirichletBCs, GetMesh, GetInteger, GetMatrix, GetElementNOFNodes, &
@@ -3309,9 +3310,15 @@ CONTAINS
         CALL ParallelActive(.TRUE.)
       END IF
 #endif
-      
+
+      ! The SplitFEM meshes created here copy the body id's of the original elements,
+      ! so make sure the SplitFEM inside/outside/interface bodies are applied.
+      ! They stay applied until the next non-SplitFEM solver, or SplitFEMRevert
+      ! at the end of the timestep.
+      CALL SplitFEMSetBodies(Model)
+
       ! Updates Level-set and creates 1D mesh that becomes "Mesh % Next"
-      ! The Mesh % Next is saved normally in the VTU files etc. 
+      ! The Mesh % Next is saved normally in the VTU files etc.
       CALL SplitFEMLevelSetUpdate(Solver,Solver % Mesh)
 
       ! SplitFEMOutput may create the SplitFEM mesh (CreateSplitFEMMesh ->
@@ -5964,6 +5971,18 @@ END BLOCK
        ! Call the correct type of solver: standard (single), coupled or block
        ! This is where everything really happens!
        !---------------------------------------------------------------------
+       ! SplitFEM: SplitFEM solvers need the inside/outside/interface body id's,
+       ! all other solvers the original ones. The body id's are only changed when
+       ! the type of solver changes, so consecutive SplitFEM solvers do no extra work.
+       ! Non-SplitFEM solvers see the SplitFEM fields through their original nodal
+       ! storage (updated after each SplitFEM solve by SplitFEMVariableExtrapolate).
+       IF( Solver % SplitFEM ) THEN
+         CALL SplitFEMSetBodies( Model )
+       ELSE
+         CALL SplitFEMRevertBodies( Model )
+         CALL SplitFEMSwapVariables( Model, .TRUE. )
+       END IF
+
        IF( Solver % SolverMode == SOLVER_MODE_COUPLED .OR. &
            Solver % SolverMode == SOLVER_MODE_ASSEMBLY ) THEN
          CALL CoupledSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
@@ -5972,6 +5991,8 @@ END BLOCK
        ELSE
          CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
        END IF
+
+       IF( .NOT. Solver % SplitFEM ) CALL SplitFEMSwapVariables( Model, .FALSE. )
 
        IF( GotLoops ) THEN
          IF( ListGetLogical( Params,'Save Scanning Modes',Found ) ) THEN

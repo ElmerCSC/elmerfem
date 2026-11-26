@@ -69,6 +69,10 @@ MODULE SplitFemUtils
   INTEGER, POINTER :: TopPointer(:) => NULL(), BotPointer(:) => NULL()
   TYPE(Matrix_t), POINTER :: NodeMatrix => NULL()
   INTEGER :: SplitFemBody = -1
+  ! Are the SplitFEM inside/outside/interface body ids currently applied to the original mesh?
+  LOGICAL :: SplitFEMBodiesSet = .FALSE.
+  ! Are the SplitFEM field variables currently swapped to their original nodal storage?
+  LOGICAL :: SplitFEMVarsSwapped = .FALSE.
   LOGICAL :: SplitFEMExtruded = .FALSE., SplitFEM3D = .FALSE.
   CHARACTER(:), ALLOCATABLE :: CutStr
   INTEGER :: CutDofs = 0
@@ -83,7 +87,8 @@ MODULE SplitFemUtils
   PUBLIC :: CreateSplitFEMMatrix, CreateSplitFEMMesh, CreateSplitFEMPerm, CreateSplitFEMAddMesh, &
       SplitFEMVariableExtrapolate, SplitFEMSetOrigMesh, SplitFEMSetAddMesh, SplitFEMLevelSetUpdate, &
       CutInterfaceBC, CutInterfaceBulk, CutInterfaceCheck, CreateSplitFEMVariable, &
-      SplitFEMRevert, SetSplitFEMBodies, SplitFEMOutput, SplitFEMEnrichVariable
+      SplitFEMRevert, SetSplitFEMBodies, SplitFEMOutput, SplitFEMEnrichVariable, &
+      SplitFEMSetBodies, SplitFEMRevertBodies, SplitFEMSwapVariables
 
   PUBLIC :: CutInterp
   
@@ -681,16 +686,22 @@ CONTAINS
     Params => Model % Simulation
 
     IF(Revert) THEN
+      ! Nothing to do if the original body id's are already in place.
+      IF(.NOT. SplitFEMBodiesSet) RETURN
       ! Revert to original body id's.
-      ! If we don't do this then ActiveElements is spoiled. 
-      DO t=1,Mesh % NumberOfBulkElements        
+      ! If we don't do this then ActiveElements is spoiled.
+      DO t=1,Mesh % NumberOfBulkElements
         Element => Mesh % Elements(t)
         IF(ALL(XiPerm(Element % NodeIndexes)>0)) THEN
           Element % BodyId = SplitFemBody
         END IF
       END DO
+      SplitFEMBodiesSet = .FALSE.
       RETURN
     END IF
+
+    ! Already applied: setting again would read the modified id's as the original ones.
+    IF(SplitFEMBodiesSet) RETURN
 
     body_in = ListGetInteger( Params,'SplitFEM Inside Body',Found )
     IF(.NOT. Found) body_in = Model % NumberOfBodies
@@ -755,10 +766,88 @@ CONTAINS
       Element % BodyId = j
     END DO
 
+    SplitFEMBodiesSet = .TRUE.
+
     WRITE(Message,'(A,3I9)') 'Inside/outside element counts: ',InsideCnt
     CALL Info('SetSplitFEMBodies',Message,Level=25)
-              
+
   END SUBROUTINE SetSplitFEMBodies
+
+
+  !> Apply the SplitFEM inside/outside/interface body id's on the original mesh.
+  !> Used around SplitFEM solvers so that other solvers always see the original bodies.
+  SUBROUTINE SplitFEMSetBodies(Model)
+    TYPE(Model_t) :: Model
+    IF(.NOT. ASSOCIATED(SplitFEMOrigMesh)) RETURN
+    IF(.NOT. ASSOCIATED(XiPerm) .OR. .NOT. ALLOCATED(CutDof)) RETURN
+    IF(.NOT. ASSOCIATED(PhiValues)) RETURN
+    CALL SetSplitFEMBodies(Model, SplitFEMOrigMesh, .FALSE.)
+  END SUBROUTINE SplitFEMSetBodies
+
+
+  !> Restore the original body id's on the original mesh.
+  SUBROUTINE SplitFEMRevertBodies(Model)
+    TYPE(Model_t) :: Model
+    IF(.NOT. ASSOCIATED(SplitFEMOrigMesh)) RETURN
+    IF(.NOT. ASSOCIATED(XiPerm)) RETURN
+    CALL SetSplitFEMBodies(Model, SplitFEMOrigMesh, .TRUE.)
+  END SUBROUTINE SplitFEMRevertBodies
+
+
+  !> Swap the field variables of the active SplitFEM solvers between the SplitFEM
+  !> storage (Perm => CutPerm) and the original nodal storage kept in Solver % Orig*.
+  !> ToOrig = .TRUE.  : make the original nodal fields visible, e.g. for non-SplitFEM solvers.
+  !>                    The original values are kept up-to-date by SplitFEMVariableExtrapolate
+  !>                    ("Copy Back Values", default True) after each SplitFEM solve.
+  !> ToOrig = .FALSE. : restore the SplitFEM fields.
+  SUBROUTINE SplitFEMSwapVariables(Model, ToOrig)
+    TYPE(Model_t) :: Model
+    LOGICAL :: ToOrig
+
+    INTEGER :: k
+    TYPE(Solver_t), POINTER :: pSolver
+    TYPE(Variable_t), POINTER :: Var
+    INTEGER, POINTER :: tPerm(:)
+    REAL(KIND=dp), POINTER :: tValues(:), tPrevValues(:,:)
+
+    IF( ToOrig .EQV. SplitFEMVarsSwapped ) RETURN
+
+    DO k=1,Model % NumberOfSolvers
+      pSolver => Model % Solvers(k)
+      IF(.NOT. pSolver % SplitFEM ) CYCLE
+      IF(.NOT. pSolver % SplitFEMActive ) CYCLE
+      Var => pSolver % Variable
+      IF(.NOT. ASSOCIATED(Var) ) CYCLE
+      IF(.NOT. ASSOCIATED(pSolver % OrigValues) ) CYCLE
+
+      IF( ToOrig ) THEN
+        IF( Var % TYPE /= Variable_on_splitfem ) CYCLE
+      ELSE
+        IF( Var % TYPE /= Variable_on_nodes ) CYCLE
+      END IF
+
+      tPerm => Var % Perm
+      tValues => Var % Values
+      tPrevValues => Var % PrevValues
+
+      Var % Perm => pSolver % OrigPerm
+      Var % Values => pSolver % OrigValues
+      Var % PrevValues => pSolver % OrigPrevValues
+
+      pSolver % OrigPerm => tPerm
+      pSolver % OrigValues => tValues
+      pSolver % OrigPrevValues => tPrevValues
+
+      IF( ToOrig ) THEN
+        Var % TYPE = Variable_on_nodes
+      ELSE
+        Var % TYPE = Variable_on_splitfem
+      END IF
+    END DO
+
+    SplitFEMVarsSwapped = ToOrig
+
+  END SUBROUTINE SplitFEMSwapVariables
 
   
   
