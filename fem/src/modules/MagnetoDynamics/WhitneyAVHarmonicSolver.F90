@@ -74,8 +74,14 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
     CALL ListAddString( SolverParams, "Element", TRIM(ElemType) )
   END IF
 
-  CALL ListAddNewLogical( SolverParams, 'Linear System Complex', .TRUE. )
+  IF( ListGetLogical( SolverParams,'Harmonic Newton Exact', Found ) ) THEN
+    CALL Info('WhitneyHarmonicSolver_Init0','Exact Newton spoils the complex linear system!')
+    CALL LIstAddLogical( SolverParams,'Linear System Complex',.FALSE.)
+  ELSE
+    CALL ListAddNewLogical( SolverParams,'Linear System Complex',.TRUE.)
+  END IF
 
+  
 ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
@@ -228,6 +234,13 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp), POINTER :: Cwrk(:,:,:), Cwrk_im(:,:,:), LamThick(:)
   REAL(KIND=dp), POINTER :: sValues(:), fixpot(:)
   REAL(KIND=dp) :: NewtonTol
+  ! Weight of the complex-linear Newton term (default 1 = previous behaviour)
+  REAL(KIND=dp) :: NewtonWeight
+  ! Exact Newton: conjugate part of the Jacobian kept in a separate real matrix (same sparsity, real 2x2 blocks),
+  ! inner real GCR preconditioned by the (reused) complex factorization of K + H
+  LOGICAL :: ExactNewton, ElemJACC
+  COMPLEX(KIND=dp), ALLOCATABLE :: JACC(:,:)
+  LOGICAL :: InnerGCR, AnyJACC
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
@@ -380,6 +393,25 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   NewtonTol = GetCReal( SolverParams,&
       'Nonlinear System Newton After Tolerance',Found )
 
+  ! The complex-linear Jacobian nu'(B.rotW_i)(B*.rotW_j)/|B| treats a phase change of B like a change of
+  ! its magnitude. The true derivative of nu(|B|)B is not complex-linear: it is half this term plus a
+  ! conjugate part. Weight 0.5 balances the error between magnitude and phase changes.
+  NewtonWeight = GetCReal( SolverParams, 'Harmonic Newton Weight', Found )
+  IF(.NOT. Found) NewtonWeight = 1.0_dp
+  ! report the weight, so that scripts can check that the keyword was applied
+  IF( Found ) THEN
+    WRITE( Message,'(A,F8.4)') 'Harmonic Newton Weight: ', NewtonWeight
+    CALL Info('WhitneyAVHarmonicSolver', Message, Level=3)
+  END IF
+
+  ! Exact Newton: d(nu(|B|)B) = nu dB + nu'/(2|B|) B (B*.dB) + nu'/(2|B|) B (B.dB*). The last (conjugate) part is
+  ! not complex-linear.
+  ExactNewton = GetLogical( SolverParams, 'Harmonic Newton Exact', Found )
+  IF( ExactNewton ) THEN
+    NewtonWeight = 0.5_dp
+    CALL Info('WhitneyAVHarmonicSolver','Harmonic Newton Exact: inner GCR with the complex factorization', Level=3)
+  END IF
+  ElemJACC = .FALSE.
 
   LFact = GetLogical( SolverParams,'Linear System Refactorize', LFactFound )
   EdgeBasis = .NOT. LFactFound .AND. GetLogical( SolverParams, 'Edge Basis', Found )
@@ -420,6 +452,7 @@ CONTAINS
     ! System assembly:
     !-----------------
     CALL DefaultInitialize()
+    AnyJACC = .FALSE.
     Active = GetNOFActive()
 
     DO t=1,active
@@ -562,7 +595,10 @@ CONTAINS
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
        IF (EigenSystem) CALL DefaultUpdateMass(MASS)
-
+       IF ( ElemJACC ) THEN
+         CALL DefaultUpdateEquationsCompConj( JACC ) 
+       END IF
+         
        ! Memorize stuff for the fixing potential
        ! 1) Divergence of the source term
        ! 2) The source terms at the surface to determine the direction
@@ -1297,6 +1333,14 @@ END BLOCK
 
     JAC = 0._dp
     Newton = .FALSE.
+    ElemJACC = .FALSE.
+    IF ( ExactNewton ) THEN
+      IF ( ALLOCATED(JACC) ) THEN
+        IF ( SIZE(JACC,1) /= nd ) DEALLOCATE(JACC)
+      END IF
+      IF ( .NOT. ALLOCATED(JACC) ) ALLOCATE(JACC(nd,nd))
+      JACC = 0._dp
+    END IF
 
     HasVelocity = .FALSE.
     IF(ASSOCIATED(BodyForce)) THEN
@@ -1574,6 +1618,8 @@ END BLOCK
            IF ( Newton ) THEN
              JAC(p,q) = JAC(p,q) + muder * SUM(B_ip(:)*RotWBasis(i,:)) * &
                  SUM(CONJG(B_ip(:))*RotWBasis(j,:))*detJ*IP % s(t)/Babs
+             IF ( ExactNewton ) JACC(p,q) = JACC(p,q) + 0.5_dp * muder * SUM(B_ip(:)*RotWBasis(i,:)) * &
+                 SUM(B_ip(:)*RotWBasis(j,:))*detJ*IP % s(t)/Babs
            END IF
 
            IF( HasVelocity ) THEN
@@ -1600,8 +1646,14 @@ END BLOCK
      END DO
 
     IF ( Newton ) THEN
+      JAC = NewtonWeight * JAC
       STIFF(1:nd,1:nd) = STIFF(1:nd,1:nd) + JAC
       FORCE(1:nd) = FORCE(1:nd) + MATMUL(JAC,Aloc)
+      IF ( ExactNewton ) THEN
+        ! the conjugate part acts on conj(A): (K + H) A_new + C conj(A_new) = f + H A + C conj(A)
+        FORCE(1:nd) = FORCE(1:nd) + MATMUL(JACC,CONJG(Aloc))
+        ElemJACC = .TRUE.
+      END IF
     END IF
 
     IF(EigenSystem) THEN

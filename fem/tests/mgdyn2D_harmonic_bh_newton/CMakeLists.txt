@@ -1,0 +1,9 @@
+IF(HAVE_MUMPS)
+  INCLUDE(test_macros)
+  INCLUDE_DIRECTORIES(${CMAKE_BINARY_DIR}/fem/src)
+
+  CONFIGURE_FILE( case.sif case.sif COPYONLY)
+  file(COPY ELMERSOLVER_STARTINFO strip HB DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
+
+  ADD_ELMER_TEST(mgdyn2D_harmonic_bh_newton LABELS mgdyn harmonic quick)
+ENDIF()

@@ -1683,8 +1683,20 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init0( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: dt            !< Timestep size for time dependent simulations
   LOGICAL :: Transient           !< Steady state or transient simulation
 !------------------------------------------------------------------------------
-  CALL ListAddNewLogical( Solver % Values, 'Apply Mortar BCs', .TRUE.)
-  CALL ListAddNewLogical( Solver % Values, 'Linear System Complex', .TRUE.)
+  TYPE(ValueList_t), POINTER :: Params
+  LOGICAL :: Found 
+  
+  Params => GetSolverParams(Solver)
+  CALL ListAddNewLogical( Params, 'Apply Mortar BCs', .TRUE.)
+
+  IF( ListGetLogical( Params,'Harmonic Newton Exact', Found ) ) THEN
+    CALL Info('MagnetoDynamics2DHarmonic','Exact newton spoils the complex linear system!')
+    CALL LIstAddLogical( Params,'Linear System Complex',.FALSE.)
+  ELSE
+    CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
+  END IF
+
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init0
 !------------------------------------------------------------------------------
@@ -1706,10 +1718,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,Transient )
   CALL ListAddInteger( Params, 'Variable Dofs',2 )
   CALL ListAddNewString( Params,'Variable',&
       'Potential[Potential re:1 Potential im:1]')
-
-  CALL ListAddNewLogical( Params,'Apply Mortar BCs',.TRUE.)
-  CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
-
+  
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init
 !------------------------------------------------------------------------------
@@ -1747,6 +1756,11 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: Params
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'MagnetoDynamics2DHarmonic'
+  ! Exact Newton: conjugate part of the Jacobian must be considered
+  LOGICAL :: ExactNewton
+  REAL(KIND=dp) :: InnerTol
+  INTEGER :: InnerMaxIter
+  TYPE(Matrix_t), POINTER, SAVE :: Cmat => NULL()
 
 !------------------------------------------------------------------------------
 
@@ -1800,6 +1814,13 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   ElectroDynamics = GetLogical( GetSolverParams(), 'Electrodynamics Model', Found)
   NonlinIter = GetInteger(Params,'Nonlinear system max iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
+
+  ! Exact Newton: d(nu(|B|)B) = nu dB + nu'/(2|B|) B (B*.dB) + nu'/(2|B|) B (B.dB*). The last (conjugate) part is
+  ! not complex-linear. The Newton step (K + H) dA + C conj(dA) = r is solved with the complex factorization of
+  ! K + H only, by an inner real GCR iteration that reuses this factorization
+  ! ('Harmonic Newton Inner Tolerance', 'Harmonic Newton Inner Max Iterations'). Newton starts in the 2nd
+  ! iteration as before.
+  ExactNewton = GetLogical( Params, 'Harmonic Newton Exact', Found )
 
   CALL DefaultStart()
 
@@ -2238,7 +2259,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: CompParams
 
     COMPLEX(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LoadAtIp,&
-        JAC(nd,nd),Agrad(3),Load(n),M(2,n),M_ip(2),POTC(nd), C(n), C_ip
+        JAC(nd,nd),Agrad(3),Load(n),M(2,n),M_ip(2),POTC(nd), C(n), C_ip, JACC(nd,nd)
     COMPLEX(KIND=dp) :: nu_tensor(2,2)
     COMPLEX(KIND=dp) :: R(2,2,n)
     COMPLEX(KIND=dp) :: Bt(nd,2)
@@ -2268,6 +2289,7 @@ CONTAINS
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
     JAC  = 0._dp
+    JACC = 0._dp
     FORCE = 0._dp
     IF(Transient) MASS = 0._dp
 
@@ -2486,12 +2508,24 @@ CONTAINS
 !              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(CONJG(Agrad)*dBasisdx(p,:))
 !          END DO
 !        END DO
-        DO p=1,nd
-          DO q=1,nd
-            JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(B_ip*Bt(q,:))*SUM(CONJG(B_ip)*Bt(p,:))
+        IF( ExactNewton ) THEN
+          ! complex-linear part H and conjugate part C of the exact derivative (test function p, trial q)
+          DO p=1,nd
+            DO q=1,nd
+              JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
+                0.5_dp*muder/babs*SUM(B_ip*Bt(p,:))*SUM(CONJG(B_ip)*Bt(q,:))
+              JACC(p,q) = JACC(p,q) + IP % s(t) * DetJ * &
+                0.5_dp*muder/babs*SUM(B_ip*Bt(p,:))*SUM(B_ip*Bt(q,:))
+            END DO
           END DO
-        END DO
+        ELSE
+          DO p=1,nd
+            DO q=1,nd
+              JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
+                muder/babs*SUM(B_ip*Bt(q,:))*SUM(CONJG(B_ip)*Bt(p,:))
+            END DO
+          END DO
+        END IF
       END IF
 
       IF (WithVelocity .OR. WithAngularVelocity ) THEN
@@ -2529,11 +2563,17 @@ CONTAINS
     IF (HBcurve .AND. NewtonRaphson) THEN
       STIFF = STIFF + JAC
       FORCE = FORCE + MATMUL(JAC,POTC)
+      IF(ExactNewton) THEN
+        ! the conjugate part acts on conj(A): (K + H) A_new + C conj(A_new) = f + H A + C conj(A)
+        FORCE = FORCE + MATMUL(JACC,CONJG(POTC))      
+        CALL DefaultUpdateEquationsCompConj( JACC, UElement=Element )
+      END IF
     END IF
 
     IF(Transient) THEN
       CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
     END IF
+    
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 
 !------------------------------------------------------------------------------

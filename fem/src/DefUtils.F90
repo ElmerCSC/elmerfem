@@ -5138,13 +5138,14 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> This is a complex conjudate version of glueing such that we can maintain the
 !> solver modules cleaner. It could be added to the routine above too, but this is
-!> such a rarely used feature that separate routine may be in order. 
+!> such a rarely used feature that separate routine may be in order. Note that
+!> the r.h.s. is easy to glue always so this only deals with the matrix part.
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsCompConj( GC, FC, UElement, USolver, VecAssembly )
+  SUBROUTINE DefaultUpdateEquationsCompConj( GC, UElement, USolver, VecAssembly )
 !------------------------------------------------------------------------------
      TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
-     COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
+     COMPLEX(KIND=dp)   :: GC(:,:)
      LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this
      
      TYPE(Solver_t), POINTER   :: Solver
@@ -5185,7 +5186,7 @@ CONTAINS
 
             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
                  P2 % PartIndex/=ParEnv % myPE ) THEN
-              GC=GC/2; FC=FC/2;
+              GC=GC/2; !FC=FC/2;
             END IF
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex/=ParEnv % myPE ) RETURN
@@ -5198,9 +5199,11 @@ CONTAINS
      END IF
 
      ALLOCATE( G(DOFs*n,DOFs*n), F(DOFs*n) )
+     F = 0.0_dp
+     
      DO i=1,n*DOFs/2
-       F( 2*(i-1)+1 ) =  REAL( FC(i) )
-       F( 2*(i-1)+2 ) = -AIMAG( FC(i) )
+       !F( 2*(i-1)+1 ) =  REAL( FC(i) )
+       !F( 2*(i-1)+2 ) =  AIMAG( FC(i) )
 
        DO j=1,n*DOFs/2
          G( 2*(i-1)+1, 2*(j-1)+1 ) =  REAL( GC(i,j) )
@@ -5217,7 +5220,7 @@ CONTAINS
      ! If we have any antiperiodic entries we need to check them all!
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
-       CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
+       !CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
 
      CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
