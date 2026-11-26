@@ -3026,6 +3026,9 @@ CONTAINS
     END TYPE RungeKutta_t
     TYPE(RungeKutta_t), ALLOCATABLE, TARGET :: RKCoeff(:)
 
+    INTEGER :: OrigComm, OrigActiveComm
+    LOGICAL, ALLOCATABLE :: OrigActive(:)
+
     TYPE(ParEnv_t) :: ParEnv_Save
 !------------------------------------------------------------------------------
 
@@ -3295,10 +3298,11 @@ CONTAINS
       ! they have already been saved.
       CALL Info('SolverActive','Interpolating SplitFEM data!',Level=10)
 
-#if 0
+#if 1
       IF(ParEnv % PEs > 1) THEN
         OrigComm = Solver % Matrix % Comm
-        Solver % Matrix % COmm = ELMER_COMM_WORLD
+        OrigActiveComm = ParEnv % ActiveComm
+        Solver % Matrix % Comm = ELMER_COMM_WORLD
         ParEnv % ActiveComm = Solver % Matrix % Comm
         ALLOCATE(OrigActive(ParEnv % PEs))
         OrigActive = ParEnv % Active
@@ -3310,16 +3314,19 @@ CONTAINS
       ! The Mesh % Next is saved normally in the VTU files etc. 
       CALL SplitFEMLevelSetUpdate(Solver,Solver % Mesh)
 
-#if 0 
+      ! SplitFEMOutput may create the SplitFEM mesh (CreateSplitFEMMesh ->
+      ! SplitFEMParallelMesh) which communicates, so it must also run on all partitions.
+      CALL SplitFEMOutput(Model,Solver)
+
+#if 1
       IF(ParEnv % PEs > 1) THEN
         Solver % Matrix % Comm = OrigComm
-        ParEnv % ActiveComm = Solver % Matrix % Comm
+        ParEnv % ActiveComm = OrigActiveComm
         ParEnv % Active = OrigActive
+        DEALLOCATE(OrigActive)
       END IF
 #endif
-      
-      CALL SplitFEMOutput(Model,Solver)
-      
+
       ! This update and outputting is done for all fields at the same time.
       EXIT
     END DO
@@ -5709,9 +5716,8 @@ END BLOCK
      TYPE(Variable_t), POINTER :: TimeVar, IterV
      TYPE(ValueList_t), POINTER :: Params
      INTEGER, POINTER :: UpdateComponents(:)
-     LOGICAL, ALLOCATABLE :: OrigActive(:)
 
-     INTEGER :: ScanningLoops, scan, sOutputPE, OrigComm
+     INTEGER :: ScanningLoops, scan, sOutputPE
      LOGICAL :: GotLoops, GlobalBubbles
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
