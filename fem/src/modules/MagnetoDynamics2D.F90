@@ -2009,6 +2009,8 @@ CONTAINS
     DO p = 1, nn
       PermIdx(p) = Solver % Variable % Perm( Indexes(p) )
     END DO
+    ! Antiperiodic conforming BCs: flip the signs as DefaultUpdateEquations does for the system matrix
+    IF( Solver % PeriodicFlipActive ) CALL FlipPeriodicLocalMatrix( CurrentModel % Solver, nn, Indexes, 2, G(1:2*nn,1:2*nn) )
     !$OMP CRITICAL (MD2DHarmonicConjugate)
     AnyJACC = .TRUE.
     CALL UpdateGlobalEquations( Cmat, G(1:2*nn,1:2*nn), Cmat % RHS, F(1:2*nn), nn, 2, PermIdx(1:nn) )
