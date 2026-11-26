@@ -504,6 +504,13 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: CompressibilityDefined = .FALSE.
   LOGICAL :: NormalSpring, NormalTangential
   LOGICAL :: Converged, NoExternalLoads
+  ! The residual before the Dirichlet conditions: at the constrained dofs it is
+  ! the reaction force, the scale of the residual of a displacement driven case.
+  REAL(KIND=dp), ALLOCATABLE :: UmatRhs(:)
+  ! Scratch for the parallel residual norm: BulkRHS must keep the bulk system,
+  ! "Calculate Loads" takes the reactions from it.
+  REAL(KIND=dp), ALLOCATABLE :: UmatParRhs(:)
+  REAL(KIND=dp) :: UmatReaction
   LOGICAL :: Parallel, Scanning
 
   INTEGER, POINTER :: TempPerm(:),StressPerm(:),PressPerm(:),NodeIndexes(:), &
@@ -550,7 +557,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), Tdiff, Normal(3), s, UnitNorm, DragCoeff
   REAL(KIND=dp) :: Norm, NonlinTol, NonlinRes0, NonlinRes, time
-  REAL(KIND=dp) :: at,at0
+  REAL(KIND=dp) :: at,at0,UmatRelax
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
   CHARACTER(LEN=MAX_NAME_LEN) :: UMATName
@@ -568,10 +575,15 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! The UMAT iteration broke down (a residual not finite, an inverted element)
   ! or ended at the iteration limit without converging.
   LOGICAL :: UmatInverted, UmatBroken, UmatNotConverged
+  ! The UMAT's DDSDDE is the Abaqus tangent (Jaumann rate), see "UMAT Tangent".
+  LOGICAL :: UmatJaumann = .FALSE., UmatRelaxWarned = .FALSE.
+  CHARACTER(LEN=MAX_NAME_LEN) :: UmatTangent, UmatTangentIn
+  INTEGER :: UmatTangentLen
   ! Backtracking line search of the UMAT Newton iteration, see UmatLinesearchRetry.
-  LOGICAL :: LsActive, LsTrial, LsFound
+  LOGICAL :: LsActive, LsTrial, LsFound, LsSlopeOK
   INTEGER :: LsCount, LsMaxCount
-  REAL(KIND=dp) :: LsAlpha, LsSlope0, LsFactor, LsLimit
+  REAL(KIND=dp) :: LsAlpha, LsSlope0, LsFactor, LsLimit, Cosine
+  REAL(KIND=dp), PARAMETER :: LsMinCosine = 1.0e-6_dp
   REAL(KIND=dp), ALLOCATABLE :: LsBase(:), LsDir(:), LsDirRot(:)
   REAL(KIND=dp), PARAMETER :: UmatNoPnewdt = 1.0d30
   LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta, NeedMass
@@ -1162,6 +1174,18 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
     CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.)
     HenckyStrain = ListGetLogical(SolverParams, 'Use Hencky strain', GotIt)
+
+    ! The relaxation of the nonlinear iteration is applied by ComputeChange, which
+    ! the skip above bypasses: the UMAT iteration takes full Newton steps, or
+    ! those of its line search. Say so once rather than ignore the keyword.
+    IF ( .NOT. UmatRelaxWarned ) THEN
+      UmatRelax = ListGetCReal(SolverParams, 'Nonlinear System Relaxation Factor', GotIt)
+      IF ( GotIt .AND. ABS(UmatRelax - 1.0_dp) > EPSILON(UmatRelax) ) THEN
+        CALL Warn(Caller, '"Nonlinear System Relaxation Factor" is not used with a UMAT: '// &
+            'use "Nonlinear System Linesearch = True" to shorten the Newton steps')
+      END IF
+      UmatRelaxWarned = .TRUE.
+    END IF
   END IF
 
   !------------------------------------------------------------------------------
@@ -1790,6 +1814,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
      END IF
 
+     IF (UseUMAT) THEN
+       IF ( ALLOCATED(UmatRhs) ) THEN
+         IF ( SIZE(UmatRhs) /= SIZE(StiffMatrix % RHS) ) DEALLOCATE(UmatRhs)
+       END IF
+       IF ( .NOT. ALLOCATED(UmatRhs) ) ALLOCATE( UmatRhs(SIZE(StiffMatrix % RHS)) )
+       UmatRhs = StiffMatrix % RHS
+     END IF
+
      CALL DefaultDirichletBCs()
 
      IF (UseUMAT) THEN
@@ -1837,13 +1869,11 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
          NoExternalLoads = Norm < AEPS
          IF (NoExternalLoads) THEN
-           ! This appears to be a purely BC-loaded case, switch to using a different criterion
-           ! (use absolute norm, this can be hard ...):
+           ! A purely BC-loaded case: the residual is measured relative to the
+           ! reaction forces, see below.
            CALL Info('ElasticSolver', 'No pressure external loads ... ', Level=4)
            CALL Info('ElasticSolver', &
-               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
-           CALL Info('ElasticSolver', &
-               'This may give a hard stopping criterion',  Level=4)
+               'The nonlinear residual is measured relative to the reaction forces',  Level=4)
            NonlinRes0 = 1.0d0
          ELSE
            ! Compute the 2-norm of the external load vector
@@ -1856,9 +1886,45 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            ELSE
              NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
            END IF
+           WRITE(Message,'(A,ES12.3)') 'Nonlinear residual relative to the load vector norm: ',NonlinRes0
+           CALL Info('ElasticitySolver', Message, Level=6)
          END IF
        END IF
 
+
+       ! Without external loads the scale of the residual is that of the reaction
+       ! forces of the current iterate, the residual at the constrained dofs. As
+       ! an absolute norm the tolerance would be in the units of force, and with
+       ! a large load too strict to be met (as in CalculiX, the residual is
+       ! relative to the forces carried). Absolute while there is no reaction yet.
+       IF ( NoExternalLoads ) THEN
+         IF ( ALLOCATED(StiffMatrix % ConstrainedDOF) ) THEN
+           WHERE( .NOT. StiffMatrix % ConstrainedDOF ) UmatRhs = 0.0_dp
+         ELSE
+           UmatRhs = 0.0_dp
+         END IF
+         IF (Parallel) THEN
+           PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
+           IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+           CALL ParallelUpdateRHS(StiffMatrix, UmatRhs)
+           Pb => PMatrix % RHS
+           Norm = 0.0d0
+           DO i=1,PMatrix % NumberOfRows
+             Norm = Norm + Pb(i)**2
+           END DO
+           UmatReaction = SQRT(ParallelReduction(Norm))
+         ELSE
+           UmatReaction = SQRT(SUM(UmatRhs**2))
+         END IF
+         IF ( UmatReaction > AEPS ) THEN
+           NonlinRes0 = UmatReaction
+         ELSE
+           NonlinRes0 = 1.0_dp
+         END IF
+         WRITE(Message,'(A,ES12.3)') 'Reaction force norm: ',UmatReaction
+         CALL Info('ElasticitySolver', Message, Level=6)
+       END IF
 
        IF (Parallel) THEN
          ! Employ BulkRHS vector to estimate the size of the current residual (RHS).
@@ -1869,8 +1935,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
              ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
          Pb => PMatrix % RHS
-         Solver % Matrix % BulkRHS = Solver % Matrix % RHS
-         CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
+         ! Not into BulkRHS, which this used to overwrite with the system after
+         ! the Dirichlet conditions: the parallel nodal loads came out wrong.
+         IF ( ALLOCATED(UmatParRhs) ) THEN
+           IF ( SIZE(UmatParRhs) /= SIZE(Solver % Matrix % RHS) ) DEALLOCATE(UmatParRhs)
+         END IF
+         IF ( .NOT. ALLOCATED(UmatParRhs) ) ALLOCATE( UmatParRhs(SIZE(Solver % Matrix % RHS)) )
+         UmatParRhs = Solver % Matrix % RHS
+         CALL ParallelUpdateRHS(StiffMatrix, UmatParRhs)
          Norm = 0.0d0
          DO i=1,PMatrix % NumberOfRows
            Norm = Norm + Pb(i)**2
@@ -1954,12 +2026,19 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          LsDir(:) = Displacement(:)
          LsDirRot(:) = Displacement(:)
          CALL RotateNTSystemAll(LsDirRot, StressPerm, STDOFs)
-         LsSlope0 = UmatLsSlope()
+         CALL UmatLsSlope( LsSlope0, Cosine )
          LsAlpha = 1.0_dp
          LsCount = 0
-         ! Not a descent direction (should not happen with a positive definite
-         ! tangent): nothing to search along.
-         LsTrial = ( LsSlope0 > 0.0_dp )
+         LsTrial = .TRUE.
+         ! The slope can judge the step only when du is a clear descent
+         ! direction. An inexact linear solve near convergence gives an
+         ! increment nearly orthogonal to the residual, s(0) ~ 0, whose slope
+         ! ratios are then meaningless: only a broken trial is cut back.
+         LsSlopeOK = ( Cosine > LsMinCosine )
+         IF( .NOT. LsSlopeOK ) THEN
+           WRITE(Message,'(A,ES10.2,A)') 'Line search: slope not used, cos(du,R) = ',Cosine
+           CALL Info('ElasticitySolver',Message,Level=6)
+         END IF
        END IF
        Displacement(:) = TotalSol(:) + Displacement(:)
        IF (iter==NonlinearIter) THEN
@@ -2043,8 +2122,11 @@ CONTAINS
 !> minimum along du, s(alpha) < -Limit*s(0) (alpha is set to the root of the
 !> secant of s, kept within [0.1,0.9]*alpha). True is then returned and the
 !> caller assembles again at the shorter step, without solving. A trial short
-!> of the minimum (s > 0) is accepted, as is the last one after "Linesearch
-!> Iterations" reductions. The UMAT always starts from the committed state of
+!> of the minimum (s > 0) is accepted. After "Linesearch Iterations"
+!> reductions a broken trial ends the iteration as diverged, while one only
+!> beyond the minimum is replaced by the full step, as plain Newton would take.
+!> When du is not a clear descent direction (see LsSlopeOK) only broken
+!> trials are rejected. The UMAT always starts from the committed state of
 !> the step, so a rejected trial leaves nothing behind. The decision is the
 !> same on all partitions: the slope, the residual and the inversion flag are
 !> all reduced over them.
@@ -2060,14 +2142,33 @@ CONTAINS
     Broken = UmatInverted .OR. .NOT. ( NonlinRes <= HUGE( NonlinRes ) )
     r = 0.0_dp
     Bad = Broken
-    IF( .NOT. Broken .AND. NonlinRes >= NonlinTol ) THEN
-      r = UmatLsSlope() / LsSlope0
+    IF( .NOT. Broken .AND. LsSlopeOK .AND. NonlinRes >= NonlinTol ) THEN
+      CALL UmatLsSlope( r, Cosine )
+      r = r / LsSlope0
       Bad = ( r < -LsLimit )
     END IF
 
-    IF( .NOT. Bad .OR. LsCount >= LsMaxCount ) THEN
-      IF( Bad ) CALL Info('ElasticitySolver','Line search exhausted: taking the last step',Level=5)
+    IF( .NOT. Bad ) THEN
       LsTrial = .FALSE.
+      RETURN
+    END IF
+
+    IF( LsCount >= LsMaxCount ) THEN
+      LsTrial = .FALSE.
+      IF( Broken .OR. LsAlpha >= 1.0_dp ) THEN
+        ! A broken last trial ends the iteration as diverged, see the caller.
+        CALL Info('ElasticitySolver','Line search exhausted: taking the last step',Level=5)
+        RETURN
+      END IF
+      ! The slope never settled: a step of almost zero length would only
+      ! repeat this iteration. Take the full step, as plain Newton does.
+      CALL Info('ElasticitySolver','Line search exhausted: taking the full step',Level=5)
+      LsAlpha = 1.0_dp
+      Displacement(:) = LsBase(:) + LsDir(:)
+      TotalSol(:) = Displacement(:)
+      UmatPnewdt = HUGE(UmatPnewdt)
+      UmatInverted = .FALSE.
+      Retry = .TRUE.
       RETURN
     END IF
 
@@ -2093,25 +2194,36 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 !> The slope du.R of the line search: the search direction times the residual
-!> of the current system, over the unconstrained dofs. In parallel the local
-!> residual holds the partition's own contributions only, so the sum over the
-!> partitions counts each shared dof once.
+!> of the current system, over the unconstrained dofs, and the cosine of the
+!> angle between the two. In parallel the local residual holds the partition's
+!> own contributions only, so the sum over the partitions counts each shared
+!> dof once in the slope (the norms of the cosine are approximate there).
 !------------------------------------------------------------------------------
-  FUNCTION UmatLsSlope() RESULT( Slope )
-    REAL(KIND=dp) :: Slope
+  SUBROUTINE UmatLsSlope( Slope, Cosine )
+    REAL(KIND=dp) :: Slope, Cosine
+    REAL(KIND=dp) :: s(3)
     INTEGER :: i
     LOGICAL :: Constrained
 
     Constrained = ALLOCATED( StiffMatrix % ConstrainedDOF )
-    Slope = 0.0_dp
+    s = 0.0_dp
     DO i=1,SIZE(LsDirRot)
       IF( Constrained ) THEN
         IF( StiffMatrix % ConstrainedDOF(i) ) CYCLE
       END IF
-      Slope = Slope + LsDirRot(i) * StiffMatrix % RHS(i)
+      s(1) = s(1) + LsDirRot(i) * StiffMatrix % RHS(i)
+      s(2) = s(2) + LsDirRot(i)**2
+      s(3) = s(3) + StiffMatrix % RHS(i)**2
     END DO
-    IF( Parallel ) Slope = ParallelReduction( Slope )
-  END FUNCTION UmatLsSlope
+    IF( Parallel ) THEN
+      DO i=1,3
+        s(i) = ParallelReduction( s(i) )
+      END DO
+    END IF
+    Slope = s(1)
+    Cosine = 0.0_dp
+    IF( s(2) > 0.0_dp .AND. s(3) > 0.0_dp ) Cosine = s(1) / SQRT( s(2) * s(3) )
+  END SUBROUTINE UmatLsSlope
 
 !------------------------------------------------------------------------------
 !> Make the UMAT state of the converged solution the previous state.
@@ -2434,6 +2546,22 @@ CONTAINS
             UMATSubrtn = GetProcAddr( UMATName )
             NPROPS = GetInteger(Material,'Number of Material Constants', GotIt)
             NSTATEV = GetInteger(Material,'Number of State Variables', GotIt)
+            ! What the DDSDDE of the UMAT is the derivative of, see the large
+            ! deflection branch of LocalMatrixWithUMAT.
+            UmatTangentIn = ListGetString(Material, 'UMAT Tangent', GotIt)
+            IF ( .NOT. GotIt ) UmatTangentIn = 'material'
+            UmatTangentLen = StringToLowerCase( UmatTangent, UmatTangentIn, .TRUE. )
+            SELECT CASE( TRIM(UmatTangent) )
+            CASE( 'material' )
+              UmatJaumann = .FALSE.
+            CASE( 'jaumann', 'abaqus' )
+              UmatJaumann = .TRUE.
+              IF ( .NOT. LargeDeflection ) CALL Info(Caller, &
+                  '"UMAT Tangent = Jaumann" has no effect without "Large Deflection"', Level=5)
+            CASE DEFAULT
+              CALL Fatal(Caller, 'Unknown "UMAT Tangent": '//TRIM(UmatTangent)// &
+                  ' (use "Material" or "Jaumann")')
+            END SELECT
           END IF
           PrevMaterial => Material
         END IF
@@ -3429,6 +3557,7 @@ CONTAINS
 
     REAL(KIND=dp) :: WorkTensor1(3,3), WorkTensor2(3,3), WorkTensor3(3,3)
     REAL(KIND=dp) :: WorkVec1(1:6,1), WorkVec2(1:6,1)
+    REAL(KIND=dp) :: JauH(3,3), JauA(3,3)
     REAL(KIND=dp) :: s, u, v, w, r
 
     INTEGER :: i, j, k, l, p, q, t, dim, cdim, totdofs
@@ -3549,7 +3678,9 @@ CONTAINS
     ! ------------------------------------
     ! Integration stuff
     ! ------------------------------------
-    IntegStuff = GaussPoints( Element, RelOrder = RelIntegOrder )
+    ! The same rule as everywhere else in this solver, and the one CreateIpPerm
+    ! sized the UMAT state for: "Element Integration Points" included.
+    IntegStuff = ElasticGaussPoints( Element )
 
     ForceVector = 0.0D0
     ExternalForceVector = 0.0D0
@@ -4003,7 +4134,33 @@ CONTAINS
             ! dStress1 is for evaluating the contribution <DS(F^k)[U],Grad>
             ! in the form <U,W>. Compute W from its splitting:
             !---------------------------------------------------------------------------
-            dStress1 = WorkTensor2 + MATMUL(DefG,WorkTensor3)
+            IF ( UmatJaumann ) THEN
+              ! The UMAT follows the Abaqus convention: DDSDDE relates the Jaumann
+              ! rate of the Kirchhoff stress, divided by J, to the rate of
+              ! deformation d = sym(L), L = dF F^-1, with the spin w = skew(L):
+              !
+              !   dsigma = DDSDDE : d + w sigma - sigma w - sigma tr(d)
+              !
+              ! In terms of the Kirchhoff stress tau = J sigma, S1 = tau F^-T and
+              ! dtau = J DDSDDE : d + w tau - tau w. With H = J Grad F^-1:
+              !   <dtau F^-T, Grad>       = <DDSDDE : d + w sigma - sigma w, H>
+              !   <DDSDDE : d, H>         = <L, DDSDDE^T : sym(H)>  (WorkTensor3)
+              !   <w sigma - sigma w, H>  = <L, skew(H sigma - sigma H)>
+              ! and <L, X> = <U, X F^-T>. The -sigma tr(d) of the Cauchy rate and
+              ! the derivative of J cancel, which leaves of WorkTensor2 only the
+              ! derivative of F^-T, the first term below. Checked against finite
+              ! differences of S1 with the exact Jaumann tangent of a Hencky
+              ! material (relative error 1e-10 at 30 % strain).
+              JauH = DetDefG * MATMUL(Grad,InvDefG)
+              JauA = MATMUL(JauH,Stress) - MATMUL(Stress,JauH)
+              JauA = WorkTensor3 + 0.5_dp * (JauA - TRANSPOSE(JauA))
+              dStress1 = - DetDefG * MATMUL(TRANSPOSE(InvDefG), MATMUL(TRANSPOSE(Grad), &
+                  MATMUL(Stress, TRANSPOSE(InvDefG)))) + MATMUL(JauA, TRANSPOSE(InvDefG))
+            ELSE
+              ! DDSDDE is the derivative of the Cauchy stress with respect to the
+              ! Green-Lagrange strain: <DDSDDE : sym(F^T U), H> = <U, F WorkTensor3>.
+              dStress1 = WorkTensor2 + MATMUL(DefG,WorkTensor3)
+            END IF
 
             IF (AxialSymmetry) THEN
               DO q = 1,ntot

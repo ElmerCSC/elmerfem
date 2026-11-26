@@ -6747,7 +6747,10 @@ END FUNCTION SearchNodeL
         IF( nIp > 0 ) THEN
           IpCount = IpCount + nIp
         ELSE
-          IP = GaussPointsAdapt( Element )
+          ! The rule of this solver, which need not be the current one when the
+          ! variables are created: a solver stating "Element Integration Points"
+          ! got its -ip variables sized for the rule of another.
+          IP = GaussPointsAdapt( Element, Solver )
           IpCount = IpCount + Ip % n
         END IF
       END IF

@@ -164,6 +164,16 @@ convergence.
 If a try diverges even at `Adaptive Min Timestep`, it is accepted with a
 warning.
 
+The log line of a try shows its number of nonlinear iterations as `iter n`.
+
+A limit on the number of nonlinear iterations, as in Abaqus, does not work
+for such cases: at the onset of yield or of necking even tiny steps take as
+many iterations as long ones, and the step would be held small for nothing.
+For the same reason, do not set `Nonlinear System Max Iterations` low to make
+failures cheaper. In a necking tensile test the steps through the neck needed
+10-19 iterations whatever their size; with a limit of 10 the steps shrank
+tenfold and the run took twice as long as with 25.
+
 ### Line search with a UMAT
 
 Near a limit load a full Newton step of a plastic material often overshoots,
@@ -199,6 +209,58 @@ state of the beginning of the step, so a rejected trial leaves nothing behind.
 In a quasi-static plasticity case driven through time this allowed steps
 about 60 times longer, with the same results. The test `UMAT_linesearch`
 applies a load in one step that plain Newton cannot.
+
+The residual of the UMAT Newton iteration is relative to the external load
+vector. When there is none, as in a case driven by prescribed displacements
+only, it is relative to the reaction forces of the current iterate instead
+(the residual at the constrained degrees of freedom). `Nonlinear System
+Convergence Tolerance` is then a fraction of the forces carried, whatever
+the units. (With `Calculate Loads = True` the saved load vector holds the
+whole residual, reactions included, so the scale is the reaction norm at the
+start of the step.) Near a limit load the residual stops decreasing at some
+level, from the line search and from points switching between loading and
+unloading. A tolerance below that level is never met, and every try is
+rejected as not converged. In a tensile test through necking, 1e-2 passed
+smoothly where 1e-4 and stricter stalled; CalculiX accepts 0.5 % of the
+average force by default.
+
+`Nonlinear System Relaxation Factor` has no effect with a UMAT: ElasticSolve
+adds the Newton increment to the total solution itself. If the factor is
+given with a value other than 1, a warning is printed once. Use the line
+search instead.
+
+### UMAT tangent with large deflection
+
+With `Large Deflection = True` (the default of ElasticSolve) the UMAT gets the
+deformation gradients `DFGRD0` and `DFGRD1`. It returns the Cauchy stress and
+its tangent `DDSDDE`. The tangent can be defined in two ways, and ElasticSolve
+must be told which one the UMAT uses. It is given in the Material section:
+
+| Keyword (Material section) | Type | Default | Meaning |
+|---|---|---|---|
+| `UMAT Tangent` | String | `Material` | `Material` or `Jaumann` (alias `Abaqus`), see below. |
+
+- `Material`: `DDSDDE` is the derivative of the Cauchy stress with respect to
+  the Green-Lagrange strain. This is the original convention of ElasticSolve.
+- `Jaumann`: `DDSDDE` follows the Abaqus convention. `J * DDSDDE` relates
+  the Jaumann rate of the Kirchhoff stress `tau = J * sigma` to the rate of
+  deformation `d = sym(L)`:
+
+      tau_dot = J * DDSDDE : d + w*tau - tau*w,   L = d + w
+
+  ElasticSolve adds the spin terms `w*tau - tau*w` and the geometric terms of
+  the stress itself. Use this for UMATs written for Abaqus.
+
+The stress is the same either way. Only the Newton iteration changes. With the
+wrong convention the tangent does not match the stress, and the iteration
+converges only linearly. With large rotations or near the limit load it may
+not converge at all. In a test with a plastic beam stretched to 8 % strain
+(an Abaqus-convention UMAT), `Material` failed after a few steps, while
+`Jaumann` converged in 9-15 iterations per step. For a purely elastic step of
+0.5 % strain, `Material` took 20 iterations and `Jaumann` 6.
+
+Without `Large Deflection` the two conventions are the same, and the keyword
+has no effect.
 
 ### Quasi-static cases
 

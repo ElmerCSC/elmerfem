@@ -2845,7 +2845,10 @@
      ! A solver of the try diverged (or did not converge, if so asked)
      LOGICAL :: TryDiverged
      LOGICAL :: GotReq
-     INTEGER :: SmallestCount, AdaptiveKeepSmallest, StepControl=-1, nSolvers
+     ! SmallestCount counts the steps since the last rejection over the intervals:
+     ! with few substeps per interval a reset at each would never let the step grow.
+     INTEGER :: SmallestCount=0, AdaptiveKeepSmallest, StepControl=-1, nSolvers
+     INTEGER :: TryNonlinIter = 0
      LOGICAL :: AdaptiveTime = .TRUE., AdaptiveRough, AdaptiveSmart, Found, DoIt
      INTEGER :: AllocStat
      REAL(KIND=dp) :: AdaptiveIncrease, AdaptiveDecrease, AdaptiveSafety, &
@@ -3364,7 +3367,6 @@
 
             s = sTime(1) - dt + RoughShift
             CALL BeginSubsteps( timestep > 1 .OR. interval > 1 )
-            SmallestCount = 0
             StepLength = dt - RoughShift
 
             ! The size of the first substep. Starting from the largest size may
@@ -3524,6 +3526,7 @@
                  TryDiverged = SolversDiverged()
                END IF
 
+               TryNonlinIter = 0
                IF( TryDiverged ) THEN
                  StepAccepted = .FALSE.
                  MaxErr = HUGE( MaxErr )
@@ -3551,6 +3554,9 @@
                    StepFactor = AdaptiveSafety * MaxErr**(-1.0_dp/(ErrorOrder+1))
                  END IF
                  StepFactor = MAX( AdaptiveDecrease, MIN( AdaptiveIncrease, StepFactor ) )
+
+                 ! For the log: the nonlinear iterations the try took
+                 TryNonlinIter = TryNonlinIterations()
                ELSE
                  MaxErr = ABS( MaxErr - ListGetConstReal( CurrentModel % Simulation, &
                      'Adaptive Error Measure', GotIt ) )
@@ -3587,6 +3593,7 @@
                WRITE(Message,'(A,3ES20.12)') 'Adaptive(cum,ddt,err): ', CumTime, ddt, MaxErr
                IF( UsePredictor ) Message = TRIM(Message)//' (predictor)'
                IF( TryDiverged ) Message = TRIM(Message)//' (diverged)'
+               IF( TryNonlinIter > 0 ) Message = TRIM(Message)//' iter '//I2S(TryNonlinIter)
                IF( GotReq ) THEN
                  WRITE(Message,'(A,ES12.4)') TRIM(Message)//' request ',ReqStep
                END IF
@@ -4436,10 +4443,29 @@
    SUBROUTINE ResetConvergence()
      INTEGER :: i
      DO i=1,CurrentModel % NumberOfSolvers
-       IF( ASSOCIATED( CurrentModel % Solvers(i) % Variable ) ) &
-           CurrentModel % Solvers(i) % Variable % NonlinConverged = -1
+       IF( ASSOCIATED( CurrentModel % Solvers(i) % Variable ) ) THEN
+         CurrentModel % Solvers(i) % Variable % NonlinConverged = -1
+         CurrentModel % Solvers(i) % Variable % NonlinIter = 0
+       END IF
      END DO
    END SUBROUTINE ResetConvergence
+
+   !------------------------------------------------------------------------------
+   !> The largest number of nonlinear iterations a solver took in its last solve
+   !> of the try, over the partitions. ComputeChange counts them, also when the
+   !> solver skips the computation of the change (ElasticSolve with a UMAT).
+   !------------------------------------------------------------------------------
+   FUNCTION TryNonlinIterations() RESULT ( nIter )
+     USE ParallelUtils, ONLY : ParallelReduction
+     INTEGER :: nIter
+     INTEGER :: i
+     nIter = 0
+     DO i=1,CurrentModel % NumberOfSolvers
+       IF( .NOT. ASSOCIATED( CurrentModel % Solvers(i) % Variable ) ) CYCLE
+       nIter = MAX( nIter, CurrentModel % Solvers(i) % Variable % NonlinIter )
+     END DO
+     IF( ParEnv % PEs > 1 ) nIter = ParallelReduction( nIter, 2 )
+   END FUNCTION TryNonlinIterations
 
    !------------------------------------------------------------------------------
    !> Did the nonlinear iteration of a solver diverge in the try (NonlinConverged
