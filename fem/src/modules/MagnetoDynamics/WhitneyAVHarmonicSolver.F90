@@ -415,7 +415,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
     IF( ParEnv % PEs > 1 ) CALL Fatal('WhitneyAVHarmonicSolver', &
         'Harmonic Newton Exact is implemented for serial runs only')
     InnerTol = GetCReal( SolverParams, 'Harmonic Newton Inner Tolerance', Found )
-    IF(.NOT. Found) InnerTol = 1.0e-4_dp
+    IF(.NOT. Found) InnerTol = 1.0e-6_dp
     InnerMaxIter = GetInteger( SolverParams, 'Harmonic Newton Inner Max Iterations', Found )
     IF(.NOT. Found) InnerMaxIter = 100
     CALL CheckExactNewtonSettings()
@@ -1488,7 +1488,9 @@ END BLOCK
     r = rhsv - x - tmp
     ! inexact Newton: the tolerance is relative to the initial residual of this step (= size of the Newton
     ! correction), so the inner solve gets more accurate as the outer iteration converges; floor at round-off
-    ! level, and stop when the residual stagnates
+    ! level, and stop when the residual stagnates. The residual norm is dominated by the many unknowns outside
+    ! the nonlinear materials; with 1e-4 a few strongly saturated elements were left with a linear tail, 1e-6
+    ! keeps the outer convergence quadratic
     rnorm = SQRT( SUM(r**2) )
     r0norm = rnorm
     rtol = MAX( InnerTol * r0norm, 1.0e-12_dp * pnorm )
