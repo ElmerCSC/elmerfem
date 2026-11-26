@@ -511,6 +511,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! "Calculate Loads" takes the reactions from it.
   REAL(KIND=dp), ALLOCATABLE :: UmatParRhs(:)
   REAL(KIND=dp) :: UmatReaction
+  ! The external loads alone, assembled on the first iteration: the scale of
+  ! the residual of a load driven case, and the test of whether there are any.
+  ! Not in BulkRHS, which "Calculate Loads" overwrites with the whole system.
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: UmatLoad(:)
   LOGICAL :: Parallel, Scanning
 
   INTEGER, POINTER :: TempPerm(:),StressPerm(:),PressPerm(:),NodeIndexes(:), &
@@ -1161,9 +1165,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   PrevSOL = Displacement
   IF (UseUMAT) THEN
-    IF (.NOT. ASSOCIATED(StiffMatrix % BulkRHS)) &
-        ALLOCATE(StiffMatrix % BulkRHS(SIZE(StiffMatrix % RHS)))
-    StiffMatrix % BulkRHS = 0.0d0
+    ALLOCATE( UmatLoad(SIZE(StiffMatrix % RHS)) )
+    UmatLoad = 0.0_dp
 
     IF (.NOT. ASSOCIATED(TotalSol)) ALLOCATE( TotalSol(SIZE(Displacement)) )
 
@@ -1859,12 +1862,12 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
 
            ! Temporarily set the parallel rhs vector to be the plain source vector:
-           CALL ParallelUpdateRHS(StiffMatrix, StiffMatrix % BulkRHS)
+           CALL ParallelUpdateRHS(StiffMatrix, UmatLoad)
            Pb => PMatrix % RHS
            Norm = MAXVAL(ABS(Pb))
            Norm = ParallelReduction(Norm,2)
          ELSE
-           Norm = MAXVAL(ABS(StiffMatrix % BulkRHS(:)))
+           Norm = MAXVAL(ABS(UmatLoad))
          END IF
 
          NoExternalLoads = Norm < AEPS
@@ -1884,7 +1887,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              END DO
              NonlinRes0 = SQRT(ParallelReduction(Norm))
            ELSE
-             NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+             NonlinRes0 = SQRT(SUM(UmatLoad**2))
            END IF
            WRITE(Message,'(A,ES12.3)') 'Nonlinear residual relative to the load vector norm: ',NonlinRes0
            CALL Info('ElasticitySolver', Message, Level=6)
@@ -1927,7 +1930,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        END IF
 
        IF (Parallel) THEN
-         ! Employ BulkRHS vector to estimate the size of the current residual (RHS).
+         ! The size of the current residual (RHS), from the parallel RHS vector.
          ! The parallel structures are renewed by the first linear solve: take
          ! the pointers to them again on every iteration, else the residual is
          ! read from a stale vector and the first solve never converges.
@@ -2860,7 +2863,7 @@ CONTAINS
           ! ---------------------------------------------------------------------------
           IF (Iter == 1) THEN
             ValuesSaved => StiffMatrix % RHS
-            StiffMatrix % RHS => StiffMatrix % BulkRHS
+            StiffMatrix % RHS => UmatLoad
             CALL DefaultUpdateForce(LocalExternalForce)
             Solver % Matrix % RHS => ValuesSaved
           END IF
@@ -3160,7 +3163,7 @@ CONTAINS
              ! for the purpose of nonlinear error estimation:
              ! ---------------------------------------------------------------------------
              ValuesSaved => StiffMatrix % RHS
-             StiffMatrix % RHS => StiffMatrix % BulkRHS
+             StiffMatrix % RHS => UmatLoad
              LocalForceSaved = LocalForce
              CALL DefaultUpdateForce(LocalForce)
              LocalForce = LocalForceSaved
