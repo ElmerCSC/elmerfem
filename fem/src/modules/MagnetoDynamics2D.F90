@@ -1747,6 +1747,12 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   TYPE(ValueList_t), POINTER :: Params
   CHARACTER(LEN=MAX_NAME_LEN) :: sname
   CHARACTER(*), PARAMETER :: Caller = 'MagnetoDynamics2DHarmonic'
+  ! Exact Newton: conjugate part of the Jacobian kept in a separate real matrix (same sparsity, real 2x2 blocks),
+  ! inner real GCR preconditioned by the (reused) complex factorization of K + H (as in WhitneyAVHarmonicSolver)
+  LOGICAL :: ExactNewton, AnyJACC
+  REAL(KIND=dp) :: InnerTol
+  INTEGER :: InnerMaxIter
+  TYPE(Matrix_t), POINTER, SAVE :: Cmat => NULL()
 
 !------------------------------------------------------------------------------
 
@@ -1801,6 +1807,22 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   NonlinIter = GetInteger(Params,'Nonlinear system max iterations',Found)
   IF(.NOT.Found) NonlinIter = 1
 
+  ! Exact Newton: d(nu(|B|)B) = nu dB + nu'/(2|B|) B (B*.dB) + nu'/(2|B|) B (B.dB*). The last (conjugate) part is
+  ! not complex-linear. The Newton step (K + H) dA + C conj(dA) = r is solved with the complex factorization of
+  ! K + H only, by an inner real GCR iteration that reuses this factorization
+  ! ('Harmonic Newton Inner Tolerance', 'Harmonic Newton Inner Max Iterations'). Newton starts in the 2nd
+  ! iteration as before.
+  ExactNewton = GetLogical( Params, 'Harmonic Newton Exact', Found )
+  IF( ExactNewton ) THEN
+    IF( ParEnv % PEs > 1 ) CALL Fatal(Caller,'Harmonic Newton Exact is implemented for serial runs only')
+    InnerTol = GetCReal( Params, 'Harmonic Newton Inner Tolerance', Found )
+    IF(.NOT. Found) InnerTol = 1.0e-6_dp
+    InnerMaxIter = GetInteger( Params, 'Harmonic Newton Inner Max Iterations', Found )
+    IF(.NOT. Found) InnerMaxIter = 100
+    CALL CheckExactNewtonSettings()
+    CALL Info(Caller,'Harmonic Newton Exact: inner GCR with the complex factorization', Level=3)
+  END IF
+
   CALL DefaultStart()
 
   DO iter=1,NonlinIter
@@ -1810,6 +1832,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
     ! ----------------
     Active = GetNOFActive()
     CALL DefaultInitialize()
+    AnyJACC = .FALSE.
+    IF( ExactNewton .AND. NewtonRaphson ) CALL InitConjugateMatrix()
 !$omp parallel do private(Element,n,nd)
     DO t=1,active
       Element => GetActiveElement(t)
@@ -1845,7 +1869,11 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
 
     CALL SetMagneticFluxDensityBC()
     CALL DefaultDirichletBCs()
-    Norm = DefaultSolve()
+    IF( AnyJACC ) THEN
+      Norm = InnerNewtonSolve()
+    ELSE
+      Norm = DefaultSolve()
+    END IF
 
     IF( DefaultConverged() ) EXIT
   END DO
@@ -1895,6 +1923,289 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
 
 
 CONTAINS
+
+!-----------------------------------------------------------------------------
+!> Settings that do not go together with the inner iteration of 'Harmonic Newton Exact': each inner step is a
+!> full DefaultSolve, so anything that acts on every linear solve would act on the intermediate vectors, and
+!> strong periodic BCs move matrix rows that the separate matrix of the conjugate part does not see.
+  SUBROUTINE CheckExactNewtonSettings()
+!-----------------------------------------------------------------------------
+    CHARACTER(LEN=*), PARAMETER :: Incompatible(7) = [ CHARACTER(LEN=40) :: &
+        'Nonlinear System Acceleration', 'Linear System Residual Mode', 'Restriction System Residual Mode', &
+        'Apply Source Control', 'Apply Nonlinear Control', 'Linear System Remove Zeros', 'Nonlinear Post Solvers' ]
+    INTEGER :: i
+    LOGICAL :: Found
+    TYPE(ValueList_t), POINTER :: BCList
+
+    DO i = 1, SIZE(Incompatible)
+      IF ( ListCheckPresent( Params, TRIM(Incompatible(i)) ) ) CALL Fatal(Caller, &
+          'Harmonic Newton Exact cannot be combined with > '//TRIM(Incompatible(i))//' <')
+    END DO
+    DO i = 1, CurrentModel % NumberOfBCs
+      BCList => CurrentModel % BCs(i) % Values
+      IF ( ListCheckPrefix( BCList, 'Periodic BC ' ) .OR. ListCheckPrefix( BCList, 'Anti Periodic BC ' ) ) &
+          CALL Fatal(Caller, 'Harmonic Newton Exact does not support strong periodic BCs; use mortar or conforming BCs')
+    END DO
+    IF ( GetString( Params, 'Linear System Solver', Found ) /= 'direct' ) CALL Warn(Caller, &
+        'Harmonic Newton Exact reuses the factorization of a direct linear solver; with an iterative one each '// &
+        'inner step is a full solve and the inner iteration may stagnate')
+!-----------------------------------------------------------------------------
+  END SUBROUTINE CheckExactNewtonSettings
+!-----------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------------
+!> Matrix for the conjugate Jacobian part, sharing the structure of the system matrix (real 2x2 blocks).
+  SUBROUTINE InitConjugateMatrix()
+!-----------------------------------------------------------------------------
+    TYPE(Matrix_t), POINTER :: Amat
+    Amat => Solver % Matrix
+    ! the structure is shared with the system matrix: re-associate if that matrix was rebuilt
+    IF ( ASSOCIATED(Cmat) ) THEN
+      IF ( .NOT. ( ASSOCIATED(Cmat % Rows, Amat % Rows) .AND. ASSOCIATED(Cmat % Cols, Amat % Cols) .AND. &
+          Cmat % NumberOfRows == Amat % NumberOfRows .AND. SIZE(Cmat % Values) == SIZE(Amat % Values) ) ) THEN
+        DEALLOCATE( Cmat % Values, Cmat % RHS )
+        NULLIFY( Cmat % Rows, Cmat % Cols, Cmat % Diag )
+        DEALLOCATE( Cmat )
+      END IF
+    END IF
+    IF ( .NOT. ASSOCIATED(Cmat) ) THEN
+      Cmat => AllocateMatrix()
+      Cmat % FORMAT = MATRIX_CRS
+      Cmat % COMPLEX = .FALSE.
+      Cmat % NumberOfRows = Amat % NumberOfRows
+      Cmat % Rows => Amat % Rows
+      Cmat % Cols => Amat % Cols
+      Cmat % Diag => Amat % Diag
+      ALLOCATE( Cmat % Values(SIZE(Amat % Values)), Cmat % RHS(Amat % NumberOfRows) )
+    END IF
+    Cmat % Values = 0.0_dp
+    Cmat % RHS = 0.0_dp
+!-----------------------------------------------------------------------------
+  END SUBROUTINE InitConjugateMatrix
+!-----------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------------
+!> Add the conjugate part C conj(dA) of the exact Newton Jacobian, as real 2x2 blocks, to Cmat.
+!> With dA = u + i v: C (u - i v) = (Cr u + Ci v) + i (Ci u - Cr v) -> block [Cr Ci; Ci -Cr].
+!> Called from the (OpenMP-parallel) assembly loop.
+  SUBROUTINE AddConjugateJacobian( Element, nd, JACC )
+!-----------------------------------------------------------------------------
+    TYPE(Element_t), POINTER :: Element
+    INTEGER :: nd
+    COMPLEX(KIND=dp) :: JACC(nd,nd)
+    INTEGER :: p, q, nn, Indexes(nd), PermIdx(nd)
+    REAL(KIND=dp) :: G(2*nd,2*nd), F(2*nd)
+
+    F = 0.0_dp
+    DO p = 1, nd
+      DO q = 1, nd
+        G(2*p-1, 2*q-1) =  REAL( JACC(p,q) )
+        G(2*p-1, 2*q  ) = AIMAG( JACC(p,q) )
+        G(2*p,   2*q-1) = AIMAG( JACC(p,q) )
+        G(2*p,   2*q  ) = -REAL( JACC(p,q) )
+      END DO
+    END DO
+    nn = GetElementDOFs( Indexes, Element )
+    DO p = 1, nn
+      PermIdx(p) = Solver % Variable % Perm( Indexes(p) )
+    END DO
+    !$OMP CRITICAL (MD2DHarmonicConjugate)
+    AnyJACC = .TRUE.
+    CALL UpdateGlobalEquations( Cmat, G(1:2*nn,1:2*nn), Cmat % RHS, F(1:2*nn), nn, 2, PermIdx(1:nn) )
+    !$OMP END CRITICAL (MD2DHarmonicConjugate)
+!-----------------------------------------------------------------------------
+  END SUBROUTINE AddConjugateJacobian
+!-----------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------------
+!> Exact Newton step with the complex factorization: solve M x + C conj(x) = g, M = K + H (complex, already
+!> assembled with Dirichlet conditions and constraints), C conj(x) = Cmat x in real 2N form.
+!> With P(b) = solution of M x = b (direct solver, factorized once, reused) the step is the fixed point
+!> x = P(g - Cmat x), i.e. (I + T) x = P(g) with T y = P(g + Cmat y) - P(g). T is real-linear -> real GCR.
+!> Same algorithm as in WhitneyAVHarmonicSolver (see there for the details).
+  FUNCTION InnerNewtonSolve() RESULT(Norm)
+!-----------------------------------------------------------------------------
+    USE DirectSolve, ONLY : DirectSolver
+    REAL(KIND=dp) :: Norm
+    TYPE(Matrix_t), POINTER :: Amat
+    REAL(KIND=dp), ALLOCATABLE :: g(:), xold(:), rhsv(:), x(:), r(:), sv(:), qv(:), tmp(:), Sk(:,:), Qk(:,:), &
+        Swork(:,:)
+    REAL(KIND=dp) :: rnorm, r0norm, rtol, beta, alpha, qn, xnorm, pnorm, rhist(0:9)
+    INTEGER :: n2, k, j, kcap
+    LOGICAL :: GotRefact, OldRefact, GotFree, OldFree, GotWC, OldWC, GotCN, OldCN, GotMeas, ResidualMeasure
+    CHARACTER(:), ALLOCATABLE :: OldMeas
+
+    Amat => Solver % Matrix
+    n2 = Amat % NumberOfRows
+    kcap = MIN( InnerMaxIter, 10 )
+    ALLOCATE( g(n2), xold(n2), rhsv(n2), x(n2), r(n2), sv(n2), qv(n2), tmp(n2), Sk(n2,kcap), Qk(n2,kcap) )
+    g = Amat % RHS
+    xold = Solver % Variable % Values(1:n2)
+    xnorm = Solver % Variable % Norm                   ! the inner solves overwrite it
+
+    ! These make SolveWithLinearRestriction compute the nonlinear change (and advance the iteration counter)
+    ! by itself after each solve; suspended for the inner solves, restored for the final one
+    OldWC = ListGetLogical( Params, 'Nonlinear System Convergence Without Constraints', GotWC )
+    OldCN = ListGetLogical( Params, 'Nonlinear System Consistent Norm', GotCN )
+    OldMeas = ListGetString( Params, 'Nonlinear System Convergence Measure', GotMeas )
+    ResidualMeasure = .FALSE.
+    IF ( GotMeas ) ResidualMeasure = ( OldMeas == 'residual' )
+    CALL ListAddLogical( Params, 'Nonlinear System Convergence Without Constraints', .FALSE. )
+    CALL ListAddLogical( Params, 'Nonlinear System Consistent Norm', .FALSE. )
+    IF ( GotMeas ) THEN
+      IF ( OldMeas == 'solution' ) CALL ListAddString( Params, 'Nonlinear System Convergence Measure', 'residual' )
+    END IF
+
+    OldRefact = ListGetLogical( Params, 'Linear System Refactorize', GotRefact )
+    OldFree = ListGetLogical( Params, 'Linear System Free Factorization', GotFree )
+    CALL ListAddLogical( Params, 'Linear System Free Factorization', .FALSE. )
+
+    CALL ApplyP( Amat, n2, g, rhsv, .TRUE. )                     ! factorizes M
+    pnorm = SQRT( SUM(rhsv**2) )
+
+    x = xold
+    CALL ApplyT( Amat, n2, g, rhsv, pnorm, x, tmp )
+    r = rhsv - x - tmp
+    ! inexact Newton: the tolerance is relative to the initial residual of this step (= size of the Newton
+    ! correction); floor at round-off level, and stop when the residual stagnates
+    rnorm = SQRT( SUM(r**2) )
+    r0norm = rnorm
+    rtol = MAX( InnerTol * r0norm, 1.0e-12_dp * pnorm )
+    rhist = HUGE(rnorm)
+    k = 0
+    DO WHILE ( rnorm > rtol .AND. k < InnerMaxIter )
+      k = k + 1
+      IF ( k > kcap ) THEN                               ! grow the search space on demand
+        kcap = MIN( 2*kcap, InnerMaxIter )
+        ALLOCATE( Swork(n2,kcap) ); Swork(:,1:k-1) = Sk(:,1:k-1); CALL MOVE_ALLOC( Swork, Sk )
+        ALLOCATE( Swork(n2,kcap) ); Swork(:,1:k-1) = Qk(:,1:k-1); CALL MOVE_ALLOC( Swork, Qk )
+      END IF
+      sv = r
+      CALL ApplyT( Amat, n2, g, rhsv, pnorm, sv, qv )
+      qv = sv + qv
+      DO j = 1, k-1
+        beta = SUM( qv * Qk(:,j) )
+        qv = qv - beta * Qk(:,j)
+        sv = sv - beta * Sk(:,j)
+      END DO
+      qn = SQRT( SUM(qv**2) )
+      IF ( qn == 0.0_dp ) EXIT
+      Qk(:,k) = qv / qn
+      Sk(:,k) = sv / qn
+      alpha = SUM( r * Qk(:,k) )
+      x = x + alpha * Sk(:,k)
+      r = r - alpha * Qk(:,k)
+      rnorm = SQRT( SUM(r**2) )
+      IF ( k > 10 .AND. rnorm > 0.5_dp * rhist(MOD(k,10)) ) EXIT
+      rhist(MOD(k,10)) = rnorm
+    END DO
+    WRITE( Message,'(A,I0,A,ES10.3)') 'Harmonic Newton inner GCR: ', k, ' iterations, relative residual ', &
+        rnorm / MAX(r0norm, TINY(r0norm))
+    CALL Info(Caller, Message, Level=4)
+    IF ( rnorm > rtol ) CALL Warn(Caller, 'Harmonic Newton inner GCR did not reach the tolerance')
+
+    ! regular solve for the bookkeeping (for the 'residual' measure with g - C conj(x_old): true nonlinear residual)
+    IF ( ResidualMeasure ) THEN
+      CALL MaskedConj( Amat, n2, xold, tmp )
+    ELSE
+      CALL MaskedConj( Amat, n2, x, tmp )
+    END IF
+    Amat % RHS = g - tmp
+    Solver % Variable % Values(1:n2) = xold
+    Solver % Variable % Norm = xnorm
+    IF ( GotWC ) THEN
+      CALL ListAddLogical( Params, 'Nonlinear System Convergence Without Constraints', OldWC )
+    ELSE
+      CALL ListRemove( Params, 'Nonlinear System Convergence Without Constraints' )
+    END IF
+    IF ( GotCN ) THEN
+      CALL ListAddLogical( Params, 'Nonlinear System Consistent Norm', OldCN )
+    ELSE
+      CALL ListRemove( Params, 'Nonlinear System Consistent Norm' )
+    END IF
+    IF ( GotMeas ) CALL ListAddString( Params, 'Nonlinear System Convergence Measure', OldMeas )
+    CALL ListAddLogical( Params, 'Linear System Refactorize', .FALSE. )
+    CALL ListAddLogical( Params, 'Skip Compute Nonlinear Change', .FALSE. )
+    CALL ListAddLogical( Params, 'Skip Advance Nonlinear iter', .FALSE. )
+    Norm = DefaultSolve()
+    IF ( ResidualMeasure ) THEN
+      Solver % Variable % Values(1:n2) = x
+      Norm = ComputeNorm( Solver, n2, x )
+      Solver % Variable % Norm = Norm
+    END IF
+    Amat % RHS = g
+
+    IF ( GotRefact ) THEN
+      CALL ListAddLogical( Params, 'Linear System Refactorize', OldRefact )
+    ELSE
+      CALL ListRemove( Params, 'Linear System Refactorize' )
+    END IF
+    IF ( GotFree ) THEN
+      CALL ListAddLogical( Params, 'Linear System Free Factorization', OldFree )
+    ELSE
+      CALL ListRemove( Params, 'Linear System Free Factorization' )
+    END IF
+    ! free the factors unless the user asked to keep them (default of the direct solvers)
+    IF ( .NOT. GotFree .OR. OldFree ) THEN
+      IF ( ASSOCIATED(Amat % CollectionMatrix) ) THEN
+        CALL DirectSolver( Amat % CollectionMatrix, tmp, tmp, Solver, Free_Fact = .TRUE. )
+      ELSE
+        CALL DirectSolver( Amat, tmp, tmp, Solver, Free_Fact = .TRUE. )
+      END IF
+    END IF
+!-----------------------------------------------------------------------------
+  END FUNCTION InnerNewtonSolve
+!-----------------------------------------------------------------------------
+
+!-----------------------------------------------------------------------------
+!> Helpers of InnerNewtonSolve: P(b) = solution of the assembled (complex) system with RHS b, reusing the factors
+  SUBROUTINE ApplyP( Amat, n2, b, y, Refact )
+    TYPE(Matrix_t), POINTER :: Amat
+    INTEGER :: n2
+    REAL(KIND=dp) :: b(n2), y(n2)
+    LOGICAL :: Refact
+    REAL(KIND=dp) :: dummy
+    Amat % RHS(1:n2) = b
+    Solver % Variable % Values(1:n2) = 0.0_dp
+    CALL ListAddLogical( Params, 'Linear System Refactorize', Refact )
+    CALL ListAddLogical( Params, 'Skip Compute Nonlinear Change', .TRUE. )
+    CALL ListAddLogical( Params, 'Skip Advance Nonlinear iter', .TRUE. )
+    dummy = DefaultSolve()
+    y = Solver % Variable % Values(1:n2)
+  END SUBROUTINE ApplyP
+
+  SUBROUTINE MaskedConj( Amat, n2, y, c )
+    TYPE(Matrix_t), POINTER :: Amat
+    INTEGER :: n2, i
+    REAL(KIND=dp) :: y(n2), c(n2)
+    c = 0.0_dp
+    CALL CRS_MatrixVectorMultiply( Cmat, y, c )
+    IF ( ALLOCATED(Amat % ConstrainedDOF) ) THEN
+      DO i = 1, n2
+        IF ( Amat % ConstrainedDOF(i) ) c(i) = 0.0_dp     ! Dirichlet rows: homogeneous
+      END DO
+    END IF
+  END SUBROUTINE MaskedConj
+
+  SUBROUTINE ApplyT( Amat, n2, g, pg, pnorm, y, ty )
+    TYPE(Matrix_t), POINTER :: Amat
+    INTEGER :: n2
+    REAL(KIND=dp) :: g(n2), pg(n2), pnorm, y(n2), ty(n2)
+    REAL(KIND=dp) :: c(n2), ys(n2), ynorm, sc
+    ynorm = SQRT( SUM(y**2) )
+    IF ( ynorm == 0.0_dp ) THEN
+      ty = 0.0_dp
+      RETURN
+    END IF
+    sc = MAX( pnorm, TINY(pnorm) ) / ynorm             ! T is linear: apply it to a vector of the size of P(g)
+    ys = sc * y
+    CALL MaskedConj( Amat, n2, ys, c )
+    c = g + c
+    CALL ApplyP( Amat, n2, c, ty, .FALSE. )
+    ty = ( ty - pg ) / sc
+  END SUBROUTINE ApplyT
+!-----------------------------------------------------------------------------
+
 
 
 !------------------------------------------------------------------------------
@@ -2238,7 +2549,7 @@ CONTAINS
     TYPE(ValueList_t), POINTER :: CompParams
 
     COMPLEX(KIND=dp) :: MASS(nd,nd), STIFF(nd,nd), FORCE(nd), LoadAtIp,&
-        JAC(nd,nd),Agrad(3),Load(n),M(2,n),M_ip(2),POTC(nd), C(n), C_ip
+        JAC(nd,nd),Agrad(3),Load(n),M(2,n),M_ip(2),POTC(nd), C(n), C_ip, JACC(nd,nd)
     COMPLEX(KIND=dp) :: nu_tensor(2,2)
     COMPLEX(KIND=dp) :: R(2,2,n)
     COMPLEX(KIND=dp) :: Bt(nd,2)
@@ -2268,6 +2579,7 @@ CONTAINS
     CALL GetElementNodes( Nodes,Element )
     STIFF = 0._dp
     JAC  = 0._dp
+    JACC = 0._dp
     FORCE = 0._dp
     IF(Transient) MASS = 0._dp
 
@@ -2486,12 +2798,24 @@ CONTAINS
 !              muder/babs*SUM(Agrad*dBasisdx(q,:))*SUM(CONJG(Agrad)*dBasisdx(p,:))
 !          END DO
 !        END DO
-        DO p=1,nd
-          DO q=1,nd
-            JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
-              muder/babs*SUM(B_ip*Bt(q,:))*SUM(CONJG(B_ip)*Bt(p,:))
+        IF( ExactNewton ) THEN
+          ! complex-linear part H and conjugate part C of the exact derivative (test function p, trial q)
+          DO p=1,nd
+            DO q=1,nd
+              JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
+                0.5_dp*muder/babs*SUM(B_ip*Bt(p,:))*SUM(CONJG(B_ip)*Bt(q,:))
+              JACC(p,q) = JACC(p,q) + IP % s(t) * DetJ * &
+                0.5_dp*muder/babs*SUM(B_ip*Bt(p,:))*SUM(B_ip*Bt(q,:))
+            END DO
           END DO
-        END DO
+        ELSE
+          DO p=1,nd
+            DO q=1,nd
+              JAC(p,q) = JAC(p,q) + IP % s(t) * DetJ * &
+                muder/babs*SUM(B_ip*Bt(q,:))*SUM(CONJG(B_ip)*Bt(p,:))
+            END DO
+          END DO
+        END IF
       END IF
 
       IF (WithVelocity .OR. WithAngularVelocity ) THEN
@@ -2529,12 +2853,15 @@ CONTAINS
     IF (HBcurve .AND. NewtonRaphson) THEN
       STIFF = STIFF + JAC
       FORCE = FORCE + MATMUL(JAC,POTC)
+      ! the conjugate part acts on conj(A): (K + H) A_new + C conj(A_new) = f + H A + C conj(A)
+      IF( ExactNewton ) FORCE = FORCE + MATMUL(JACC,CONJG(POTC))
     END IF
 
     IF(Transient) THEN
       CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
     END IF
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
+    IF (HBcurve .AND. NewtonRaphson .AND. ExactNewton) CALL AddConjugateJacobian( Element, nd, JACC )
 
 !------------------------------------------------------------------------------
   END SUBROUTINE LocalMatrix
