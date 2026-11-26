@@ -779,6 +779,7 @@ CONTAINS
   SUBROUTINE SplitFEMSetBodies(Model)
     TYPE(Model_t) :: Model
     IF(.NOT. ASSOCIATED(SplitFEMOrigMesh)) RETURN
+    IF(.NOT. ANY(Model % Solvers(1:Model % NumberOfSolvers) % SplitFEMActive)) RETURN
     IF(.NOT. ASSOCIATED(XiPerm) .OR. .NOT. ALLOCATED(CutDof)) RETURN
     IF(.NOT. ASSOCIATED(PhiValues)) RETURN
     CALL SetSplitFEMBodies(Model, SplitFEMOrigMesh, .FALSE.)

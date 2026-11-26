@@ -5725,7 +5725,7 @@ END BLOCK
      INTEGER, POINTER :: UpdateComponents(:)
 
      INTEGER :: ScanningLoops, scan, sOutputPE
-     LOGICAL :: GotLoops, GlobalBubbles
+     LOGICAL :: GotLoops, GlobalBubbles, SplitView
      TYPE(Variable_t), POINTER :: ScanVar, Var
      CHARACTER(:), ALLOCATABLE :: str, CoordTransform
      TYPE(Mesh_t), POINTER :: Mesh, pMesh
@@ -5976,7 +5976,18 @@ END BLOCK
        ! the type of solver changes, so consecutive SplitFEM solvers do no extra work.
        ! Non-SplitFEM solvers see the SplitFEM fields through their original nodal
        ! storage (updated after each SplitFEM solve by SplitFEMVariableExtrapolate).
-       IF( Solver % SplitFEM ) THEN
+
+       ! change so internal ResultOutputSolver uses splitvalues not origvalues.
+       SplitView = Solver % SplitFEM
+       IF( .NOT. SplitView ) THEN
+         SplitView = ListGetLogical( Params,'SplitFEM Use Split Fields', Found )
+         IF( .NOT. Found ) THEN
+           str = ListGetString( Params,'Procedure', Found )
+           IF( Found ) SplitView = ( INDEX( str,'ResultOutputSolver' ) > 0 )
+         END IF
+       END IF
+
+       IF( SplitView ) THEN
          CALL SplitFEMSetBodies( Model )
        ELSE
          CALL SplitFEMRevertBodies( Model )
@@ -5992,7 +6003,7 @@ END BLOCK
          CALL SingleSolver( Model, Solver, DTScal * dt, TimeDerivativeActive )
        END IF
 
-       IF( .NOT. Solver % SplitFEM ) CALL SplitFEMSwapVariables( Model, .FALSE. )
+       IF( .NOT. SplitView ) CALL SplitFEMSwapVariables( Model, .FALSE. )
 
        IF( GotLoops ) THEN
          IF( ListGetLogical( Params,'Save Scanning Modes',Found ) ) THEN
