@@ -26,13 +26,12 @@ jobs:
       fail-fast: false
 
       matrix:
-        os: [ubuntu-24.04]
         compiler: [gcc]
         fc: [gfortran]
         mpi: [with]
         openmp: [with]
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-26.04
             compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
@@ -40,7 +39,7 @@ jobs:
             mpi: with
             openmp: with
             openmp-cmake-flags: "-DWITH_OpenMP=ON"
-          - os: ubuntu-24.04
+          - os: ubuntu-26.04
             compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
@@ -48,7 +47,7 @@ jobs:
             mpi: without
             openmp: with
             openmp-cmake-flags: "-DWITH_OpenMP=ON"
-          - os: ubuntu-24.04
+          - os: ubuntu-26.04
             compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
@@ -56,7 +55,7 @@ jobs:
             mpi: with
             openmp: without
             openmp-cmake-flags: "-DWITH_OpenMP=OFF"
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-26.04-arm
             compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
@@ -64,7 +63,7 @@ jobs:
             mpi: with
             openmp: without
             openmp-cmake-flags: "-DWITH_OpenMP=OFF"
-          - os: ubuntu-24.04
+          - os: ubuntu-26.04
             compiler: clang
             compiler-pkgs: "clang"
             cc: "clang"
@@ -72,12 +71,12 @@ jobs:
             mpi: with
             openmp: without
             openmp-cmake-flags: "-DWITH_OpenMP=OFF"
-          - os: ubuntu-24.04
+          - os: ubuntu-26.04
             compiler: flang
-            compiler-pkgs: "clang-20 flang-20"
-            cc: "clang-20"
-            cxx: "clang++-20"
-            fc: "flang-20"
+            compiler-pkgs: "clang-21 flang-21"
+            cc: "clang-21"
+            cxx: "clang++-21"
+            fc: "flang-21"
             mpi: without
             openmp: without
             openmp-cmake-flags: "-DWITH_OpenMP=OFF"
@@ -104,27 +103,70 @@ jobs:
           submodules: recursive
 
       - name: install dependencies
-        # OpenBLAS before version 0.3.29 shipped kernels for ?NRM2 on
-        # Neoverse N2 that was inaccurate or returned NaN.  Use the
-        # reference implementation for the Ubuntu on ARM runners to avoid
-        # that issue.
-        # Consider reverting to OpenBLAS for all runners once Ubuntu ships
-        # a new enough version.
         run: |
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
-            $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "libblas-dev liblapack-dev" || echo "libopenblas-dev") \
+            libopenblas-dev \
             libarpack2-dev $([ "${{ matrix.mpi }}" == "with" ] && echo "libparpack2-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
-            $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "without" ] && echo "libmumps-seq-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "librocalution-dev") \
-            libqwt-qt5-dev qtscript5-dev libqt5svg5-dev \
+            qt6-tools-dev qmake6 \
+            qt6-declarative-dev qt6-svg-dev \
             libvtk9-qt-dev libglvnd-dev \
             occt-misc libocct-data-exchange-dev libocct-draw-dev \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "trilinos-all-dev libptscotch-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libnetcdff-dev")
+
+      - name: restore Qwt 6.3.0 from cache
+        id: qwt-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: /usr/local/qwt-6.3.0
+          key: ${{ matrix.os }}-qwt-6.3.0-qt6
+
+      - name: build Qwt 6.3.0
+        if: steps.qwt-cache.outputs.cache-hit != 'true'
+        # Qwt 6.1.4 that is packaged by Ubuntu 26.04 is incompatible with Qt6.
+        # But the distributed VTK was built with Qt6.
+        # Build Qwt 6.3.0 with Qt6 to avoid compatibility issues.
+        # Consider installing libqwt-qt6-dev instead when updating to the next
+        # version of Ubuntu or if the newer version of Qwt is backported.
+        run: |
+          mkdir ${GITHUB_WORKSPACE}/Qwt6
+          cd ${GITHUB_WORKSPACE}/Qwt6
+          echo "::group::Download release tarball"
+          wget -O qwt-6.3.0.tar.bz2 "https://sourceforge.net/projects/qwt/files/qwt/6.3.0/qwt-6.3.0.tar.bz2/download"
+          # check download
+          echo "dcb085896c28aaec5518cbc08c0ee2b4e60ada7ac929d82639f6189851a6129a  qwt-6.3.0.tar.bz2" | sha256sum -c -
+          echo "::endgroup::"
+          echo "::group::Unpack release tarball"
+          tar -xjf qwt-6.3.0.tar.bz2
+          echo "::endgroup::"
+          echo "::group::Build Qwt6"
+          cd qwt-6.3.0
+          # Disable Designer plugin & examples to cut build time in half
+          sed -i 's/QWT_CONFIG     += QwtDesigner/# QWT_CONFIG     += QwtDesigner/' qwtconfig.pri
+          qmake6 qwt.pro
+          make -j$(nproc)
+          echo "::endgroup::"
+          echo "::group::Install Qwt6"
+          sudo make install
+          echo "::endgroup::"
+
+      - name: store Qwt 6.3.0 in cache
+        if: steps.qwt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: /usr/local/qwt-6.3.0
+          key: ${{ steps.qwt-cache.outputs.cache-primary-key }}
+
+      - name: register Qwt 6.3.0 library path
+        run: |
+          echo "/usr/local/qwt-6.3.0/lib" | sudo tee /etc/ld.so.conf.d/qwt-qt6.conf
+          sudo ldconfig
 
       - name: configure
         # CHOLMOD and rocALUTION require a working OpenMP package. So, disable them for clang.
@@ -143,7 +185,7 @@ jobs:
             -DCMAKE_BUILD_TYPE="Release" \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/usr" \
             $([ "${{ matrix.compiler }}" == "flang" ] && echo "-DHAVE_QP=OFF" || echo "-DHAVE_QP=ON") \
-            $([ "${{ matrix.os }}" == "ubuntu-24.04-arm" ] && echo "-DBLA_VENDOR=Generic" || echo "-DBLA_VENDOR=OpenBLAS") \
+            $([ "${{ matrix.os }}" == "ubuntu-26.04-arm" ] && echo "-DBLA_VENDOR=Generic" || echo "-DBLA_VENDOR=OpenBLAS") \
             ${{ matrix.openmp-cmake-flags }} \
             -DEXTERNAL_ARPACK=ON $([ "${{ matrix.mpi }}" == "with" ] && echo "-DEXTERNAL_PARPACK=ON") \
             -DWITH_LUA=ON \
@@ -153,7 +195,9 @@ jobs:
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_Hypre=ON -DHYPRE_INCLUDE_DIR=/usr/include/hypre" || echo "-DWITH_Hypre=OFF") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ROCALUTION=ON" || echo "-DWITH_ROCALUTION=OFF") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "-DWITH_ElmerIce=ON" || echo "-DWITH_ElmerIce=OFF") \
-            -DWITH_ELMERGUI=ON \
+            -DWITH_ELMERGUI=ON -DWITH_QT6=ON \
+            -DQWT_INCLUDE_DIR=/usr/local/qwt-6.3.0/include \
+            -DQWT_LIBRARY=/usr/local/qwt-6.3.0/lib/libqwt.so \
             -DWITH_VTK=ON \
             -DWITH_OCC=ON \
             -DWITH_MATC=ON \

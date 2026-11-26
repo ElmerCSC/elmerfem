@@ -12,7 +12,7 @@ jobs:
   ubuntu:
     # For available GitHub-hosted runners, see:
     # https://docs.github.com/en/actions/using-github-hosted-runners/about-github-hosted-runners
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
 
     name: ubuntu-full (${{ matrix.compiler }})
 
@@ -53,7 +53,7 @@ jobs:
         run: |
           sudo apt -qq update
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
-            libopenblas-dev libopenmpi-dev libmumps-dev libparmetis-dev \
+            libopenblas-dev libopenmpi-dev libmumps-dev \
             libqwt-qt5-dev qtscript5-dev libqt5svg5-dev
 
       - name: configure
