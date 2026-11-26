@@ -1183,7 +1183,8 @@ CONTAINS
       IF(.NOT. Found) body_in = CurrentModel % NumberOfBodies
       body_out = ListGetInteger( Params,'SplitFem Outside Body',Found )
       IF(.NOT. Found) body_out = body_in+1
-      PSweep = 0
+      prevElement => NULL()
+      PSweep = -1
     END IF
 
     IF(PRESENT(Sweep)) THEN
@@ -3352,7 +3353,7 @@ CONTAINS
 
       IF(PEs > 1) THEN
         BLOCK
-          INTEGER, ALLOCATABLE :: SendCount(:),SendElems(:,:)
+          INTEGER, ALLOCATABLE :: SendCount(:),SendElems(:,:),RecvCount(:),sdisps(:)
           INTEGER :: comm, ierr
 
           comm = Solver % Matrix % Comm
@@ -3412,30 +3413,31 @@ CONTAINS
 
           CALL MPI_ALLREDUCE(MPI_IN_PLACE, nCol, 1, MPI_INTEGER, MPI_MAX, comm, ierr)
 
-          ! send count should equal recvcount
-          !CALL MPI_ALLTOALL(SendCount, 1, MPI_INTEGER, RecvCount, 1, MPI_INTEGER, comm, ierr)
+          ALLOCATE(RecvCount(PEs), sdisps(PEs))
+          CALL MPI_ALLTOALL(SendCount, 1, MPI_INTEGER, RecvCount, 1, MPI_INTEGER, comm, ierr)
 
+          sdisps(1) = 0
           rdisps(1) = 0
           DO i=2, PEs
-            rdisps(i) = rdisps(i-1) + SendCount(i-1)
+            sdisps(i) = sdisps(i-1) + SendCount(i-1)
+            rdisps(i) = rdisps(i-1) + RecvCount(i-1)
           END DO
 
-          SharedCount = SUM(SendCount)
+          SharedCount = SUM(RecvCount)
           ALLOCATE(RecvElems(SharedCount,2))
 
-          ! these can be all gather?!
-          CALL MPI_Alltoallv(SendElems(:,1), SendCount, rdisps, MPI_INTEGER, &
-                            RecvElems(:,1), SendCount, rdisps, MPI_INTEGER, &
+          CALL MPI_Alltoallv(SendElems(:,1), SendCount, sdisps, MPI_INTEGER, &
+                            RecvElems(:,1), RecvCount, rdisps, MPI_INTEGER, &
                             comm, ierr)
-          CALL MPI_Alltoallv(SendElems(:,2), SendCount, rdisps, MPI_INTEGER, &
-                            RecvElems(:,2), SendCount, rdisps, MPI_INTEGER, &
+          CALL MPI_Alltoallv(SendElems(:,2), SendCount, sdisps, MPI_INTEGER, &
+                            RecvElems(:,2), RecvCount, rdisps, MPI_INTEGER, &
                             comm, ierr)
 
           ALLOCATE(RecvFrom(SharedCount))
           counter = 0
           DO i=1,PEs
-            RecvFrom(counter+1:counter+SendCount(i)) = i
-            counter = counter + SendCount(i)
+            RecvFrom(counter+1:counter+RecvCount(i)) = i
+            counter = counter + RecvCount(i)
           END DO
 
         END BLOCK
