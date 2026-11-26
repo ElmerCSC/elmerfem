@@ -74,14 +74,15 @@ SUBROUTINE WhitneyAVHarmonicSolver_Init0(Model,Solver,dt,Transient)
     CALL ListAddString( SolverParams, "Element", TRIM(ElemType) )
   END IF
 
+  ! The conjugate part of the exact Newton Jacobian is not complex-linear: the system is assembled as complex
+  ! but must be solved as a real system of twice the size.
   IF( ListGetLogical( SolverParams,'Harmonic Newton Exact', Found ) ) THEN
-    CALL Info('WhitneyHarmonicSolver_Init0','Exact Newton spoils the complex linear system!')
-    CALL LIstAddLogical( SolverParams,'Linear System Complex',.FALSE.)
+    CALL Info('WhitneyHarmonicSolver_Init0','Harmonic Newton Exact: solving the linear system as real')
+    CALL ListAddLogical( SolverParams,'Linear System Complex',.FALSE.)
   ELSE
     CALL ListAddNewLogical( SolverParams,'Linear System Complex',.TRUE.)
   END IF
 
-  
 ! This is for internal communication with the saving routines
   CALL ListAddLogical( SolverParams,'Hcurl Basis',.TRUE.)
 
@@ -236,11 +237,9 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   REAL(KIND=dp) :: NewtonTol
   ! Weight of the complex-linear Newton term (default 1 = previous behaviour)
   REAL(KIND=dp) :: NewtonWeight
-  ! Exact Newton: conjugate part of the Jacobian kept in a separate real matrix (same sparsity, real 2x2 blocks),
-  ! inner real GCR preconditioned by the (reused) complex factorization of K + H
+  ! Exact Newton: the conjugate part of the Jacobian is glued to the system matrix as real 2x2 blocks
   LOGICAL :: ExactNewton, ElemJACC
   COMPLEX(KIND=dp), ALLOCATABLE :: JACC(:,:)
-  LOGICAL :: InnerGCR, AnyJACC
 
   CHARACTER(LEN=MAX_NAME_LEN):: LaminateStackModel, CoilType, HbCurveVarName
 
@@ -395,7 +394,8 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
 
   ! The complex-linear Jacobian nu'(B.rotW_i)(B*.rotW_j)/|B| treats a phase change of B like a change of
   ! its magnitude. The true derivative of nu(|B|)B is not complex-linear: it is half this term plus a
-  ! conjugate part. Weight 0.5 balances the error between magnitude and phase changes.
+  ! conjugate part. Weight 0.5 balances the error between magnitude and phase changes, but may end in a
+  ! 2-cycle; 'Harmonic Newton Exact' is the robust choice.
   NewtonWeight = GetCReal( SolverParams, 'Harmonic Newton Weight', Found )
   IF(.NOT. Found) NewtonWeight = 1.0_dp
   ! report the weight, so that scripts can check that the keyword was applied
@@ -409,7 +409,7 @@ SUBROUTINE WhitneyAVHarmonicSolver( Model,Solver,dt,Transient )
   ExactNewton = GetLogical( SolverParams, 'Harmonic Newton Exact', Found )
   IF( ExactNewton ) THEN
     NewtonWeight = 0.5_dp
-    CALL Info('WhitneyAVHarmonicSolver','Harmonic Newton Exact: inner GCR with the complex factorization', Level=3)
+    CALL Info('WhitneyAVHarmonicSolver','Harmonic Newton Exact: conjugate part included in the Jacobian', Level=3)
   END IF
   ElemJACC = .FALSE.
 
@@ -452,7 +452,6 @@ CONTAINS
     ! System assembly:
     !-----------------
     CALL DefaultInitialize()
-    AnyJACC = .FALSE.
     Active = GetNOFActive()
 
     DO t=1,active
@@ -595,10 +594,8 @@ CONTAINS
        !---------------------------------------------------------------
        CALL DefaultUpdateEquations( STIFF, FORCE )
        IF (EigenSystem) CALL DefaultUpdateMass(MASS)
-       IF ( ElemJACC ) THEN
-         CALL DefaultUpdateEquationsCompConj( JACC ) 
-       END IF
-         
+       IF ( ElemJACC ) CALL DefaultUpdateEquationsCompConj( JACC )
+
        ! Memorize stuff for the fixing potential
        ! 1) Divergence of the source term
        ! 2) The source terms at the surface to determine the direction

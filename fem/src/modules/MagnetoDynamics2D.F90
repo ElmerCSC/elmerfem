@@ -1684,19 +1684,20 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init0( Model,Solver,dt,Transient )
   LOGICAL :: Transient           !< Steady state or transient simulation
 !------------------------------------------------------------------------------
   TYPE(ValueList_t), POINTER :: Params
-  LOGICAL :: Found 
-  
+  LOGICAL :: Found
+
   Params => GetSolverParams(Solver)
   CALL ListAddNewLogical( Params, 'Apply Mortar BCs', .TRUE.)
 
+  ! The conjugate part of the exact Newton Jacobian is not complex-linear: the system is assembled as complex
+  ! but must be solved as a real system of twice the size.
   IF( ListGetLogical( Params,'Harmonic Newton Exact', Found ) ) THEN
-    CALL Info('MagnetoDynamics2DHarmonic','Exact newton spoils the complex linear system!')
-    CALL LIstAddLogical( Params,'Linear System Complex',.FALSE.)
+    CALL Info('MagnetoDynamics2DHarmonic_Init0','Harmonic Newton Exact: solving the linear system as real')
+    CALL ListAddLogical( Params,'Linear System Complex',.FALSE.)
   ELSE
     CALL ListAddNewLogical( Params,'Linear System Complex',.TRUE.)
   END IF
 
-  
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init0
 !------------------------------------------------------------------------------
@@ -1718,7 +1719,7 @@ SUBROUTINE MagnetoDynamics2DHarmonic_Init( Model,Solver,dt,Transient )
   CALL ListAddInteger( Params, 'Variable Dofs',2 )
   CALL ListAddNewString( Params,'Variable',&
       'Potential[Potential re:1 Potential im:1]')
-  
+
 !------------------------------------------------------------------------------
 END SUBROUTINE MagnetoDynamics2DHarmonic_Init
 !------------------------------------------------------------------------------
@@ -1758,9 +1759,6 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   CHARACTER(*), PARAMETER :: Caller = 'MagnetoDynamics2DHarmonic'
   ! Exact Newton: conjugate part of the Jacobian must be considered
   LOGICAL :: ExactNewton
-  REAL(KIND=dp) :: InnerTol
-  INTEGER :: InnerMaxIter
-  TYPE(Matrix_t), POINTER, SAVE :: Cmat => NULL()
 
 !------------------------------------------------------------------------------
 
@@ -1816,10 +1814,8 @@ SUBROUTINE MagnetoDynamics2DHarmonic( Model,Solver,dt,Transient )
   IF(.NOT.Found) NonlinIter = 1
 
   ! Exact Newton: d(nu(|B|)B) = nu dB + nu'/(2|B|) B (B*.dB) + nu'/(2|B|) B (B.dB*). The last (conjugate) part is
-  ! not complex-linear. The Newton step (K + H) dA + C conj(dA) = r is solved with the complex factorization of
-  ! K + H only, by an inner real GCR iteration that reuses this factorization
-  ! ('Harmonic Newton Inner Tolerance', 'Harmonic Newton Inner Max Iterations'). Newton starts in the 2nd
-  ! iteration as before.
+  ! not complex-linear. The Newton step (K + H) dA + C conj(dA) = r is solved as a real system of twice the
+  ! size, see the _Init0 routine. Newton starts in the 2nd iteration as before.
   ExactNewton = GetLogical( Params, 'Harmonic Newton Exact', Found )
 
   CALL DefaultStart()
@@ -2565,7 +2561,7 @@ CONTAINS
       FORCE = FORCE + MATMUL(JAC,POTC)
       IF(ExactNewton) THEN
         ! the conjugate part acts on conj(A): (K + H) A_new + C conj(A_new) = f + H A + C conj(A)
-        FORCE = FORCE + MATMUL(JACC,CONJG(POTC))      
+        FORCE = FORCE + MATMUL(JACC,CONJG(POTC))
         CALL DefaultUpdateEquationsCompConj( JACC, UElement=Element )
       END IF
     END IF
@@ -2573,7 +2569,6 @@ CONTAINS
     IF(Transient) THEN
       CALL Default1stOrderTime( MASS, STIFF, FORCE, UElement=Element )
     END IF
-    
     CALL DefaultUpdateEquations( STIFF, FORCE, UElement=Element )
 
 !------------------------------------------------------------------------------
