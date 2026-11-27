@@ -26,12 +26,12 @@ jobs:
       fail-fast: false
 
       matrix:
-        os: [ubuntu-24.04]
+        os: [ubuntu-latest]
         compiler: [gcc]
         mpi: [with]
         openmp: [with]
         include:
-          - os: ubuntu-24.04-arm
+          - os: ubuntu-26.04-arm
             compiler: gcc
             compiler-pkgs: "g++ gcc"
             cc: "gcc"
@@ -58,7 +58,7 @@ jobs:
           sudo apt install -y ${{ matrix.compiler-pkgs }} cmake gfortran \
             libopenblas-dev \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "libhypre-dev") \
-            $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev libparmetis-dev") \
+            $([ "${{ matrix.mpi }}" == "with" ] && echo "libopenmpi-dev libmumps-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && echo "libsuitesparse-dev") \
             $([ "${{ matrix.compiler }}" == "gcc" ] && [ "${{ matrix.mpi }}" == "with" ] && echo "librocalution-dev") \
             $([ "${{ matrix.mpi }}" == "with" ] && echo "trilinos-all-dev libptscotch-dev") \
