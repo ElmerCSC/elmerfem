@@ -180,5 +180,7 @@ Boundary Condition 6
 End
 
 
-Solver 2 :: Reference Norm = 903.83845
+! 903.83845 with the former default brick bubbles b:4; the default is now b:7
+! (IncompressibleNS _Init0), which removes the 3D checkerboard pressure mode.
+Solver 2 :: Reference Norm = 903.747018
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4

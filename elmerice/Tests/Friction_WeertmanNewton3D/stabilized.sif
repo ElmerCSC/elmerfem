@@ -11,7 +11,8 @@
 ! The output level is raised only so the three timers reach the log; the two
 ! variants are otherwise identical in what they print.
 !
-! Against the MINI answer in case.sif the norm below sits +0.323 %.
+! Against the MINI answer in case.sif the norm below sits +0.333 % (+0.323 %
+! against the former b:4 bubbles).
 !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 !!                                       !!
 !! Test for Weertman friction law        !!
