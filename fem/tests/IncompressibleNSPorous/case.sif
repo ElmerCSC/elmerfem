@@ -1,0 +1,87 @@
+! Regression test for porous media in IncompressibleNS: Material
+! "Porous Media = True" with "Porous Resistivity", the Darcy drag mu*R_i*u_i
+! of momentum equation i, as in FlowSolve.F90 (keywords and semantics alike).
+!
+! Manufactured solution in the unit square, rho = 1.3, mu = 0.1, with a
+! spatially varying, anisotropic resistivity in component form,
+! R = (2+x, 3+y):
+!   u = (y, x)  (divergence free),  p = x,
+!   f = (u.grad)u + (mu*R*u + grad p)/rho  (given per unit mass).
+! u and p lie in the discrete space, and so does the load: mu*R_i*u_i is
+! bilinear, (2+x)*y and (3+y)*x, so its nodal interpolation is exact. The
+! discrete solution is then exact to round-off (Navier-Stokes, Newton, the
+! default quad bubbles); leaving the drag out, or a wrong component, gives an
+! O(1) error. Pressure is checked separately (max|p| = 1 by SaveScalars), as
+! the solver norm does not include it.
+!
+! The array form "Porous Resistivity(n)" and the scalar form are verified the
+! same way; FlowSolve's PorousPipe case run with this solver agrees with
+! FlowSolve to 1e-4 in pressure.
+
+Check Keywords Warn
+Header
+  Mesh DB "." "square"
+End
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+Equation 1
+  Active Solvers(2) = 1 2
+End
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance = 1.0e-12
+
+  Nonlinear System Newton After Iterations = 3
+End
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Variable 1 = Pressure
+  Operator 1 = max abs
+  Show Norm Index = 1
+End
+Material 1
+  Density = 1.3
+  Viscosity = 0.1
+  Porous Media = Logical True
+  Porous Resistivity 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "(2+tx(0))"
+  Porous Resistivity 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "(3+tx(1))"
+End
+Body Force 1
+  Flow Bodyforce 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(0)+(0.1*(2+tx(0))*tx(1)+1)/1.3"
+  Flow Bodyforce 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(1)+(0.1*(3+tx(1))*tx(0)+0)/1.3"
+End
+Boundary Condition 1
+  Target Boundaries(4) = 1 2 3 4
+  Velocity 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(1)"
+  Velocity 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(0)"
+End
+Boundary Condition 2
+  Target Coordinates(1,2) = 0.0 0.0
+  Pressure = 0.0
+End
+
+Solver 1 :: Reference Norm = Real 0.60092521
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-6
+! max|p| = max x = 1 (exact)
+Solver 2 :: Reference Norm = Real 1.0
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-6
