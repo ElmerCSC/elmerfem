@@ -110,7 +110,10 @@
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
+    ! The ratio of the suggested time increment to the current one. It is set to
+    ! a large value before the call. In a transient simulation with "Adaptive
+    ! Timestepping" a value below one rejects the step and repeats it with the
+    ! suggested size, and any value limits the size of the next step.
 
     REAL(KIND=dp), INTENT(IN) :: celent
     ! The element size is not yet provided by Elmer
@@ -246,7 +249,10 @@
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
+    ! The ratio of the suggested time increment to the current one. It is set to
+    ! a large value before the call. In a transient simulation with "Adaptive
+    ! Timestepping" a value below one rejects the step and repeats it with the
+    ! suggested size, and any value limits the size of the next step.
 
     REAL(KIND=dp), INTENT(IN) :: celent
     ! The element size is not yet provided by Elmer
@@ -409,7 +415,10 @@
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
+    ! The ratio of the suggested time increment to the current one. It is set to
+    ! a large value before the call. In a transient simulation with "Adaptive
+    ! Timestepping" a value below one rejects the step and repeats it with the
+    ! suggested size, and any value limits the size of the next step.
 
     REAL(KIND=dp), INTENT(IN) :: celent
     ! The element size is not yet provided by Elmer
@@ -699,7 +708,10 @@
     ! (the variable is initialized to the identity)
 
     REAL(KIND=dp), INTENT(INOUT) :: pnewdt
-    ! Currently, suggesting a new size of time increment does not make any impact
+    ! The ratio of the suggested time increment to the current one. It is set to
+    ! a large value before the call. In a transient simulation with "Adaptive
+    ! Timestepping" a value below one rejects the step and repeats it with the
+    ! suggested size, and any value limits the size of the next step.
 
     REAL(KIND=dp), INTENT(IN) :: celent
     ! The element size is not yet provided by Elmer

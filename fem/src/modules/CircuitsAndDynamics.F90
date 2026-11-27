@@ -1246,7 +1246,7 @@ CONTAINS
 !------------------------------------------------------------------------------
 !> Weights of the time derivative of every circuit and coupling term:
 !> dx/dt ~ (BDFw(1)*x^n + BDFw(2)*x^{n-1} + BDFw(3)*x^{n-2})/dt.
-!> The order follows the A solver, the same MIN(DoneTime,Order) rule the library
+!> The order follows the A solver, the same MIN(TimeLevels,Order) rule the library
 !> uses for its own BDF, since the coupling terms have to be discretized like
 !> the field equation they are added to. It used to read the order of the
 !> circuit solver and switch to BDF2 one step later than the field did, and the
@@ -1268,7 +1268,7 @@ CONTAINS
     IF(.NOT. Found) RETURN
     IF(Method /= 'bdf') RETURN
 
-    AOrder = MAX(MIN(ASolver % DoneTime, ASolver % Order), 1)
+    AOrder = MAX(MIN(ASolver % TimeLevels, ASolver % Order), 1)
     IF(AOrder > 2 .AND. NewStep) THEN
       CALL Warn(Caller,'Circuit equations implement BDF only up to order 2, A solver uses order '&
           //I2S(AOrder))

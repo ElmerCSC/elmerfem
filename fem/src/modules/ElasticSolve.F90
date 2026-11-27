@@ -385,6 +385,14 @@ SUBROUTINE ElasticSolver_Init( Model,Solver,dt,Transient )
 
   ! Create variables for some state variables of a user-defined material model (UMAT):
   ! Note that Elmer does not like length of zero for the variables.
+  ! Whether the state variables of an integration point have been initialized
+  ! ("Initialize State Variables"). A variable and not a private flag, so that
+  ! the adaptive timestepping restores it with the state when a step is rejected.
+  IF( GetLogical(SolverParams, 'Initialize State Variables', Found) ) THEN
+    CALL ListAddString(SolverParams, NextFreeKeyword('Exported Variable ', SolverParams), &
+        '-nooutput -ip UmatInitDone' )
+  END IF
+
   IF( NState > 0 ) THEN
     IF (OutputStateVars) THEN
       str = '-dofs '//I2S(NState)//' -ip UmatState'
@@ -496,6 +504,17 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: CompressibilityDefined = .FALSE.
   LOGICAL :: NormalSpring, NormalTangential
   LOGICAL :: Converged, NoExternalLoads
+  ! The residual before the Dirichlet conditions: at the constrained dofs it is
+  ! the reaction force, the scale of the residual of a displacement driven case.
+  REAL(KIND=dp), ALLOCATABLE :: UmatRhs(:)
+  ! Scratch for the parallel residual norm: BulkRHS must keep the bulk system,
+  ! "Calculate Loads" takes the reactions from it.
+  REAL(KIND=dp), ALLOCATABLE :: UmatParRhs(:)
+  REAL(KIND=dp) :: UmatReaction
+  ! The external loads alone, assembled on the first iteration: the scale of
+  ! the residual of a load driven case, and the test of whether there are any.
+  ! Not in BulkRHS, which "Calculate Loads" overwrites with the whole system.
+  REAL(KIND=dp), ALLOCATABLE, TARGET :: UmatLoad(:)
   LOGICAL :: Parallel, Scanning
 
   INTEGER, POINTER :: TempPerm(:),StressPerm(:),PressPerm(:),NodeIndexes(:), &
@@ -542,7 +561,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   REAL(KIND=dp) :: UNorm, TransformMatrix(3,3), Tdiff, Normal(3), s, UnitNorm, DragCoeff
   REAL(KIND=dp) :: Norm, NonlinTol, NonlinRes0, NonlinRes, time
-  REAL(KIND=dp) :: at,at0
+  REAL(KIND=dp) :: at,at0,UmatRelax
 
   CHARACTER(LEN=MAX_NAME_LEN) :: str, CompressibilityFlag
   CHARACTER(LEN=MAX_NAME_LEN) :: UMATName
@@ -551,8 +570,29 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   TYPE(Variable_t), POINTER :: UmatEnergyVar, UmatStressVar, UmatStateVar
   REAL(KIND=dp), POINTER :: UmatEnergy(:), UmatStress(:), UmatState(:)
+  ! The converged state at the previous time/load level: the 1st PrevValues of
+  ! the variables above.
   REAL(KIND=dp), POINTER :: UmatEnergy0(:),UmatStress0(:), UmatState0(:)
-  LOGICAL, ALLOCATABLE :: UmatInitDone(:)
+  REAL(KIND=dp), POINTER :: UmatInitDone(:)
+  ! The smallest PNEWDT the UMAT returned in the latest assembly
+  REAL(KIND=dp) :: UmatPnewdt
+  ! The UMAT iteration broke down (a residual not finite, an inverted element)
+  ! or ended at the iteration limit without converging.
+  LOGICAL :: UmatInverted, UmatBroken, UmatNotConverged
+  ! The UMAT's DDSDDE is the Abaqus tangent (Jaumann rate), see "UMAT Tangent".
+  LOGICAL :: UmatJaumann = .FALSE., UmatRelaxWarned = .FALSE.
+  ! "UMAT Bbar": the volumetric strain of the linear elements is taken from the
+  ! element centre, B-bar for small and F-bar for large deflection.
+  LOGICAL :: UmatBbar = .FALSE.
+  CHARACTER(LEN=MAX_NAME_LEN) :: UmatTangent, UmatTangentIn
+  INTEGER :: UmatTangentLen
+  ! Backtracking line search of the UMAT Newton iteration, see UmatLinesearchRetry.
+  LOGICAL :: LsActive, LsTrial, LsFound, LsSlopeOK
+  INTEGER :: LsCount, LsMaxCount
+  REAL(KIND=dp) :: LsAlpha, LsSlope0, LsFactor, LsLimit, Cosine
+  REAL(KIND=dp), PARAMETER :: LsMinCosine = 1.0e-6_dp
+  REAL(KIND=dp), ALLOCATABLE :: LsBase(:), LsDir(:), LsDirRot(:)
+  REAL(KIND=dp), PARAMETER :: UmatNoPnewdt = 1.0d30
   LOGICAL :: AnyDamping, GotDamping, GotRayleighAlpha, GotRayleighBeta, NeedMass
   REAL(KIND=dp) :: RayleighAlpha, RayleighBeta
 
@@ -722,9 +762,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   ! version active is to have "UMAT Subroutine" as specified.
   !
   UseUMAT = ListCheckPresentAnyMaterial(Model, 'UMAT Subroutine')
-  IF (UseUMAT .AND. TransientSimulation) THEN
-    CALL Fatal(Caller, 'UMAT version does not yet support transient simulation')
-  END IF
+  ! A transient simulation with UMAT: the unknown of the nonlinear iteration is
+  ! the increment of the displacement, see UmatIncrementalTime. The UMAT
+  ! integrates its own rate equations over the timestep it is given.
 
   PrevMaterial => NULL()
   NeoHookeanMaterial = ListGetLogical( SolverParams, 'Neo-Hookean Material', GotIt )
@@ -946,20 +986,22 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        UmatStress = 0.0_dp
 
        ! ----------------------------------------------------------------------
-       ! We also create similar variables with suffix "0" to keep the variable
-       ! values corresponding to the converged solution at the previous time
-       ! level m. In addition to the stress and energy variables, we need to
+       ! The values corresponding to the converged solution at the previous time
+       ! level m are kept in the 1st PrevValues of the variables (the arrays with
+       ! suffix "0"). In addition to the stress and energy variables, we need to
        ! save the state variables as they evolve during the nonlinear iteration
        ! to obtain the solution at the new time level m+1. The right values
        ! of the state variables corresponding to the initial state can be found
        ! by making an extra UMAT call. Check whether this call is needed.
+       !
+       ! In a transient simulation the PrevValues of the exported variables are
+       ! advanced to the Values (the converged state) when a timestep begins,
+       ! and the adaptive timestepping restores both when it rejects a step or
+       ! repeats it. In a steady state or scanning simulation they are set below
+       ! when the nonlinear iteration ends.
        ! ----------------------------------------------------------------------
-
-       ALLOCATE( UmatEnergy0( SIZE( UmatEnergy ) ) )
-       ALLOCATE( UmatStress0( SIZE( UmatStress ) ) )
-
-       UmatEnergy0 = 0.0_dp
-       UmatStress0 = 0.0_dp
+       UmatEnergy0 => UmatPrevValues( UmatEnergyVar )
+       UmatStress0 => UmatPrevValues( UmatStressVar )
 
        UmatStateVar => VariableGet( Mesh % Variables, 'UmatState')
        IF( ASSOCIATED( UmatStateVar ) ) THEN
@@ -967,9 +1009,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          CALL Info(Caller,'Maximum number of state variables in UMAT: '&
              //I2S(MaxStateV),Level=7)
          UmatState => UmatStateVar % Values
-         ALLOCATE( UmatState0( SIZE( UmatState ) ) )
          UmatState = 0.0_dp
-         UmatState0 = 0.0_dp
+         UmatState0 => UmatPrevValues( UmatStateVar )
        ELSE
          CALL Info(Caller,'Could not find variable "UmatState", assuming no state variable!')
          MaxStateV = 0
@@ -977,10 +1018,16 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          UmatState0 => NULL()
        END IF
 
-       ALLOCATE( UmatInitDone( SIZE( UmatEnergy ) / 3 ) )
-       UmatInitDone = .FALSE.
-
        InitializeStateVars = GetLogical(SolverParams, 'Initialize State Variables',GotIt)
+       UmatInitDone => NULL()
+       IF( InitializeStateVars ) THEN
+         Var => VariableGet( Mesh % Variables, 'UmatInitDone')
+         IF (.NOT. ASSOCIATED( Var ) ) CALL Fatal(Caller,'Could not find variable "UmatInitDone"')
+         IF( SIZE( Var % Values ) /= SIZE( UmatEnergy ) / 3 ) &
+             CALL Fatal(Caller,'"UmatInitDone" and "UmatEnergy" differ in size')
+         UmatInitDone => Var % Values
+         UmatInitDone = 0.0_dp
+       END IF
      END IF
 
      AllocationsDone = .TRUE.
@@ -1121,9 +1168,8 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
   PrevSOL = Displacement
   IF (UseUMAT) THEN
-    IF (.NOT. ASSOCIATED(StiffMatrix % BulkRHS)) &
-        ALLOCATE(StiffMatrix % BulkRHS(SIZE(StiffMatrix % RHS)))
-    StiffMatrix % BulkRHS = 0.0d0
+    ALLOCATE( UmatLoad(SIZE(StiffMatrix % RHS)) )
+    UmatLoad = 0.0_dp
 
     IF (.NOT. ASSOCIATED(TotalSol)) ALLOCATE( TotalSol(SIZE(Displacement)) )
 
@@ -1134,6 +1180,18 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
     CALL ListAddLogical(SolverParams, 'Skip Compute Nonlinear Change', .TRUE.)
     HenckyStrain = ListGetLogical(SolverParams, 'Use Hencky strain', GotIt)
+
+    ! The relaxation of the nonlinear iteration is applied by ComputeChange, which
+    ! the skip above bypasses: the UMAT iteration takes full Newton steps, or
+    ! those of its line search. Say so once rather than ignore the keyword.
+    IF ( .NOT. UmatRelaxWarned ) THEN
+      UmatRelax = ListGetCReal(SolverParams, 'Nonlinear System Relaxation Factor', GotIt)
+      IF ( GotIt .AND. ABS(UmatRelax - 1.0_dp) > EPSILON(UmatRelax) ) THEN
+        CALL Warn(Caller, '"Nonlinear System Relaxation Factor" is not used with a UMAT: '// &
+            'use "Nonlinear System Linesearch = True" to shorten the Newton steps')
+      END IF
+      UmatRelaxWarned = .TRUE.
+    END IF
   END IF
 
   !------------------------------------------------------------------------------
@@ -1602,7 +1660,10 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   previ = 0
   IF (UseUMAT) THEN
     IF( TransientSimulation ) THEN
-      previ = 3
+      ! The displacement at t-dt: the 3rd PrevValues of the second order
+      ! methods, the 1st of the first order ones.
+      previ = 1
+      IF( SecondOrderTime ) previ = 3
     ELSE IF( Scanning ) THEN
       previ = 1
     END IF
@@ -1666,7 +1727,28 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      CALL Info( Caller, ' ', Level=7 )
      CALL Info( Caller, 'Starting assembly...', Level=7 )
 
-     IF (UseUMAT) TotalSol(:) = Displacement(:)
+     IF (UseUMAT) THEN
+       TotalSol(:) = Displacement(:)
+       UmatPnewdt = HUGE(UmatPnewdt)
+       UmatInverted = .FALSE.
+       IF( iter == 1 ) THEN
+         UmatBroken = .FALSE.
+         UmatNotConverged = .FALSE.
+         LsTrial = .FALSE.
+         LsActive = ListGetLogical( SolverParams,'Nonlinear System Linesearch',LsFound )
+         IF( LsActive ) THEN
+           LsMaxCount = ListGetInteger( SolverParams,'Nonlinear System Linesearch Iterations',LsFound )
+           IF( .NOT. LsFound ) LsMaxCount = 10
+           LsFactor = ListGetCReal( SolverParams,'Nonlinear System Linesearch Factor',LsFound )
+           IF( .NOT. LsFound ) LsFactor = 0.5_dp
+           LsLimit = ListGetCReal( SolverParams,'Nonlinear System Linesearch Limit',LsFound )
+           IF( .NOT. LsFound ) LsLimit = 0.5_dp
+           IF( ALLOCATED( LsBase ) ) DEALLOCATE( LsBase, LsDir, LsDirRot )
+           ALLOCATE( LsBase( SIZE(Displacement) ), LsDir( SIZE(Displacement) ), &
+               LsDirRot( SIZE(Displacement) ) )
+         END IF
+       END IF
+     END IF
 
      !------------------------------------------------------------------------------
 100  CALL DefaultInitialize()
@@ -1738,6 +1820,14 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
        CALL ModelLumpingDisplacements( Lump, Solver, Model, iter )
      END IF
 
+     IF (UseUMAT) THEN
+       IF ( ALLOCATED(UmatRhs) ) THEN
+         IF ( SIZE(UmatRhs) /= SIZE(StiffMatrix % RHS) ) DEALLOCATE(UmatRhs)
+       END IF
+       IF ( .NOT. ALLOCATED(UmatRhs) ) ALLOCATE( UmatRhs(SIZE(StiffMatrix % RHS)) )
+       UmatRhs = StiffMatrix % RHS
+     END IF
+
      CALL DefaultDirichletBCs()
 
      IF (UseUMAT) THEN
@@ -1775,23 +1865,21 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
                ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
 
            ! Temporarily set the parallel rhs vector to be the plain source vector:
-           CALL ParallelUpdateRHS(StiffMatrix, StiffMatrix % BulkRHS)
+           CALL ParallelUpdateRHS(StiffMatrix, UmatLoad)
            Pb => PMatrix % RHS
            Norm = MAXVAL(ABS(Pb))
            Norm = ParallelReduction(Norm,2)
          ELSE
-           Norm = MAXVAL(ABS(StiffMatrix % BulkRHS(:)))
+           Norm = MAXVAL(ABS(UmatLoad))
          END IF
 
          NoExternalLoads = Norm < AEPS
          IF (NoExternalLoads) THEN
-           ! This appears to be a purely BC-loaded case, switch to using a different criterion
-           ! (use absolute norm, this can be hard ...):
+           ! A purely BC-loaded case: the residual is measured relative to the
+           ! reaction forces, see below.
            CALL Info('ElasticSolver', 'No pressure external loads ... ', Level=4)
            CALL Info('ElasticSolver', &
-               'Switch to using absolute norm in the nonlinear error estimation',  Level=4)
-           CALL Info('ElasticSolver', &
-               'This may give a hard stopping criterion',  Level=4)
+               'The nonlinear residual is measured relative to the reaction forces',  Level=4)
            NonlinRes0 = 1.0d0
          ELSE
            ! Compute the 2-norm of the external load vector
@@ -1802,16 +1890,65 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
              END DO
              NonlinRes0 = SQRT(ParallelReduction(Norm))
            ELSE
-             NonlinRes0 = SQRT(SUM(Solver % Matrix % BulkRHS(:)**2))
+             NonlinRes0 = SQRT(SUM(UmatLoad**2))
            END IF
+           WRITE(Message,'(A,ES12.3)') 'Nonlinear residual relative to the load vector norm: ',NonlinRes0
+           CALL Info('ElasticitySolver', Message, Level=6)
          END IF
        END IF
 
 
+       ! Without external loads the scale of the residual is that of the reaction
+       ! forces of the current iterate, the residual at the constrained dofs. As
+       ! an absolute norm the tolerance would be in the units of force, and with
+       ! a large load too strict to be met (as in CalculiX, the residual is
+       ! relative to the forces carried). Absolute while there is no reaction yet.
+       IF ( NoExternalLoads ) THEN
+         IF ( ALLOCATED(StiffMatrix % ConstrainedDOF) ) THEN
+           WHERE( .NOT. StiffMatrix % ConstrainedDOF ) UmatRhs = 0.0_dp
+         ELSE
+           UmatRhs = 0.0_dp
+         END IF
+         IF (Parallel) THEN
+           PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
+           IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+               ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+           CALL ParallelUpdateRHS(StiffMatrix, UmatRhs)
+           Pb => PMatrix % RHS
+           Norm = 0.0d0
+           DO i=1,PMatrix % NumberOfRows
+             Norm = Norm + Pb(i)**2
+           END DO
+           UmatReaction = SQRT(ParallelReduction(Norm))
+         ELSE
+           UmatReaction = SQRT(SUM(UmatRhs**2))
+         END IF
+         IF ( UmatReaction > AEPS ) THEN
+           NonlinRes0 = UmatReaction
+         ELSE
+           NonlinRes0 = 1.0_dp
+         END IF
+         WRITE(Message,'(A,ES12.3)') 'Reaction force norm: ',UmatReaction
+         CALL Info('ElasticitySolver', Message, Level=6)
+       END IF
+
        IF (Parallel) THEN
-         ! Employ BulkRHS vector to estimate the size of the current residual (RHS):
-         Solver % Matrix % BulkRHS = Solver % Matrix % RHS
-         CALL ParallelUpdateRHS(StiffMatrix, Solver % Matrix % BulkRHS)
+         ! The size of the current residual (RHS), from the parallel RHS vector.
+         ! The parallel structures are renewed by the first linear solve: take
+         ! the pointers to them again on every iteration, else the residual is
+         ! read from a stale vector and the first solve never converges.
+         PMatrix => StiffMatrix % ParMatrix % SplittedMatrix % InsideMatrix
+         IF (.NOT. ASSOCIATED(PMatrix % RHS)) &
+             ALLOCATE(PMatrix % RHS(PMatrix % NumberOfRows))
+         Pb => PMatrix % RHS
+         ! Not into BulkRHS, which this used to overwrite with the system after
+         ! the Dirichlet conditions: the parallel nodal loads came out wrong.
+         IF ( ALLOCATED(UmatParRhs) ) THEN
+           IF ( SIZE(UmatParRhs) /= SIZE(Solver % Matrix % RHS) ) DEALLOCATE(UmatParRhs)
+         END IF
+         IF ( .NOT. ALLOCATED(UmatParRhs) ) ALLOCATE( UmatParRhs(SIZE(Solver % Matrix % RHS)) )
+         UmatParRhs = Solver % Matrix % RHS
+         CALL ParallelUpdateRHS(StiffMatrix, UmatParRhs)
          Norm = 0.0d0
          DO i=1,PMatrix % NumberOfRows
            Norm = Norm + Pb(i)**2
@@ -1824,19 +1961,43 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
            //I2S(Iter-1)//': ',NonLinRes
        CALL Info('ElasticitySolver', Message, Level=5)
 
+       ! An inverted element, or a residual that is not finite: the iterate is
+       ! beyond repair. Stop before solving and assembling with it again, and
+       ! report the divergence, see the end of the iteration.
+       IF( Parallel ) THEN
+         i = 0
+         IF( UmatInverted ) i = 1
+         UmatInverted = ( ParallelReduction( i, 2 ) > 0 )
+       END IF
+
+       ! A Newton step that made things worse is shortened, and the shorter one
+       ! assembled again, before anything is solved.
+       IF( UmatLinesearchRetry() ) GOTO 100
+
+       IF( UmatInverted .OR. .NOT. ( NonlinRes <= HUGE( NonlinRes ) ) ) THEN
+         IF( UmatInverted ) THEN
+           CALL Warn('ElasticitySolver','Nonlinear iteration diverged: an element is inverted')
+         ELSE
+           CALL Warn('ElasticitySolver','Nonlinear iteration diverged: the residual is not finite')
+         END IF
+         UmatBroken = .TRUE.
+         Displacement(:) = TotalSol(:)
+         EXIT
+       END IF
+
        IF (NonlinRes < NonlinTol .AND. (iter-1) >= MinNonlinearIter) THEN
          CALL Info('ElasticitySolver','Nonlinear iteration is terminated succesfully',Level=5)
 
          ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         ! solution to the array holding the previous solution state. In a
+         ! transient simulation this is done when the next timestep begins.
+         IF( .NOT. TransientSimulation ) CALL UmatCommitState()
 
          Displacement(:) = TotalSol(:)
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
          EXIT
        END IF
+
 
      ELSE
        IF ( DefaultLinesearch( Converged ) ) GOTO 100
@@ -1857,22 +2018,52 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
      IF ( UseModelLumping ) CALL ModelLumpingSprings( Lump, Solver, Model, iter )
 
      IF (UseUmat) THEN
+       IF( Solver % Variable % LinConverged == 2 ) THEN
+         ! The increment is garbage: keep the last iterate and stop, see UmatConvergenceStatus.
+         CALL Warn('ElasticitySolver','Nonlinear iteration diverged: the linear system solver diverged')
+         UmatBroken = .TRUE.
+         Displacement(:) = TotalSol(:)
+         EXIT
+       END IF
+       IF( LsActive ) THEN
+         ! The full Newton step is the first trial, judged at the next assembly.
+         ! The slope s(0) = du.R(u_k) is taken from the residual just solved for,
+         ! in the frame of the system (normal-tangential where so rotated).
+         LsBase(:) = TotalSol(:)
+         LsDir(:) = Displacement(:)
+         LsDirRot(:) = Displacement(:)
+         CALL RotateNTSystemAll(LsDirRot, StressPerm, STDOFs)
+         CALL UmatLsSlope( LsSlope0, Cosine )
+         LsAlpha = 1.0_dp
+         LsCount = 0
+         LsTrial = .TRUE.
+         ! The slope can judge the step only when du is a clear descent
+         ! direction. An inexact linear solve near convergence gives an
+         ! increment nearly orthogonal to the residual, s(0) ~ 0, whose slope
+         ! ratios are then meaningless: only a broken trial is cut back.
+         LsSlopeOK = ( Cosine > LsMinCosine )
+         IF( .NOT. LsSlopeOK ) THEN
+           WRITE(Message,'(A,ES10.2,A)') 'Line search: slope not used, cos(du,R) = ',Cosine
+           CALL Info('ElasticitySolver',Message,Level=6)
+         END IF
+       END IF
        Displacement(:) = TotalSol(:) + Displacement(:)
        IF (iter==NonlinearIter) THEN
          CALL Info('ElasticitySolver', &
              'The maximum of nonlinear iterations reached: Terminating...', Level=5)
+         UmatNotConverged = ( NonlinearIter > 1 )
 
          ! Save the state variables corresponding to the converged nonlinear
-         ! solution to the array holding the previous solution state:
-         UmatEnergy0 = UmatEnergy
-         UmatStress0 = UmatStress
-         IF(ASSOCIATED(UmatState)) UmatState0 = UmatState
+         ! solution to the array holding the previous solution state. In a
+         ! transient simulation this is done when the next timestep begins.
+         IF( .NOT. TransientSimulation ) CALL UmatCommitState()
 
          IF (Scanning) StressSol % PrevValues(:,1) = Displacement(:)
          EXIT
        END IF
      ELSE
        !----------------------------------------------------------------------------------
+       IF ( Solver % Variable % NonlinConverged == 2 ) EXIT
        IF ( ( Solver % Variable % NonlinConverged == 1 .OR. iter==NonlinearIter ) .AND. &
            ( iter >= MinNonlinearIter ) ) EXIT
      END IF
@@ -1880,6 +2071,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   !------------------------------------------------------------------------------
   END DO ! of nonlinear iter
   !------------------------------------------------------------------------------
+
+  IF ( UseUMAT ) CALL UmatConvergenceStatus()
+  IF ( UseUMAT .AND. TransientSimulation ) CALL UmatEndTimestep()
 
   CALL PostProcess()
 
@@ -1900,6 +2094,279 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
 
 !------------------------------------------------------------------------------
 CONTAINS
+
+!------------------------------------------------------------------------------
+!> The 1st PrevValues of a UMAT variable, which holds its converged value at
+!> the previous time/load level. Allocated (zero) when not there yet.
+!------------------------------------------------------------------------------
+  FUNCTION UmatPrevValues( Var ) RESULT( Prev )
+    TYPE(Variable_t), POINTER :: Var
+    REAL(KIND=dp), POINTER :: Prev(:)
+
+    IF ( ASSOCIATED( Var % PrevValues ) ) THEN
+      IF ( SIZE( Var % PrevValues,1 ) /= SIZE( Var % Values ) ) THEN
+        DEALLOCATE( Var % PrevValues )
+      END IF
+    END IF
+    IF ( .NOT. ASSOCIATED( Var % PrevValues ) ) THEN
+      ALLOCATE( Var % PrevValues( SIZE( Var % Values ), 1 ) )
+      Var % PrevValues = 0.0_dp
+    END IF
+    Prev => Var % PrevValues(:,1)
+  END FUNCTION UmatPrevValues
+
+!------------------------------------------------------------------------------
+!> Line search of the UMAT Newton iteration, with "Nonlinear System
+!> Linesearch = True". The trial iterate u_k + alpha*du has just been
+!> assembled. It is judged by the slope s(alpha) = du.R(u_k + alpha*du), the
+!> derivative of the potential energy along the search direction (Crisfield;
+!> also what Abaqus uses), not by the norm of the residual: a Newton step of a
+!> bending structure raises large residuals orthogonal to du, such as axial
+!> forces, which the norm counts but which the iteration removes by itself.
+!>
+!> The trial is rejected if an element inverted or the residual is not finite
+!> (alpha is reduced by "Linesearch Factor"), or if it went beyond the energy
+!> minimum along du, s(alpha) < -Limit*s(0) (alpha is set to the root of the
+!> secant of s, kept within [0.1,0.9]*alpha). True is then returned and the
+!> caller assembles again at the shorter step, without solving. A trial short
+!> of the minimum (s > 0) is accepted. After "Linesearch Iterations"
+!> reductions a broken trial ends the iteration as diverged, while one only
+!> beyond the minimum is replaced by the full step, as plain Newton would take.
+!> When du is not a clear descent direction (see LsSlopeOK) only broken
+!> trials are rejected. The UMAT always starts from the committed state of
+!> the step, so a rejected trial leaves nothing behind. The decision is the
+!> same on all partitions: the slope, the residual and the inversion flag are
+!> all reduced over them.
+!------------------------------------------------------------------------------
+  FUNCTION UmatLinesearchRetry() RESULT( Retry )
+    LOGICAL :: Retry
+    LOGICAL :: Broken, Bad
+    REAL(KIND=dp) :: r, NewAlpha
+
+    Retry = .FALSE.
+    IF( .NOT. LsTrial ) RETURN
+
+    Broken = UmatInverted .OR. .NOT. ( NonlinRes <= HUGE( NonlinRes ) )
+    r = 0.0_dp
+    Bad = Broken
+    IF( .NOT. Broken .AND. LsSlopeOK .AND. NonlinRes >= NonlinTol ) THEN
+      CALL UmatLsSlope( r, Cosine )
+      r = r / LsSlope0
+      Bad = ( r < -LsLimit )
+    END IF
+
+    IF( .NOT. Bad ) THEN
+      LsTrial = .FALSE.
+      RETURN
+    END IF
+
+    IF( LsCount >= LsMaxCount ) THEN
+      LsTrial = .FALSE.
+      IF( Broken .OR. LsAlpha >= 1.0_dp ) THEN
+        ! A broken last trial ends the iteration as diverged, see the caller.
+        CALL Info('ElasticitySolver','Line search exhausted: taking the last step',Level=5)
+        RETURN
+      END IF
+      ! The slope never settled: a step of almost zero length would only
+      ! repeat this iteration. Take the full step, as plain Newton does.
+      CALL Info('ElasticitySolver','Line search exhausted: taking the full step',Level=5)
+      LsAlpha = 1.0_dp
+      Displacement(:) = LsBase(:) + LsDir(:)
+      TotalSol(:) = Displacement(:)
+      UmatPnewdt = HUGE(UmatPnewdt)
+      UmatInverted = .FALSE.
+      Retry = .TRUE.
+      RETURN
+    END IF
+
+    IF( Broken ) THEN
+      NewAlpha = LsFactor * LsAlpha
+    ELSE
+      ! s is linear in alpha to first order: its root between 0 and alpha.
+      NewAlpha = LsAlpha / ( 1.0_dp - r )
+      NewAlpha = MAX( 0.1_dp * LsAlpha, MIN( 0.9_dp * LsAlpha, NewAlpha ) )
+    END IF
+    LsCount = LsCount + 1
+    LsAlpha = NewAlpha
+    WRITE(Message,'(A,I0,A,ES12.4,A,ES12.4)') 'Line search ',LsCount,': step length ',LsAlpha,&
+        ', slope ratio ',r
+    CALL Info('ElasticitySolver',Message,Level=5)
+
+    Displacement(:) = LsBase(:) + LsAlpha * LsDir(:)
+    TotalSol(:) = Displacement(:)
+    UmatPnewdt = HUGE(UmatPnewdt)
+    UmatInverted = .FALSE.
+    Retry = .TRUE.
+  END FUNCTION UmatLinesearchRetry
+
+!------------------------------------------------------------------------------
+!> The slope du.R of the line search: the search direction times the residual
+!> of the current system, over the unconstrained dofs, and the cosine of the
+!> angle between the two. In parallel the local residual holds the partition's
+!> own contributions only, so the sum over the partitions counts each shared
+!> dof once in the slope (the norms of the cosine are approximate there).
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatLsSlope( Slope, Cosine )
+    REAL(KIND=dp) :: Slope, Cosine
+    REAL(KIND=dp) :: s(3)
+    INTEGER :: i
+    LOGICAL :: Constrained
+
+    Constrained = ALLOCATED( StiffMatrix % ConstrainedDOF )
+    s = 0.0_dp
+    DO i=1,SIZE(LsDirRot)
+      IF( Constrained ) THEN
+        IF( StiffMatrix % ConstrainedDOF(i) ) CYCLE
+      END IF
+      s(1) = s(1) + LsDirRot(i) * StiffMatrix % RHS(i)
+      s(2) = s(2) + LsDirRot(i)**2
+      s(3) = s(3) + StiffMatrix % RHS(i)**2
+    END DO
+    IF( Parallel ) THEN
+      DO i=1,3
+        s(i) = ParallelReduction( s(i) )
+      END DO
+    END IF
+    Slope = s(1)
+    Cosine = 0.0_dp
+    IF( s(2) > 0.0_dp .AND. s(3) > 0.0_dp ) Cosine = s(1) / SQRT( s(2) * s(3) )
+  END SUBROUTINE UmatLsSlope
+
+!------------------------------------------------------------------------------
+!> Make the UMAT state of the converged solution the previous state.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatCommitState()
+    UmatEnergy0 = UmatEnergy
+    UmatStress0 = UmatStress
+    IF( ASSOCIATED( UmatState ) ) UmatState0 = UmatState
+  END SUBROUTINE UmatCommitState
+
+!------------------------------------------------------------------------------
+!> The time discretization of an element of the UMAT formulation, whose
+!> unknown is the increment of the displacement from the current iterate u_k.
+!> Default1stOrderTime/Default2ndOrderTime write the system for the total
+!> displacement: the effective stiffness K + c M (+ c' D) and the history terms
+!> of the force. For the increment the force must be reduced by the time terms
+!> evaluated at u_k, (K_eff - K) u_k, which leaves the inertia and damping
+!> forces of the iterate, M a(u_k) + D v(u_k), in the residual.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatIncrementalTime( nd )
+    INTEGER :: nd
+    REAL(KIND=dp), ALLOCATABLE :: Kt(:,:), uk(:)
+    INTEGER :: i, j, k, m
+
+    m = STDOFs * nd
+    Kt = LocalStiffMatrix(1:m,1:m)
+    ALLOCATE( uk(m) )
+    uk = 0.0_dp
+    DO i=1,nd
+      k = StressPerm( Indices(i) )
+      IF( k <= 0 ) CYCLE
+      DO j=1,STDOFs
+        uk(STDOFs*(i-1)+j) = Displacement(STDOFs*(k-1)+j)
+      END DO
+    END DO
+
+    IF( SecondOrderTime ) THEN
+      CALL Default2ndOrderTime( LocalMassMatrix, LocalDampMatrix, &
+          LocalStiffMatrix, LocalForce )
+    ELSE
+      CALL Default1stOrderTime( LocalDampMatrix, LocalStiffMatrix, LocalForce )
+    END IF
+
+    LocalForce(1:m) = LocalForce(1:m) - MATMUL( LocalStiffMatrix(1:m,1:m) - Kt, uk )
+  END SUBROUTINE UmatIncrementalTime
+
+!------------------------------------------------------------------------------
+!> The force of the boundary springs at the current iterate, moved to the right
+!> hand side of the incremental UMAT system: f = f - K_s u_k. Springs are the
+!> only matrix terms of LocalBoundaryMatrix.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatSpringResidual( nb )
+    INTEGER :: nb
+    INTEGER, ALLOCATABLE :: BIndices(:)
+    REAL(KIND=dp), ALLOCATABLE :: uk(:)
+    INTEGER :: i, j, k, m, nbd
+
+    ALLOCATE( BIndices( Mesh % MaxElementDOFs ) )
+    nbd = GetElementDOFs( BIndices, CurrentElement )
+    m = STDOFs * nb
+    ALLOCATE( uk(m) )
+    uk = 0.0_dp
+    DO i=1,MIN( nb, nbd )
+      k = StressPerm( BIndices(i) )
+      IF( k <= 0 ) CYCLE
+      DO j=1,STDOFs
+        uk(STDOFs*(i-1)+j) = Displacement(STDOFs*(k-1)+j)
+      END DO
+    END DO
+    LocalForce(1:m) = LocalForce(1:m) - MATMUL( LocalStiffMatrix(1:m,1:m), uk )
+  END SUBROUTINE UmatSpringResidual
+
+!------------------------------------------------------------------------------
+!> Report how the UMAT iteration ended, in the convergence flag of the variable:
+!> 2 diverged (an inverted element or a residual not finite), 0 the iteration
+!> limit reached (only when "Adaptive Reject Not Converged" asks for it). Adaptive timestepping rejects a diverged step
+!> ("Adaptive Reject Not Converged" also one not converged), as does
+!> "Convergence Control". Without either a diverged iteration cannot go on.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatConvergenceStatus()
+    LOGICAL :: StepControl, Found
+
+    ! Otherwise the flag is left at -1: the iteration is over the increment, and
+    ! -1 tells SolveCoupled to compute the norm of the displacement itself.
+    Solver % Variable % NonlinConverged = -1
+    IF( UmatBroken ) THEN
+      Solver % Variable % NonlinConverged = 2
+    ELSE IF( UmatNotConverged ) THEN
+      CALL Warn('ElasticitySolver','Nonlinear iteration did not converge to tolerance')
+      IF( ListGetLogical( Model % Simulation,'Adaptive Reject Not Converged', Found ) ) &
+          Solver % Variable % NonlinConverged = 0
+    END IF
+
+    IF( UmatBroken ) THEN
+      StepControl = ListGetLogical( Model % Simulation,'Adaptive Timestepping', Found )
+      IF( .NOT. StepControl ) StepControl = &
+          ListGetLogical( Model % Simulation,'Convergence Control', Found )
+      IF( .NOT. StepControl ) CALL Fatal('ElasticitySolver', &
+          'Nonlinear iteration diverged: use a smaller timestep or "Adaptive Timestepping"')
+    END IF
+  END SUBROUTINE UmatConvergenceStatus
+
+!------------------------------------------------------------------------------
+!> The end of a transient timestep with UMAT. The velocity and acceleration of
+!> the second order methods were updated by the linear solver from its
+!> solution, which is here the increment: update them from the displacement.
+!> Pass the timestep the UMAT asks for (PNEWDT) to the adaptive timestepping.
+!------------------------------------------------------------------------------
+  SUBROUTINE UmatEndTimestep()
+    REAL(KIND=dp) :: r, Request, OldRequest
+    LOGICAL :: Found
+
+    IF( SecondOrderTime .AND. ASSOCIATED( StressSol % PrevValues ) ) THEN
+      IF( SIZE( StressSol % PrevValues,2 ) >= 5 ) THEN
+        CALL Update2ndOrder( SIZE(Displacement), Solver % dt, Displacement, &
+            StressSol % PrevValues, Solver % Alpha, Solver % Beta )
+      END IF
+    END IF
+
+    ! PNEWDT is the ratio of the timestep the UMAT suggests to the one used:
+    ! below one it asks for the step to be repeated with a smaller one.
+    r = UmatPnewdt
+    IF( Parallel ) r = ParallelReduction( r, 1 )
+    IF( r >= UmatNoPnewdt ) RETURN
+
+    Request = r * Solver % dt
+    IF( ListGetLogical( Model % Simulation,'Adaptive Timestepping', Found ) ) THEN
+      OldRequest = ListGetConstReal( Model % Simulation,'Adaptive Timestep Request', Found )
+      IF( Found ) Request = MIN( Request, OldRequest )
+      CALL ListAddConstReal( Model % Simulation,'Adaptive Timestep Request', Request )
+    ELSE IF( r < 1.0_dp ) THEN
+      WRITE(Message,'(A,ES12.4,A)') 'UMAT asks for a timestep of ',Request,&
+          ': use "Adaptive Timestepping" to act on it'
+      CALL Warn(Caller, Message)
+    END IF
+  END SUBROUTINE UmatEndTimestep
 
 !------------------------------------------------------------------------------
 !> The integration rule this bulk element is to be assembled over.
@@ -2086,6 +2553,23 @@ CONTAINS
             UMATSubrtn = GetProcAddr( UMATName )
             NPROPS = GetInteger(Material,'Number of Material Constants', GotIt)
             NSTATEV = GetInteger(Material,'Number of State Variables', GotIt)
+            ! What the DDSDDE of the UMAT is the derivative of, see the large
+            ! deflection branch of LocalMatrixWithUMAT.
+            UmatTangentIn = ListGetString(Material, 'UMAT Tangent', GotIt)
+            IF ( .NOT. GotIt ) UmatTangentIn = 'material'
+            UmatTangentLen = StringToLowerCase( UmatTangent, UmatTangentIn, .TRUE. )
+            SELECT CASE( TRIM(UmatTangent) )
+            CASE( 'material' )
+              UmatJaumann = .FALSE.
+            CASE( 'jaumann', 'abaqus' )
+              UmatJaumann = .TRUE.
+              IF ( .NOT. LargeDeflection ) CALL Info(Caller, &
+                  '"UMAT Tangent = Jaumann" has no effect without "Large Deflection"', Level=5)
+            CASE DEFAULT
+              CALL Fatal(Caller, 'Unknown "UMAT Tangent": '//TRIM(UmatTangent)// &
+                  ' (use "Material" or "Jaumann")')
+            END SELECT
+            UmatBbar = GetLogical(Material, 'UMAT Bbar', GotIt)
           END IF
           PrevMaterial => Material
         END IF
@@ -2384,7 +2868,7 @@ CONTAINS
           ! ---------------------------------------------------------------------------
           IF (Iter == 1) THEN
             ValuesSaved => StiffMatrix % RHS
-            StiffMatrix % RHS => StiffMatrix % BulkRHS
+            StiffMatrix % RHS => UmatLoad
             CALL DefaultUpdateForce(LocalExternalForce)
             Solver % Matrix % RHS => ValuesSaved
           END IF
@@ -2432,7 +2916,9 @@ CONTAINS
         !        matrix and global RHS vector
         !------------------------------------------------------------------------------
         IF ( TransientSimulation ) THEN
-           IF( SecondOrderTime ) THEN
+          IF ( UseUMAT ) THEN
+            CALL UmatIncrementalTime( nd )
+          ELSE IF( SecondOrderTime ) THEN
              CALL Default2ndOrderTime( LocalMassMatrix, LocalDampMatrix, &
                   LocalStiffMatrix, LocalForce )
            ELSE
@@ -2682,12 +3168,17 @@ CONTAINS
              ! for the purpose of nonlinear error estimation:
              ! ---------------------------------------------------------------------------
              ValuesSaved => StiffMatrix % RHS
-             StiffMatrix % RHS => StiffMatrix % BulkRHS
+             StiffMatrix % RHS => UmatLoad
              LocalForceSaved = LocalForce
              CALL DefaultUpdateForce(LocalForce)
              LocalForce = LocalForceSaved
              Solver % Matrix % RHS => ValuesSaved
            END IF
+
+           ! The unknown of the UMAT formulation is the increment: the spring force
+           ! of the current iterate belongs to the residual, else the spring acts
+           ! on the increment only and drops out at convergence.
+           IF ( UseUMAT .AND. GotSpring ) CALL UmatSpringResidual( ntot )
 
            !------------------------------------------------------------------------------
            !           Update global matrices from local matrices (will also affect
@@ -3074,10 +3565,22 @@ CONTAINS
 
     REAL(KIND=dp) :: WorkTensor1(3,3), WorkTensor2(3,3), WorkTensor3(3,3)
     REAL(KIND=dp) :: WorkVec1(1:6,1), WorkVec2(1:6,1)
+    REAL(KIND=dp) :: JauH(3,3), JauA(3,3)
     REAL(KIND=dp) :: s, u, v, w, r
+    ! B-bar / F-bar ("UMAT Bbar"): the quantities at the element centre ("Cen"),
+    ! the current and the previous ("Prev") ones, and the divergence parts of
+    ! the trial gradients, TrL(q,j) = tr( d(grad u)/d(u_qj) F^-1 ).
+    LOGICAL :: UseBbar
+    REAL(KIND=dp) :: BasisCen(ntot), dBasisCen(ntot,3), rCen, DetJCen
+    REAL(KIND=dp) :: GradCen(3,3), GradCenPrev(3,3), InvCen(3,3)
+    REAL(KIND=dp) :: DetCen, DetCenPrev, ThetaCen, ThetaCenPrev, Theta, ThetaPrev
+    REAL(KIND=dp) :: TrL(ntot,3), TrLCen(ntot,3), BarScale, BarScalePrev
+    REAL(KIND=dp) :: DefGBar(3,3), DefG0Bar(3,3), BarQ(3,3), BarC(3,3), BarG
+    REAL(KIND=dp) :: BarInv(3,3), DetPrev
 
     INTEGER :: i, j, k, l, p, q, t, dim, cdim, totdofs
     INTEGER :: ipindex
+    LOGICAL :: DoInit, QuasiActive
 
     LOGICAL :: stat
 
@@ -3193,7 +3696,9 @@ CONTAINS
     ! ------------------------------------
     ! Integration stuff
     ! ------------------------------------
-    IntegStuff = GaussPoints( Element, RelOrder = RelIntegOrder )
+    ! The same rule as everywhere else in this solver, and the one CreateIpPerm
+    ! sized the UMAT state for: "Element Integration Points" included.
+    IntegStuff = ElasticGaussPoints( Element )
 
     ForceVector = 0.0D0
     ExternalForceVector = 0.0D0
@@ -3201,6 +3706,108 @@ CONTAINS
     MassMatrix  = 0.0D0
     DampMatrix  = 0.0d0
 
+    QuasiActive = QuasiStationary .AND. .NOT. ( ANY( NodalDamping(1:n) /= 0.0_dp ) &
+        .OR. GotRayleighAlpha .OR. GotRayleighBeta )
+
+    ! ------------------------------------------------------------------------------
+    ! B-bar / F-bar of the linear elements with more than one integration point.
+    ! Under plastic or nearly incompressible flow their volume constraint at every
+    ! point locks them; the volumetric part of the strain is taken from the
+    ! element instead. Small strain (B-bar, the mean dilatation of Hughes, 1980):
+    !   eps_bar = eps + (theta_avg - theta)/3 I,    theta = tr(eps)
+    ! with the volume average theta_avg: from the element centre it would not
+    ! pass the patch test on a distorted element, as the centre's divergence
+    ! times the volume is not the integral of the divergence there. Large
+    ! deflection (F-bar, de Souza Neto et al., 1996), from the centre:
+    !   F_bar = (J_cen/J)^(1/3) F
+    ! The strain and the UMAT see the barred quantities, the stress is integrated
+    ! as before over the actual configuration. The tangent gets a term coupling
+    ! to the centre, see BarG below, which makes it nonsymmetric under F-bar.
+    ! ------------------------------------------------------------------------------
+    UseBbar = UmatBbar
+    IF ( UseBbar ) THEN
+      SELECT CASE( Element % TYPE % ElementCode )
+      CASE( 404, 706, 808 )
+      CASE DEFAULT
+        ! One point (linear triangles, tetrahedra) or quadratic elements: either
+        ! nothing to average or no locking to cure.
+        UseBbar = .FALSE.
+      END SELECT
+    END IF
+
+    IF ( UseBbar ) THEN
+      i = Element % TYPE % NumberOfNodes
+      u = SUM( Element % TYPE % NodeU(1:i) ) / i
+      v = SUM( Element % TYPE % NodeV(1:i) ) / i
+      w = 0.0_dp
+      IF ( Element % TYPE % DIMENSION == 3 ) w = SUM( Element % TYPE % NodeW(1:i) ) / i
+      stat = ElementInfo( Element, Nodes, u, v, w, DetJCen, BasisCen, dBasisCen )
+
+      GradCen = 0.0_dp
+      GradCenPrev = 0.0_dp
+      GradCen(1:cdim,1:cdim) = MATMUL(NodalDisplacement(1:cdim,1:nd),dBasisCen(1:nd,1:cdim))
+      GradCenPrev(1:cdim,1:cdim) = MATMUL(PrevNodalDisplacement(1:cdim,1:nd),dBasisCen(1:nd,1:cdim))
+      rCen = 1.0_dp
+      IF ( AxialSymmetry ) THEN
+        rCen = SUM( BasisCen(1:n) * Nodes % x(1:n) )
+        GradCen(3,3) = SUM( NodalDisplacement(1,1:nd) * BasisCen(1:nd) ) / rCen
+        GradCenPrev(3,3) = SUM( PrevNodalDisplacement(1,1:nd) * BasisCen(1:nd) ) / rCen
+      END IF
+
+      IF ( .NOT. LargeDeflection ) THEN
+        ! B-bar: the volume averages of the dilatation and of the divergence
+        ! of each trial function
+        s = 0.0_dp
+        ThetaCen = 0.0_dp
+        ThetaCenPrev = 0.0_dp
+        TrLCen = 0.0_dp
+        DO t=1,IntegStuff % n
+          stat = ElementInfo( Element, Nodes, IntegStuff % u(t), IntegStuff % v(t), &
+              IntegStuff % w(t), SqrtElementMetric, Basis, dBasis )
+          u = SqrtElementMetric * IntegStuff % s(t)
+          r = 1.0_dp
+          IF ( AxialSymmetry ) THEN
+            r = SUM( Basis(1:n) * Nodes % x(1:n) )
+            u = u * r
+          END IF
+          s = s + u
+          DO q=1,ntot
+            DO j=1,cdim
+              TrLCen(q,j) = TrLCen(q,j) + u * dBasis(q,j)
+            END DO
+            IF ( AxialSymmetry ) TrLCen(q,1) = TrLCen(q,1) + u * Basis(q) / r
+          END DO
+          DO j=1,cdim
+            ThetaCen = ThetaCen + u * SUM( NodalDisplacement(j,1:nd) * dBasis(1:nd,j) )
+            ThetaCenPrev = ThetaCenPrev + u * SUM( PrevNodalDisplacement(j,1:nd) * dBasis(1:nd,j) )
+          END DO
+          IF ( AxialSymmetry ) THEN
+            ThetaCen = ThetaCen + u * SUM( NodalDisplacement(1,1:nd) * Basis(1:nd) ) / r
+            ThetaCenPrev = ThetaCenPrev + u * SUM( PrevNodalDisplacement(1,1:nd) * Basis(1:nd) ) / r
+          END IF
+        END DO
+        TrLCen = TrLCen / s
+        ThetaCen = ThetaCen / s
+        ThetaCenPrev = ThetaCenPrev / s
+      ELSE
+        DetCen = Det3x3( Identity + GradCen )
+        DetCenPrev = Det3x3( Identity + GradCenPrev )
+        IF( .NOT. ( DetCen > 0.0_dp .AND. DetCen <= HUGE(DetCen) ) ) THEN
+          UmatInverted = .TRUE.
+          RETURN
+        END IF
+        InvCen = Identity + GradCen
+        CALL InvertMatrix( InvCen, 3 )
+
+        ! The variation of the volume change at the centre per trial function:
+        DO q=1,ntot
+          DO j=1,cdim
+            TrLCen(q,j) = SUM( dBasisCen(q,1:cdim) * InvCen(1:cdim,j) )
+          END DO
+          IF ( AxialSymmetry ) TrLCen(q,1) = TrLCen(q,1) + BasisCen(q) / rCen * InvCen(3,3)
+        END DO
+      END IF
+    END IF
 
     DO t=1,IntegStuff % n
       ipindex = GetIpIndex( t, usolver=solver, element=element, ipvar = UmatEnergyVar )
@@ -3273,11 +3880,48 @@ CONTAINS
               DefG(1,3) * ( DefG(2,1)*DefG(3,2) - DefG(2,2)*DefG(3,1) )
         END SELECT
 
+        ! An inverted element (or one not finite): its iterate cannot be used.
+        ! Skip the point and let the nonlinear iteration stop, see UmatInverted.
+        IF( .NOT. ( DetDefG > 0.0_dp .AND. DetDefG <= HUGE(DetDefG) ) ) THEN
+          UmatInverted = .TRUE.
+          CYCLE
+        END IF
+
         !-------------------------------------------------------------
         !  InvDefG will be the inverse of the deformation gradient
         !-------------------------------------------------------------
         InvDefG = DefG
         CALL InvertMatrix( InvDefG, dim )
+      END IF
+
+      ! F-bar: the deformation gradients the strain and the UMAT see. The volume
+      ! change of the previous one is that of its own centre too, so that the
+      ! strain increment is the barred one.
+      DefGBar = DefG
+      DefG0Bar = DefG0
+      BarScale = 1.0_dp
+      IF ( UseBbar ) THEN
+        IF ( LargeDeflection ) THEN
+          BarScale = ( DetCen / DetDefG )**(1.0_dp/3)
+          DefGBar = BarScale * DefG
+          DetPrev = Det3x3( DefG0 )
+          BarScalePrev = 1.0_dp
+          IF ( DetPrev > 0.0_dp ) BarScalePrev = ( DetCenPrev / DetPrev )**(1.0_dp/3)
+          DefG0Bar = BarScalePrev * DefG0
+        END IF
+        ! The divergence part of each trial gradient, in the current configuration
+        ! under large deflection:
+        IF ( LargeDeflection ) THEN
+          BarInv = InvDefG
+        ELSE
+          BarInv = Identity
+        END IF
+        DO q=1,ntot
+          DO j=1,cdim
+            TrL(q,j) = SUM( dBasis(q,1:cdim) * BarInv(1:cdim,j) )
+          END DO
+          IF ( AxialSymmetry ) TrL(q,1) = TrL(q,1) + Basis(q) / r * BarInv(3,3)
+        END DO
       END IF
 
       SELECT_STRAIN_MEASURE: IF (HenckyStrain) THEN
@@ -3286,7 +3930,7 @@ CONTAINS
         ! --------------------------------------------
         ! The right Cauchy-Green deformation tensor
         ! --------------------------------------------
-        C = MATMUL( TRANSPOSE(DefG0), DefG0 )
+        C = MATMUL( TRANSPOSE(DefG0Bar), DefG0Bar )
 
         ! -----------------------------------------------------------
         ! Compute the spectral decomposition of C
@@ -3313,7 +3957,7 @@ CONTAINS
         ! -----------------------------------------------------------
         ! Repeat for the current right Cauchy-Green deformation tensor:
         ! -----------------------------------------------------------
-        C = MATMUL( TRANSPOSE(DefG), DefG )
+        C = MATMUL( TRANSPOSE(DefGBar), DefGBar )
 
         DO i=1,3
           k = i
@@ -3360,6 +4004,22 @@ CONTAINS
               MATMUL(TRANSPOSE(Grad0(1:dim,1:dim)),Grad0(1:dim,1:dim))
         END IF
 
+        IF ( UseBbar ) THEN
+          IF ( LargeDeflection ) THEN
+            ! The Green-Lagrange strains of F_bar
+            Strain = 0.5_dp * ( MATMUL(TRANSPOSE(DefGBar),DefGBar) - Identity )
+            Strain0 = 0.5_dp * ( MATMUL(TRANSPOSE(DefG0Bar),DefG0Bar) - Identity )
+          ELSE
+            ! B-bar: the mean dilatation
+            Theta = Grad(1,1) + Grad(2,2) + Grad(3,3)
+            ThetaPrev = Grad0(1,1) + Grad0(2,2) + Grad0(3,3)
+            DO i=1,3
+              Strain(i,i) = Strain(i,i) + ( ThetaCen - Theta ) / 3
+              Strain0(i,i) = Strain0(i,i) + ( ThetaCenPrev - ThetaPrev ) / 3
+            END DO
+          END IF
+        END IF
+
       END IF SELECT_STRAIN_MEASURE
 
       ! The umat (engineering) strain variable giving the strain before the increment:
@@ -3402,7 +4062,9 @@ CONTAINS
       ! the initial state (stress-free initial condition is supposed), we first make
       ! an extra UMAT call to obtain the state variables if requested in the sif file.
       ! ----------------------------------------------------------------------------
-      INITIALIZE_STATE_VARIABLES: IF ( InitializeStateVars .AND. .NOT. UmatInitDone(ipIndex ) ) THEN
+      DoInit = .FALSE.
+      IF ( InitializeStateVars ) DoInit = ( UmatInitDone(ipIndex) == 0.0_dp )
+      INITIALIZE_STATE_VARIABLES: IF ( DoInit ) THEN
 
         ! We insert the identity tensor as the deformation gradient so the initial solution
         ! should be the zero-displacement solution:
@@ -3424,17 +4086,19 @@ CONTAINS
           UmatState0(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NstateV)
         END IF
 
-        UmatInitDone(ipindex) = .TRUE.
+        UmatInitDone(ipindex) = 1.0_dp
       END IF INITIALIZE_STATE_VARIABLES
 
       ! -----------------------------------------------------------------------------
-      ! Perform the actual UMAT call.
+      ! Perform the actual UMAT call. PNEWDT is set to a large value before it,
+      ! as Abaqus does: the UMAT lowers it to ask for a smaller timestep.
       ! -----------------------------------------------------------------------------
+      pnewdt = UmatNoPnewdt
       CALL UMATusersubrtn(UMATSubrtn, StressVec(1:ntens), StateV, StressDer(1:ntens,1:ntens), EnergyElast, &
           EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
           stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
           predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-          drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
+          drot, pnewdt, celent, DefG0Bar, DefGBar, ElementIndex, t, layer, kspt, kstep, kinc)
 
       ! ---------------------------------------------------------------------------
       ! Update data which gives the state variables corresponding to the current
@@ -3445,6 +4109,7 @@ CONTAINS
       UmatEnergy(3*(Ipindex-1)+3) = EnergyVisc
 
       UmatStress(ntens*(Ipindex-1)+1:ntens*IpIndex) = StressVec(1:ntens)
+      UmatPnewdt = MIN( UmatPnewdt, pnewdt )
       IF( NStateV > 0 ) THEN
         UmatState(MaxStateV*(Ipindex-1)+1:MaxstateV*(IpIndex-1)+NStateV) = StateV(1:NStateV)
       END IF
@@ -3482,6 +4147,16 @@ CONTAINS
                 B(ndi+i,(p-1)*dofs+2) = dBasis(p,3)
                 B(ndi+i,(p-1)*dofs+3) = dBasis(p,2)
               END SELECT
+            END DO
+          END DO
+        END IF
+
+        ! B-bar: the mean dilatation rows. The normal strains are rows 1-3 in
+        ! every case (xx yy zz, or rr zz hoop).
+        IF ( UseBbar ) THEN
+          DO q=1,ntot
+            DO j=1,cdim
+              B(1:3,(q-1)*dofs+j) = B(1:3,(q-1)*dofs+j) + ( TrLCen(q,j) - TrL(q,j) ) / 3
             END DO
           END DO
         END IF
@@ -3531,6 +4206,35 @@ CONTAINS
         ! The first Piola-Kirchhoff stress
         !--------------------------------------------------
         Stress1 = DetDefG * MATMUL(Stress,TRANSPOSE(InvDefG))
+
+        ! F-bar: with L = dF F^-1 the barred rate is L + (tr L_cen - tr L)/3 I, so
+        ! the stress rate gets the extra (tr L_cen - tr L)/3 times the response
+        ! to a unit dilatation. Its contribution to <dS1, Grad> is
+        ! BarG * (tr L_cen - tr L), BarG from the test function:
+        !   Jaumann:  BarG = < J (DDSDDE:I/3 - sigma) F^-T, Grad >
+        !             (the -sigma tr(d) of the Cauchy rate now goes with tr L_cen,
+        !             the derivative of J still with tr L)
+        !   Material: BarG = < C_bar/3, DDSDDE^T : J sym(Grad F^-1) >,
+        !             C_bar = F_bar^T F_bar, as dE_bar = s^2 sym(F^T dF) + (..)/3 C_bar
+        ! with s = (J_cen/J)^(1/3) scaling the ordinary material term.
+        IF ( UseBbar ) THEN
+          IF ( UmatJaumann ) THEN
+            WorkVec2(1:ntens,1) = StressDer(1:ntens,1) + StressDer(1:ntens,2) + &
+                StressDer(1:ntens,3)
+            BarQ = WorkVec2(1,1)*SymBasis1 + WorkVec2(2,1)*SymBasis2 + &
+                WorkVec2(3,1)*SymBasis3
+            SELECT CASE(nshr)
+            CASE(1)
+              BarQ = BarQ + 2.0d0*WorkVec2(4,1)*SymBasis4
+            CASE(3)
+              BarQ = BarQ + 2.0d0*WorkVec2(4,1)*SymBasis4 + &
+                  2.0d0*WorkVec2(5,1)*SymBasis5 + 2.0d0*WorkVec2(6,1)*SymBasis6
+            END SELECT
+            BarQ = DetDefG * MATMUL( BarQ / 3 - Stress, TRANSPOSE(InvDefG) )
+          ELSE
+            BarC = MATMUL( TRANSPOSE(DefGBar), DefGBar ) / 3
+          END IF
+        END IF
 
         DO p = 1,ntot
           DO i = 1,cdim
@@ -3633,7 +4337,49 @@ CONTAINS
             ! dStress1 is for evaluating the contribution <DS(F^k)[U],Grad>
             ! in the form <U,W>. Compute W from its splitting:
             !---------------------------------------------------------------------------
-            dStress1 = WorkTensor2 + MATMUL(DefG,WorkTensor3)
+            IF ( UmatJaumann ) THEN
+              ! The UMAT follows the Abaqus convention: DDSDDE relates the Jaumann
+              ! rate of the Kirchhoff stress, divided by J, to the rate of
+              ! deformation d = sym(L), L = dF F^-1, with the spin w = skew(L):
+              !
+              !   dsigma = DDSDDE : d + w sigma - sigma w - sigma tr(d)
+              !
+              ! In terms of the Kirchhoff stress tau = J sigma, S1 = tau F^-T and
+              ! dtau = J DDSDDE : d + w tau - tau w. With H = J Grad F^-1:
+              !   <dtau F^-T, Grad>       = <DDSDDE : d + w sigma - sigma w, H>
+              !   <DDSDDE : d, H>         = <L, DDSDDE^T : sym(H)>  (WorkTensor3)
+              !   <w sigma - sigma w, H>  = <L, skew(H sigma - sigma H)>
+              ! and <L, X> = <U, X F^-T>. The -sigma tr(d) of the Cauchy rate and
+              ! the derivative of J cancel, which leaves of WorkTensor2 only the
+              ! derivative of F^-T, the first term below. Checked against finite
+              ! differences of S1 with the exact Jaumann tangent of a Hencky
+              ! material (relative error 1e-10 at 30 % strain).
+              JauH = DetDefG * MATMUL(Grad,InvDefG)
+              JauA = MATMUL(JauH,Stress) - MATMUL(Stress,JauH)
+              JauA = WorkTensor3 + 0.5_dp * (JauA - TRANSPOSE(JauA))
+              dStress1 = - DetDefG * MATMUL(TRANSPOSE(InvDefG), MATMUL(TRANSPOSE(Grad), &
+                  MATMUL(Stress, TRANSPOSE(InvDefG)))) + MATMUL(JauA, TRANSPOSE(InvDefG))
+            ELSE
+              ! DDSDDE is the derivative of the Cauchy stress with respect to the
+              ! Green-Lagrange strain: <DDSDDE : sym(F^T U), H> = <U, F WorkTensor3>.
+              dStress1 = WorkTensor2 + BarScale**2 * MATMUL(DefG,WorkTensor3)
+            END IF
+
+            ! F-bar: the coupling to the centre, see BarQ and BarC above
+            IF ( UseBbar ) THEN
+              IF ( UmatJaumann ) THEN
+                BarG = SUM( BarQ * Grad )
+              ELSE
+                BarG = SUM( BarC * WorkTensor3 )
+              END IF
+              DO q = 1,ntot
+                DO j = 1,cdim
+                  StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) = &
+                      StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) + &
+                      BarG * ( TrLCen(q,j) - TrL(q,j) ) * s
+                END DO
+              END DO
+            END IF
 
             IF (AxialSymmetry) THEN
               DO q = 1,ntot
@@ -3694,17 +4440,19 @@ CONTAINS
 
       END IF STIFFMATRIX_FOR_CHOSEN_STRAIN
 
-      ! Integrate mass matrix:
+      ! Integrate mass matrix (not under "Quasi Stationary", as in LocalMatrix):
       ! ----------------------
-      DO p = 1,ntot
-        DO q = 1,ntot
-          DO i = 1,cdim
-            MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
-                + Basis(p)*Basis(q)*Density*s
+      IF ( .NOT. QuasiActive ) THEN
+        DO p = 1,ntot
+          DO q = 1,ntot
+            DO i = 1,cdim
+              MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  = MassMatrix(cdim*(p-1)+i,cdim*(q-1)+i) &
+                  + Basis(p)*Basis(q)*Density*s
+            END DO
           END DO
         END DO
-      END DO
+      END IF
 
       ! Utilize the Rayleigh damping:
       ! -----------------------------
