@@ -1601,26 +1601,25 @@ CONTAINS
            p = getEffectiveBubbleP(element,p,bdofs)
 
            IF(SerendipityPBasis) THEN
-             ! NOTE: getBubbleDOFs is the volume of these loops and
-             ! getBubbleMaxDegree1D their extent along one axis (both in
-             ! PElementMaps). Changing these bounds means changing those.
-             SD_bubbles_brick: DO i=2,p-4
-               DO j=2,p-i-2
-                 DO k=2,p-i-j
-                    IF ( q >= SIZE(Basis)) EXIT SD_bubbles_brick
-                    q = q + 1
+             ! Order (and truncation to the space left) as in the vectorised
+             ! path, see H1Basis_SD_BrickBubbleIndices.
+             SD_bubbles_brick: BLOCK
+             INTEGER :: BubbleInd(3,MAX(0,SIZE(Basis)-q)), nbi, l
+             CALL H1Basis_SD_BrickBubbleIndices(p, SIZE(BubbleInd,2), BubbleInd, nbi)
+             DO l=1,nbi
+               i = BubbleInd(1,l); j = BubbleInd(2,l); k = BubbleInd(3,l)
+               q = q + 1
 
-                    Basis(q) = SD_BrickBubblePBasis(i,j,k,u,v,w)
-                    dLBasisdx(q,:) = SD_dBrickBubblePBasis(i,j,k,u,v,w)
-                    IF (Compute2ndDerivatives) THEN
-                      ddLBasisddx(q,:,:) = SD_ddBrickBubblePBasis(i,j,k,u,v,w)
-                    END IF
+               Basis(q) = SD_BrickBubblePBasis(i,j,k,u,v,w)
+               dLBasisdx(q,:) = SD_dBrickBubblePBasis(i,j,k,u,v,w)
+               IF (Compute2ndDerivatives) THEN
+                 ddLBasisddx(q,:,:) = SD_ddBrickBubblePBasis(i,j,k,u,v,w)
+               END IF
 
-                    ! Polynomial degree of basis function to vector
-                    IF (degrees) BasisDegree(q) = i+j+k
-                 END DO
-               END DO
-             END DO SD_bubbles_brick
+               ! Polynomial degree of basis function to vector
+               IF (degrees) BasisDegree(q) = i+j+k
+             END DO
+             END BLOCK SD_bubbles_brick
            ELSE
              bubbles_brick: DO i=0,p-2
                DO j=0,p-2
@@ -2541,14 +2540,11 @@ CONTAINS
          IF (BDOFs > 0) THEN
            p = getEffectiveBubbleP(element,p,bdofs)
 
-           IF(nbmax-nbp<getBubbleDOFs(Element,p)) THEN
-             IF(SerendipityPBasis) THEN
-               CALL Fatal("ElementInfoVec", &
-                 "Not enough space for storing bubble basis, check your #bubbles: i*(i-1)*(i-1)/2 (0,1,4,10,16,...)")
-             ELSE
-               CALL Fatal("ElementInfoVec", &
-                 "Not enough space for storing bubble basis, check your #bubbles: i^3: (0,1,8,27,64,...)")
-             END IF
+           ! The complete bubble set of degree p is truncated to the space
+           ! left, so any "b:N" works (the ordering puts the most useful first,
+           ! see H1Basis_SD_BrickBubbleIndices).
+           IF(nbmax-nbp < BDOFs) THEN
+             CALL Fatal("ElementInfoVec","Not enough space for storing bubble basis")
            END IF
 
            IF(SerendipityPBasis) THEN

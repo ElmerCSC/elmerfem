@@ -83,7 +83,7 @@
      USE SolveCore, ONLY: GetControlValue, FinalizeLumpedMatrix
      USE MeshBasics, ONLY : InitializeElementDescriptions, ReleaseMesh, &
          CalculateMeshPieces, SetActiveElementsTable, SetCurrentMesh, &
-         MarkSharpEdges
+         MarkSharpEdges, MeshStabParams
      USE MeshTransform, ONLY : CoordinateTransformation, RigidMeshMapping
      USE MeshTagging, ONLY : TagBodiesUsingCondition
      USE MeshExtrusion, ONLY : MeshExtrude, MeshExtrudeSlices
@@ -994,6 +994,13 @@
            CurrentModel % Solvers(i) % Mesh => ExtrudedMesh
          END IF
        END DO
+
+       ! LoadModel computed the element sizes (hK, mK) for the mesh as read, not
+       ! for this one. Without them a stabilised solver gets a zero element size
+       ! ("Stabilization element size is zero" in IncompressibleNS). Called after
+       ! the solvers have been repointed, as Mesh % Stabilize is decided from the
+       ! solvers using the mesh.
+       CALL MeshStabParams( ExtrudedMesh )
 
        ! Put the extruded mesh in a correct place in the list of meshes.
        i = 0

@@ -3989,7 +3989,64 @@ CONTAINS
     END DO
   END SUBROUTINE H1Basis_SD_dBrickFaceP
 
-  SUBROUTINE H1Basis_SD_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
+  !> Ordering of the serendipity brick bubbles Phi(i)*Phi(j)*Phi(k), i,j,k >= 2,
+  !> i+j+k <= pmax. They are listed by total degree s = i+j+k, so that every
+  !> complete set (1,4,10,20,... functions = getBubbleDOFs) is the same as
+  !> before. Within one total degree the most balanced ones (smallest
+  !> max(i,j,k)) come first and then lexicographically in (i,j).
+  !>
+  !> The order within a total degree matters only when the bubble set is
+  !> truncated ("b:N" with N not one of the full counts). Balanced-first makes
+  !> "b:7" = Phi{2,3}^3 minus Phi3*Phi3*Phi3 = bubble*{1,x,y,z,xy,xz,yz}, which
+  !> spans the gradient of any trilinear function; the bubble-condensation of
+  !> an equal-order Q1/Q1 flow element then controls the elementwise pressure
+  !> gradient fully and the 3D checkerboard pressure mode (gradient odd in two
+  !> coordinates) can not survive, unlike with "b:4".
+  !>
+  !> NOTE: getBubbleDOFs is the count of the complete set and
+  !> getBubbleMaxDegree1D its extent along one axis (both in PElementMaps).
+  PURE SUBROUTINE H1Basis_SD_BrickBubbleIndices(pmax, nmax, ind, n)
+    IMPLICIT NONE
+
+    INTEGER, INTENT(IN) :: pmax   !< Total degree of the complete set
+    INTEGER, INTENT(IN) :: nmax   !< Maximum number of indices to return
+    INTEGER, INTENT(OUT) :: ind(3,nmax)
+    INTEGER, INTENT(OUT) :: n
+
+    INTEGER :: s, m, i, j, k
+
+    n = 0
+    DO s=6,pmax
+      DO m=(s+2)/3,s-4
+        DO i=2,m
+          DO j=2,m
+            k = s-i-j
+            IF (k < 2 .OR. k > m) CYCLE
+            IF (MAX(i,j,k) /= m) CYCLE
+            IF (n >= nmax) RETURN
+            n = n + 1
+            ind(1,n) = i
+            ind(2,n) = j
+            ind(3,n) = k
+          END DO
+        END DO
+      END DO
+    END DO
+  END SUBROUTINE H1Basis_SD_BrickBubbleIndices
+
+  !> Number of brick bubbles to evaluate: the complete set of total degree pmax
+  !> unless nbubmax (if given) or the space left in the work array is smaller.
+  PURE FUNCTION H1Basis_BubbleCount(nfull, nbasis, nbasismax, nbubmax) RESULT(nb)
+    IMPLICIT NONE
+    INTEGER, INTENT(IN) :: nfull, nbasis, nbasismax
+    INTEGER, INTENT(IN), OPTIONAL :: nbubmax
+    INTEGER :: nb
+
+    nb = MAX(0, MIN(nfull, nbasismax-nbasis))
+    IF (PRESENT(nbubmax)) nb = MIN(nb, nbubmax)
+  END FUNCTION H1Basis_BubbleCount
+
+  SUBROUTINE H1Basis_SD_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, nbubmax)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -3998,29 +4055,26 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, INTENT(IN), OPTIONAL :: nbubmax  !< Evaluate at most this many bubbles
 
-    INTEGER :: i, j, k, l
+    INTEGER :: ind(3,MAX(0,(pmax-3)*(pmax-4)*(pmax-5)/6))
+    INTEGER :: i, j, k, l, q, nb, nmax
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
-    ! For each bubble calculate value of basis function and its derivative
-    ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
-    ! NOTE: getBubbleDOFs is the volume of these loops and
-    ! getBubbleMaxDegree1D their extent along one axis (both in
-    ! PElementMaps). Changing these bounds means changing those.
-    DO i=2,pmax-4
-      DO j=2,pmax-i-2
-        DO k=1,pmax-i-j-1
-          ELMER_OMP_SIMD
-          DO l=1,nvec
-            fval(l,nbasis+k) = H1Basis_Phi(i,u(l))*H1Basis_Phi(j,v(l))*H1Basis_Phi(k+1,w(l))
-          END DO
-        END DO
-        nbasis = nbasis+MAX(pmax-i-j-1,0)
+    ! Bubbles in the order of H1Basis_SD_BrickBubbleIndices
+    nmax = H1Basis_BubbleCount(SIZE(ind,2), nbasis, nbasismax, nbubmax)
+    CALL H1Basis_SD_BrickBubbleIndices(pmax, nmax, ind, nb)
+    DO q=1,nb
+      i = ind(1,q); j = ind(2,q); k = ind(3,q)
+      ELMER_OMP_SIMD
+      DO l=1,nvec
+        fval(l,nbasis+q) = H1Basis_Phi(i,u(l))*H1Basis_Phi(j,v(l))*H1Basis_Phi(k,w(l))
       END DO
     END DO
+    nbasis = nbasis+nb
   END SUBROUTINE H1Basis_SD_BrickBubbleP
 
-  SUBROUTINE H1Basis_SD_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
+  SUBROUTINE H1Basis_SD_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, nbubmax)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -4029,33 +4083,30 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
     INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, INTENT(IN), OPTIONAL :: nbubmax  !< Evaluate at most this many bubbles
 
     ! Variables
-    INTEGER :: i, j, k, l
+    INTEGER :: ind(3,MAX(0,(pmax-3)*(pmax-4)*(pmax-5)/6))
+    INTEGER :: i, j, k, l, q, nb, nmax
     REAL(KIND=dp) :: phiU, phiV, phiW
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
-    ! For each bubble calculate value of basis function and its derivative
-    ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
-    ! NOTE: getBubbleDOFs is the volume of these loops and
-    ! getBubbleMaxDegree1D their extent along one axis (both in
-    ! PElementMaps). Changing these bounds means changing those.
-    DO i=2,pmax-4
-      DO j=2,pmax-i-2
-        DO k=1,pmax-i-j-1
-          ELMER_OMP_SIMD_CLAUSE((PRIVATE(phiU, phiV, phiW)))
-          DO l=1,nvec
-            phiU = H1Basis_Phi(i,u(l))
-            phiV = H1Basis_Phi(j,v(l))
-            phiW = H1Basis_Phi(k+1,w(l))
-            grad(l,nbasis+k,1) = H1Basis_dPhi(i,u(l))*phiV*phiW
-            grad(l,nbasis+k,2) = phiU*H1Basis_dPhi(j,v(l))*phiW
-            grad(l,nbasis+k,3) = phiU*phiV*H1Basis_dPhi(k+1,w(l))
-          END DO
-        END DO
-        nbasis = nbasis+MAX(pmax-i-j-1,0)
+    ! Bubbles in the order of H1Basis_SD_BrickBubbleIndices
+    nmax = H1Basis_BubbleCount(SIZE(ind,2), nbasis, nbasismax, nbubmax)
+    CALL H1Basis_SD_BrickBubbleIndices(pmax, nmax, ind, nb)
+    DO q=1,nb
+      i = ind(1,q); j = ind(2,q); k = ind(3,q)
+      ELMER_OMP_SIMD_CLAUSE((PRIVATE(phiU, phiV, phiW)))
+      DO l=1,nvec
+        phiU = H1Basis_Phi(i,u(l))
+        phiV = H1Basis_Phi(j,v(l))
+        phiW = H1Basis_Phi(k,w(l))
+        grad(l,nbasis+q,1) = H1Basis_dPhi(i,u(l))*phiV*phiW
+        grad(l,nbasis+q,2) = phiU*H1Basis_dPhi(j,v(l))*phiW
+        grad(l,nbasis+q,3) = phiU*phiV*H1Basis_dPhi(k,w(l))
       END DO
     END DO
+    nbasis = nbasis+nb
   END SUBROUTINE H1Basis_SD_dBrickBubbleP
 
 
@@ -4272,7 +4323,7 @@ CONTAINS
     END DO
   END SUBROUTINE H1Basis_dBrickFaceP
 
-  SUBROUTINE H1Basis_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis)
+  SUBROUTINE H1Basis_BrickBubbleP(nvec, u, v, w, pmax, nbasismax, fval, nbasis, nbubmax)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -4281,26 +4332,31 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax), INTENT(INOUT) :: fval
     INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, INTENT(IN), OPTIONAL :: nbubmax  !< Evaluate at most this many bubbles
 
-    INTEGER :: i, j, k, l
+    INTEGER :: i, j, k, l, q, nb
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, fval:64
 
-    ! For each bubble calculate value of basis function and its derivative
-    ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
+    ! Tensor product bubbles Phi(i)*Phi(j)*Phi(k), i,j,k=2,..,pmax, k fastest;
+    ! the (pmax-1)**3 complete set may be truncated to its first nb members.
+    nb = H1Basis_BubbleCount(MAX(0,pmax-1)**3, nbasis, nbasismax, nbubmax)
+    q = 0
     DO i=2,pmax
       DO j=2,pmax
-        DO k=1,pmax-1
+        DO k=2,pmax
+          IF (q >= nb) EXIT
+          q = q + 1
           ELMER_OMP_SIMD
           DO l=1,nvec
-            fval(l,nbasis+k) = H1Basis_Phi(i,u(l))*H1Basis_Phi(j,v(l))*H1Basis_Phi(k+1,w(l))
+            fval(l,nbasis+q) = H1Basis_Phi(i,u(l))*H1Basis_Phi(j,v(l))*H1Basis_Phi(k,w(l))
           END DO
         END DO
-        nbasis = nbasis + pmax-1
       END DO
     END DO
+    nbasis = nbasis + nb
   END SUBROUTINE H1Basis_BrickBubbleP
 
-  SUBROUTINE H1Basis_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis)
+  SUBROUTINE H1Basis_dBrickBubbleP(nvec, u, v, w, pmax, nbasismax, grad, nbasis, nbubmax)
     IMPLICIT NONE
 
     INTEGER, INTENT(IN) :: nvec
@@ -4309,31 +4365,34 @@ CONTAINS
     INTEGER, INTENT(IN) :: nbasismax
     REAL(KIND=dp), DIMENSION(VECTOR_BLOCK_LENGTH,nbasismax,3), INTENT(INOUT) :: grad
     INTEGER, INTENT(INOUT) :: nbasis
+    INTEGER, INTENT(IN), OPTIONAL :: nbubmax  !< Evaluate at most this many bubbles
 
     ! Variables
-    INTEGER :: i, j, k, l
+    INTEGER :: i, j, k, l, q, nb
     REAL(KIND=dp) :: phiU, phiV, phiW
 !DIR$ ASSUME_ALIGNED u:64, v:64, w:64, grad:64
 
-    ! For each bubble calculate value of basis function and its derivative
-    ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,pmax
+    nb = H1Basis_BubbleCount(MAX(0,pmax-1)**3, nbasis, nbasismax, nbubmax)
+    q = 0
     DO i=2,pmax
       DO j=2,pmax
-        DO k=1,pmax-1
+        DO k=2,pmax
+          IF (q >= nb) EXIT
+          q = q + 1
           ELMER_OMP_SIMD_CLAUSE((PRIVATE(phiU, phiV, phiW)))
           DO l=1,nvec
             phiU = H1Basis_Phi(i,u(l))
             phiV = H1Basis_Phi(j,v(l))
-            phiW = H1Basis_Phi(k+1,w(l))
+            phiW = H1Basis_Phi(k,w(l))
 
-            grad(l,nbasis+k,1) = H1Basis_dPhi(i,u(l))*phiV*phiW
-            grad(l,nbasis+k,2) = phiU*H1Basis_dPhi(j,v(l))*phiW
-            grad(l,nbasis+k,3) = phiU*phiV*H1Basis_dPhi(k+1,w(l))
+            grad(l,nbasis+q,1) = H1Basis_dPhi(i,u(l))*phiV*phiW
+            grad(l,nbasis+q,2) = phiU*H1Basis_dPhi(j,v(l))*phiW
+            grad(l,nbasis+q,3) = phiU*phiV*H1Basis_dPhi(k,w(l))
           END DO
         END DO
-        nbasis = nbasis+pmax-1
       END DO
     END DO
+    nbasis = nbasis+nb
   END SUBROUTINE H1Basis_dBrickBubbleP
 
   PURE FUNCTION H1Basis_Phi(k, x) RESULT(fval)
