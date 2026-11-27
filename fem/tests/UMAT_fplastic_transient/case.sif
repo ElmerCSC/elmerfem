@@ -1,0 +1,85 @@
+! Transient (dynamic) simulation with the finite-strain J2 plasticity UMAT
+! "fplastic" of UMATLib (multiplicative split, Hencky elastic law, von Mises
+! yield, isotropic hardening, exact radial return in principal log-strain
+! space): vibration of a cantilever beam under a suddenly applied body force,
+! Bossak method, "Large Deflection = True".
+!
+! Same case and hardening curve as UMAT_plastic_transient (E = 70 GPa, yield
+! at 2 MPa, linear hardening to 4 MPa at 2e-4 total strain): the root of the
+! beam yields, the maximum equivalent plastic strain (state variable 8, column
+! 3 of SaveScalars) reaches 7.3e-5 and the tip deflection at t = 0.02 (the
+! reference norm) is about 57 % above the elastic one. The deformation is
+! small, so this agrees with the small-strain "plastic" model to 2e-5.
+!
+! The nonlinear tolerance is 1e-7: Newton converges quadratically (residual
+! 7 -> 5e-2 -> 2e-5 -> 1e-8) and then stays on a round-off floor near 8e-9,
+! so a tolerance of 1e-9 only ever ran into the iteration limit.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam"
+End
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  Timestepping Method = Bossak
+  Timestep Intervals = 40
+  Timestep Sizes = 5.0e-4
+  Output Intervals = 0
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+Body Force 1
+  Stress Bodyforce 2 = -1.0e5
+End
+Material 1
+  Number of Material Constants = Integer 5
+  Number of State Variables = Integer 14
+Material Constants(5) = Real 0.3 2.857142857E-5 2.0E6 2.0E-4 4.0E6
+  UMAT Subroutine = File "UMATLib" "fplastic"
+  Name = "plastic"
+  Density = 2700.0
+  Reference Temperature = 293.0
+End
+Solver 1
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1.0e-7
+  Large Deflection = True
+
+End
+Solver 2
+  Exec Solver = After Timestep
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Time
+  Variable 2 = Displacement 2
+  Operator 2 = min
+  Variable 3 = UmatState 8
+  Operator 3 = max
+  Show Norm Index = 2
+End
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = False
+End
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+! = |min vertical displacement| at t = 0.02 (elastic: 2.767e-4)
+Solver 2 :: Reference Norm = Real 4.35916152E-04
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-7

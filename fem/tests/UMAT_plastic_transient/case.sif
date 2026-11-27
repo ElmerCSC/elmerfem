@@ -1,0 +1,82 @@
+! Transient (dynamic) simulation with the small-strain J2 plasticity UMAT
+! "plastic" of UMATLib (additive split, von Mises yield, isotropic hardening,
+! radial return with the consistent tangent): vibration of a cantilever beam
+! under a suddenly applied body force, Bossak method.
+!
+! The hardening curve (Material Constants: nu, then uniaxial total strain /
+! stress points) gives E = 70 GPa, yield at 2 MPa and linear hardening to
+! 4 MPa at 2e-4 total strain, perfectly plastic after that. The peak bending
+! stress is a few MPa, so the root of the beam yields: the maximum equivalent
+! plastic strain (state variable 8, column 3 of SaveScalars) reaches 7.3e-5,
+! and the tip deflection at t = 0.02 (the reference norm) is about 57 % larger
+! than the elastic one (2.767e-4). The finite-strain model "fplastic" on the
+! same case (test UMAT_fplastic_transient) agrees with this to 2e-5.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam"
+End
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  Timestepping Method = Bossak
+  Timestep Intervals = 40
+  Timestep Sizes = 5.0e-4
+  Output Intervals = 0
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+Body Force 1
+  Stress Bodyforce 2 = -1.0e5
+End
+Material 1
+  Number of Material Constants = Integer 5
+  Number of State Variables = Integer 8
+Material Constants(5) = Real 0.3 2.857142857E-5 2.0E6 2.0E-4 4.0E6
+  UMAT Subroutine = File "UMATLib" "plastic"
+  Name = "plastic"
+  Density = 2700.0
+  Reference Temperature = 293.0
+End
+Solver 1
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Large Deflection = False
+
+End
+Solver 2
+  Exec Solver = After Timestep
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Time
+  Variable 2 = Displacement 2
+  Operator 2 = min
+  Variable 3 = UmatState 8
+  Operator 3 = max
+  Show Norm Index = 2
+End
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = False
+End
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+! = |min vertical displacement| at t = 0.02 (elastic: 2.767e-4)
+Solver 2 :: Reference Norm = Real 4.35908617E-04
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-7
