@@ -1,0 +1,75 @@
+! Transient (dynamic) simulation with a UMAT: vibration of a cantilever beam
+! under a suddenly applied body force, Bossak method.
+!
+! The unknown of the UMAT formulation is the increment of the displacement:
+! the inertia of the current iterate must stay in the residual, and the
+! velocity and acceleration be updated from the displacement and not from
+! the increment. With the linear isotropic UMAT the result is that of the
+! linear elastic material of ElasticSolve: the reference norm is its result
+! (the minimum vertical displacement at t = 0.02).
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "beam"
+End
+Simulation
+  Max Output Level = 4
+  Coordinate System = Cartesian 2D
+  Simulation Type = Transient
+  Timestepping Method = Bossak
+  Timestep Intervals = 40
+  Timestep Sizes = 5.0e-4
+  Output Intervals = 0
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+Body Force 1
+  Stress Bodyforce 2 = -1.0e5
+End
+Material 1
+  Number of Material Constants = Integer 3
+  Number of State Variables = Integer 0
+  Material Constants(3) = Real 2700.0 70e9 0.3
+  UMAT Subroutine = File "UMATLib" "linear_isotropic"
+  Name = "linear isotropic"
+  Density = 2700.0
+  Reference Temperature = 293.0
+End
+Solver 1
+  Equation = Elasticity Solver
+  Variable = Displacement
+  Variable DOFs = 2
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct
+  Nonlinear System Max Iterations = 10
+  Nonlinear System Convergence Tolerance = 1.0e-9
+  Large Deflection = False
+
+End
+Solver 2
+  Exec Solver = After Timestep
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = f.dat
+  Variable 1 = Time
+  Variable 2 = Displacement 2
+  Operator 2 = min
+  Show Norm Index = 2
+End
+Equation 1
+  Active Solvers(2) = 1 2
+  Plane Stress = False
+End
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+End
+
+Solver 2 :: Reference Norm = Real 2.76704176E-04
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-7

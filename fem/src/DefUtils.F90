@@ -3496,7 +3496,7 @@ CONTAINS
      Solver => CurrentModel % solver
    END IF
 
-   Order = MAX( MIN( Solver % DoneTime, Solver % Order ), 1)
+   Order = MAX( MIN( Solver % TimeLevels, Solver % Order ), 1)
    HasMass = ASSOCIATED( Solver % Matrix % MassValues )
 
    HasFCT = ListGetLogical( Solver % Values,'Linear System FCT', Found )
@@ -4599,7 +4599,7 @@ CONTAINS
     END IF
 
     IF( LinearSystemTrialing ) THEN
-      IF( x % LinConverged > 0 ) THEN
+      IF( x % LinConverged == 1 ) THEN
         IF( ListGetLogical( Params,'Linear System Trialing Conserve',Found ) ) THEN
           MaxCount = ListGetInteger( Params,'Linear System Trialing Conserve Rounds',Found )
           IF( Found ) THEN

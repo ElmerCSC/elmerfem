@@ -4997,6 +4997,7 @@ CONTAINS
             IF( ListGetLogical( Var % Solver % Values,'Transient Restart',Found ) ) THEN
               CALL Info(Caller,'Assuming variable to have transient initialization: '//TRIM(NewName),Level=6)
               Var % Solver % DoneTime = Var % Solver % Order
+              Var % Solver % TimeLevels = Var % Solver % Order
             END IF
           END IF
 

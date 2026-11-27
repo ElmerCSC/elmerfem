@@ -276,7 +276,7 @@ MODULE NavierStokes
      Transient = GetString(GetSimulation(),'Simulation Type',Found)=='transient'
      IF ( VMS .AND. Transient ) THEN
        dt = CurrentModel % Solver % dt
-       Order = MIN(CurrentModel % Solver % DoneTime, CurrentModel % Solver % Order)
+       Order = MIN(CurrentModel % Solver % TimeLevels, CurrentModel % Solver % Order)
      END IF
 
      Compressible = Cmodel /= Incompressible

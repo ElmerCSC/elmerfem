@@ -383,7 +383,7 @@ END SUBROUTINE MeshSolver_Init
     END IF
 
     IF ( ComputeMeshVelocity .AND. (.NOT.(SkipFirstMeshVelocity)) ) THEN
-      k = MIN( SIZE(Solver % Variable % PrevValues,2), Solver % DoneTime )
+      k = MIN( SIZE(Solver % Variable % PrevValues,2), Solver % TimeLevels )
 
       j = ListGetInteger( Solver % Values,'Compute Mesh Velocity Order', Found)
       IF( Found ) THEN

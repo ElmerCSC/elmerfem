@@ -1014,7 +1014,12 @@ SUBROUTINE SaveScalars( Model,Solver,dt,TransientSimulation )
 
     DO WHILE( ASSOCIATED( Var ) )
 
-      IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == Var % DOFs ) THEN
+      ! Only nodal variables have a value at a node: the others (on edges, faces,
+      ! integration points or elements, such as the state of a UMAT) are not
+      ! indexed by the node number, and reading them so went out of bounds.
+      IF ( .NOT. Var % Output .OR. SIZE(Var % Values) == Var % DOFs .OR. &
+          .NOT. ( Var % TYPE == Variable_on_nodes .OR. &
+          Var % TYPE == Variable_on_nodes_on_elements ) ) THEN
 
         CONTINUE
 

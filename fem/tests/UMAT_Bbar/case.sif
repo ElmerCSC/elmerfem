@@ -1,0 +1,66 @@
+! B-bar ("UMAT Bbar") of linear bricks with a UMAT, small strain. A cantilever
+! of a nearly incompressible material (nu = 0.4999) on a distorted mesh of 808
+! bricks under a tip load. Fully integrated, the bricks lock: the tip moves
+! -2.4e-3. With the mean dilatation it moves -3.0e-2, against -4.0e-2 of beam
+! theory; the rest is the shear locking of two bricks through the thickness.
+Header
+  Mesh DB "." "beam"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Number of Material Constants = Integer 3
+  Number of State Variables = Integer 0
+  ! {density, Young's modulus, Poisson's ratio}:
+  Material Constants(3) = Real 1.0 1.0e5 0.4999
+  UMAT Subroutine = File "UMATLib" "linear_isotropic"
+  UMAT Bbar = Logical True
+  Density = 1.0
+End
+
+Solver 1
+  Equation = Elasticity With UMAT
+  Variable = -dofs 3 Displacement
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct
+  Nonlinear System Max Iterations = 5
+  Nonlinear System Convergence Tolerance = 1.0e-6
+  Large Deflection = False
+End
+
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = tip.dat
+  Variable 1 = Displacement 2
+  Operator 1 = min
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+  Displacement 3 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Surface Traction 2 = -1.0
+End
+
+Solver 1 :: Reference Norm = Real 0.87884342E-02

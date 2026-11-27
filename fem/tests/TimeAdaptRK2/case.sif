@@ -1,0 +1,105 @@
+! Adaptive timestepping with explicit Runge-Kutta 2 and the default weighted
+! error measure (same case as TimeAdapt, which uses the original measure).
+!
+! The step is near the stability limit of the explicit method. The step
+! doubling alone accepts the onset of the instability and the solution blows
+! up (norm 0.86); the embedded estimate of Runge-Kutta 2 ("Adaptive Error
+! Measure") is combined with it and catches the instability.
+! BDF2 with fixed dt=1e-5 gives 0.79426236E-02 for this case.
+
+Header
+  CHECK KEYWORDS Warn
+  Mesh DB "." "Mesh"
+  Include Path ""
+  Results Directory ""
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = "Cartesian 2D"
+  Coordinate Mapping(3) = 1 2 3
+
+  Simulation Type = Transient
+
+  Timestepping Method = Runge-Kutta
+  BDF Order = 1
+  Runge-Kutta Order = 2
+  Timestep Sizes  = 0.01
+  Timestep Intervals = 1
+  Output Intervals   = 1
+  Steady State Max Iterations = 2
+
+  Adaptive Timestepping  = True
+  Adaptive Time Error    = 0.05
+  Adaptive Keep Smallest = 3
+  Adaptive Min Timestep  = 1.0e-6
+  Adaptive Max Timestep  = Real 0.01
+
+End
+
+Constants
+  Gravity(4) = 0 -1 0 9.82
+  Stefan Boltzmann = 5.67e-08
+End
+
+Body 1
+  Name = "Body1"
+
+  Body Force = 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Name = "Equation1"
+
+  Heat Equation = True
+End
+
+Solver 1
+  Exec Solver = "Always"
+  Equation = "Heat Equation"
+  Procedure = "HeatSolve" "HeatSolver"
+  Variable = "Temperature"
+  Variable Dofs = 1
+  Linear System Solver = "Iterative"
+  Linear System Iterative Method = "CG"
+  Linear System Max Iterations = 100
+  Linear System Convergence Tolerance = 1.0e-10
+  Linear System Preconditioning = None
+  Linear System Residual Output = 1
+  Stabilize = True
+  Steady State Convergence Tolerance = 1.0e-05
+  Nonlinear System Convergence Tolerance = 1.0e-05
+  Nonlinear System Max Iterations = 1
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Newton After Tolerance = 1.0e-02
+  Nonlinear System Relaxation Factor = 1.0
+  Lumped Mass Matrix = True
+End
+
+Material 1
+  Name = "Material1"
+  Density = 1
+  Heat Capacity = 1
+  Heat Conductivity = 1
+End
+
+Body Force 1
+  Name = "BodyForce1"
+  Heat Source = 1
+End
+
+Boundary Condition 1
+  Name = "Constraint1"
+  Target Boundaries(6) = 1 2 3 4 5 6 
+
+  Temperature = 0
+End
+
+Solver 1::Reference Norm = Real 0.78885285E-02
+Solver 1::Reference Norm Tolerance = Real 1.0e-4
+
+RUN
+
+!End Of File
