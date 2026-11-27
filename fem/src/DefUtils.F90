@@ -5052,7 +5052,7 @@ CONTAINS
      TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:), FC(:)
      LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this
-     
+
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
@@ -5074,7 +5074,6 @@ CONTAINS
      A => Solver % Matrix
      x => Solver % Variable
      b => A % RHS
-
 
      Element => GetCurrentElement( UElement )
 
@@ -5116,7 +5115,7 @@ CONTAINS
          G( 2*(i-1)+2, 2*(j-1)+2 ) =   REAL( GC(i,j) )
        END DO
      END DO
-     
+
      IF( Solver % LocalSystemMode > 0 ) THEN
        CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
      END IF
@@ -5136,28 +5135,23 @@ CONTAINS
 
 
 !------------------------------------------------------------------------------
-!> This is a complex conjudate version of glueing such that we can maintain the
-!> solver modules cleaner. It could be added to the routine above too, but this is
-!> such a rarely used feature that separate routine may be in order. Note that
-!> the r.h.s. is easy to glue always so this only deals with the matrix part.
+!> Glues the local matrix GC of a term acting on the complex conjugate of the unknown, i.e. GC*conj(x),
+!> to the global matrix of a complex system. Each entry c becomes the real 2x2 block [Re c, Im c; Im c, -Re c].
+!> The global system is then no longer complex-linear and must be solved as a real system
+!> ('Linear System Complex = False'). Only the matrix is glued; the r.h.s. goes with DefaultUpdateEquations.
 !------------------------------------------------------------------------------
-  SUBROUTINE DefaultUpdateEquationsCompConj( GC, UElement, USolver, VecAssembly )
+  SUBROUTINE DefaultUpdateEquationsCompConj( GC, UElement, USolver )
 !------------------------------------------------------------------------------
-     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
-     TYPE(Element_t), OPTIONAL, TARGET :: UElement
      COMPLEX(KIND=dp)   :: GC(:,:)
-     LOGICAL, OPTIONAL :: VecAssembly  ! The complex version lacks support for this
-     
+     TYPE(Element_t), OPTIONAL, TARGET :: UElement
+     TYPE(Solver_t),  OPTIONAL, TARGET :: USolver
+
      TYPE(Solver_t), POINTER   :: Solver
      TYPE(Matrix_t), POINTER   :: A
      TYPE(Variable_t), POINTER :: x
      TYPE(Element_t), POINTER  :: Element, P1, P2
      REAL(KIND=dp), POINTER  CONTIG :: b(:)
-
-     REAL(KIND=dp), POINTER :: G(:,:), F(:)
-
-     LOGICAL :: Found
-
+     REAL(KIND=dp), ALLOCATABLE :: G(:,:), F(:)
      INTEGER :: i,j,n,DOFs
      INTEGER, POINTER :: Indexes(:)
 
@@ -5186,7 +5180,7 @@ CONTAINS
 
             IF ( P1 % PartIndex/=ParEnv % myPE .OR. &
                  P2 % PartIndex/=ParEnv % myPE ) THEN
-              GC=GC/2; !FC=FC/2;
+              GC=GC/2
             END IF
           ELSE IF ( ASSOCIATED(P1) ) THEN
             IF ( P1 % PartIndex/=ParEnv % myPE ) RETURN
@@ -5200,38 +5194,31 @@ CONTAINS
 
      ALLOCATE( G(DOFs*n,DOFs*n), F(DOFs*n) )
      F = 0.0_dp
-     
-     DO i=1,n*DOFs/2
-       !F( 2*(i-1)+1 ) =  REAL( FC(i) )
-       !F( 2*(i-1)+2 ) =  AIMAG( FC(i) )
 
+     DO i=1,n*DOFs/2
        DO j=1,n*DOFs/2
          G( 2*(i-1)+1, 2*(j-1)+1 ) =  REAL( GC(i,j) )
          G( 2*(i-1)+1, 2*(j-1)+2 ) =  AIMAG( GC(i,j) )
          G( 2*(i-1)+2, 2*(j-1)+1 ) =  AIMAG( GC(i,j) )
-         G( 2*(i-1)+2, 2*(j-1)+2 ) =  -REAL( GC(i,j) )
+         G( 2*(i-1)+2, 2*(j-1)+2 ) = -REAL( GC(i,j) )
        END DO
      END DO
-     
-     IF( Solver % LocalSystemMode > 0 ) THEN
-       CALL UseLocalMatrixStorage( Solver, n * x % dofs, G, F, ElemInd = Element % ElementIndex )
-     END IF
+
+     ! No 'Local Matrix Storage' here: it would mix this matrix with the
+     ! one of DefaultUpdateEquations for the same element.
 
      ! If we have any antiperiodic entries we need to check them all!
      IF( Solver % PeriodicFlipActive ) THEN
        CALL FlipPeriodicLocalMatrix( Solver, n, Indexes, x % dofs, G )
-       !CALL FlipPeriodicLocalForce( Solver, n, Indexes, x % dofs, f )
      END IF
 
-     CALL UpdateGlobalEquations( A,G,b,f,n,x % DOFs,x % Perm(Indexes(1:n)) )
+     CALL UpdateGlobalEquations( A,G,b,F,n,x % DOFs,x % Perm(Indexes(1:n)) )
 
-     DEALLOCATE( G, F)
+     DEALLOCATE( G, F )
 !------------------------------------------------------------------------------
    END SUBROUTINE DefaultUpdateEquationsCompConj
 !------------------------------------------------------------------------------
 
-
-  
 
 ! This is a version when the initial matrix is given in diagonal form,
 ! such that the last array index refers to the component.

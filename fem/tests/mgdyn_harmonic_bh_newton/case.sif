@@ -34,7 +34,7 @@ Solver 1
   Nonlinear System Newton After Iterations = 0
   Harmonic Newton Exact = Logical True
 
-  ! the exact Newton step reuses the factorization of the complex system in its inner iteration
+  ! the exact Newton system is solved as a real system (set by the solver)
   Linear System Solver = Direct
   Linear System Direct Method = MUMPS
 End
