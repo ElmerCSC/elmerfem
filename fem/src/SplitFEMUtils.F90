@@ -308,6 +308,7 @@ CONTAINS
         r = ABS(h2)/(ABS(h1)+ABS(h2))        
         Hit = .FALSE.
 
+#if  0
         ! We may have a sloppier rule if the dof is already cut?
         ! If the rule is exactly the same then no need for separate loop.
         ! The idea is that we don't want to have edge being cut very close to node being cut.
@@ -316,7 +317,12 @@ CONTAINS
         ELSE IF((1.0-r < EdgeEps) ) THEN
           IF(CutDof(i1)) CYCLE
         END IF
-
+#else
+        ! Do not cut an edge with a snapped end node: the snapped node already represents
+        ! the edge's only zero. The EdgeEps test above misses edges nearly parallel to the
+        ! interface, giving a hanging node and an interface element without a parent.
+        IF( CutDof(i1) .OR. CutDof(i2) ) CYCLE
+#endif
         j = j+1 
         CutDof(nn+i) = .TRUE.
 
