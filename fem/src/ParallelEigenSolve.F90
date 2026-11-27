@@ -662,16 +662,17 @@ CONTAINS
 !     %---------------%
 !
       CHARACTER ::     BMAT*1, Which*2
-      INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, p, pn, IERR, iter, &
-                       maxitr, mode, istat, DOFs, LinIter, MinPn
-      LOGICAL   ::     Stat, Direct, Iterative, NewSystem, ScaleSystem, NullifyGuess
+      INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, p, pn, IERR, iter, &
+                       maxitr, mode, istat, DOFs, MinPn
+      LOGICAL   ::     Stat, Iterative, NewSystem, ScaleSystem, NullifyGuess
       LOGICAL   ::     Factorize, FreeFactorize, FoundFactorize, FoundFreeFactorize, StandardForm
       LOGICAL   ::     NoPrecRecompute, FoundNoPrecRecompute
 
       COMPLEX(KIND=dp) :: Sigma
-      REAL(KIND=dp) :: SigmaR, SigmaI, TOL, LinConv, ILUTOL
+      REAL(KIND=dp) :: SigmaR, SigmaI, TOL
+      REAL(KIND=dp), POINTER CONTIG :: SaveRhs(:)
 
-      CHARACTER(:), ALLOCATABLE :: str, DirectMethod
+      CHARACTER(:), ALLOCATABLE :: Method
 
       INTEGER :: me
       TYPE(NeighbourList_t), POINTER :: OwnerList(:)
@@ -679,6 +680,15 @@ CONTAINS
       TYPE(ValueList_t), POINTER :: Params
 
       CHARACTER(*), PARAMETER :: Caller = 'ParallelArpackEigenSolveComplex'
+
+      INTERFACE
+        SUBROUTINE BlockSolveExt(A,x,b,Solver)
+          USE Types
+          TYPE(Matrix_t), POINTER :: A
+          TYPE(Solver_t) :: Solver
+          REAL(KIND=dp) :: x(:), b(:)
+        END SUBROUTINE BlockSolveExt
+      END INTERFACE
 
 !     %-----------------------%
 !     | Executable Statements |
@@ -847,11 +857,9 @@ CONTAINS
         END IF
       END IF
 
-      Direct = ListGetString( Params, &
-           'Linear System Solver', stat ) == 'direct'
-
-      DirectMethod = ListGetString( Params, &
-           'Linear System Direct Method', stat )
+      Method = ListGetString( Params, 'Linear System Solver', stat )
+      IF (.NOT. stat) Method = 'direct'
+      Iterative = Method == 'iterative'
 
       ! Mode 3:
       SigmaR = ListGetConstReal( Params,'Eigen System Shift', stat )
@@ -862,39 +870,9 @@ CONTAINS
 
       IF (ScaleSystem) CALL ScaleLinearSystem(Solver, Matrix, Shift = Sigma)
 
-      IF ( Direct ) THEN
-        SELECT CASE( DirectMethod )
-        CASE( 'mumps', 'zmumps' )
-        CASE DEFAULT
-          Stat = CRS_ComplexILUT(Matrix, 0._dp)
-        END SELECT
-      END IF
-
       ! The parallel matrix holds a copy of the values. Update it so that the shifted
-      ! and scaled matrix is used in the preconditioning and the linear solves:
+      ! and scaled matrices are used in the matrix-vector products:
       CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
-
-      IF ( .NOT. Direct .OR. (DirectMethod /= 'mumps' .AND. DirectMethod /= 'zmumps') )  THEN
-        LinIter = ListGetInteger( Params, 'Linear System Max Iterations', stat )
-        IF ( .NOT. Stat ) LinIter = 1000
-        LinConv = ListGetConstReal( Params, 'Linear System Convergence Tolerance', stat )
-        IF ( .NOT. Stat ) LinConv = 1.0d-9
-!        Preconditioning:
-!        ----------------
-        str = ListGetString( Params, 'Linear System Preconditioning', stat )
-
-        k = 0
-        IF ( str == 'ilut' )  THEN
-          ILUTOL = ListGetConstReal( Params, &
-               'Linear System ILUT Tolerance' )
-
-          stat = CRS_ComplexILUT( PMatrix, ILUTOL )
-        ELSE IF ( SEQL(str, 'ilu') ) THEN
-           IF(LEN(str)>=4) k = ICHAR(str(4:4)) - ICHAR('0')
-           IF ( k<0 .OR. k>9 ) k = 0
-           stat = CRS_ComplexIncompleteLU( PMatrix, k )
-        END IF
-      END IF
 
       IF ( .NOT. ASSOCIATED( Matrix % RHS ) ) THEN
          ALLOCATE(Matrix % RHS(2*n)); Matrix % RHS = 0._dp
@@ -906,9 +884,6 @@ CONTAINS
 !
       iter = 0
       NewSystem = .TRUE.
-
-      Iterative = ListGetString( Params, &
-        'Linear System Solver', stat ) == 'iterative'
 
       NoPrecRecompute = ListGetLogical( Params, 'No Precondition Recompute', FoundNoPrecRecompute )
       IF ( Iterative .AND. NoPrecRecompute ) &
@@ -951,62 +926,52 @@ CONTAINS
             END IF
             x => WORKD(IPNTR(2):IPNTR(2)+pn-1)
 
+            ! Map the owned values to the local real-valued vectors of the partition
+            ! (the right-hand side vanishes at the dofs owned by other partitions):
             ForceVector = 0._dp
             Solution    = 0._dp
-            IF ( Direct .AND. (DirectMethod == 'mumps' .OR. DirectMethod == 'zmumps') ) THEN
-               j = 0
-               DO i=0,n-1
-                  IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
-                     j = j + 1
-                     ForceVector(2*i+1) = REAL(b(j))
-                     ForceVector(2*i+2) = AIMAG(b(j))
-                  END IF
-               END DO
-               CALL DirectSolver( Matrix,Solution,ForceVector,Solver )
-               j = 0
-               DO i=0,n-1
-                  IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
-                     j = j + 1
-                     x(j) = CMPLX(Solution(2*i+1),Solution(2*i+2),KIND=dp)
-                  END IF
-               END DO
-            ELSE IF ( Solver % MultiGridSolver ) THEN
-               j = 0
-               DO i=0,n-1
-                  IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
-                     j = j + 1
-                     IF ( .NOT. NullifyGuess ) THEN
-                       Solution(2*i+1) = REAL(x(j))
-                       Solution(2*i+2) = AIMAG(x(j))
-                     END IF
-                     ForceVector(2*i+1) = REAL(b(j))
-                     ForceVector(2*i+2) = AIMAG(b(j))
-                  END IF
-               END DO
-               CALL MultiGridSolve( Matrix, Solution, ForceVector,  DOFs, &
-                     Solver, Solver % MultiGridLevel, NewSystem )
-               j = 0
-               DO i=0,n-1
-                  IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
-                     j = j + 1
-                     x(j) = CMPLX(Solution(2*i+1),Solution(2*i+2),KIND=dp)
-                  END IF
-               END DO
-            ELSE
-               DO i=0,pn-1
-                 IF ( .NOT. NullifyGuess ) THEN
-                   Solution(2*i+1) = REAL(x(i+1))
-                   Solution(2*i+2) = AIMAG(x(i+1))
-                 END IF
-                 ForceVector(2*i+1) = REAL(b(i+1))
-                 ForceVector(2*i+2) = AIMAG(b(i+1))
-               END DO
-               CALL BiCGParEigen( Matrix,Solution,ForceVector,Residual,LinIter,LinConv )
-               DO i=0,pn-1
-                 x(i+1) = CMPLX(Solution(2*i+1),Solution(2*i+2),KIND=dp)
-               END DO
-            END IF
-            CALL ParallelInitSolve( Matrix, Solution, ForceVector, Residual )
+            j = 0
+            DO i=0,n-1
+              IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
+                j = j + 1
+                IF ( .NOT. NullifyGuess ) THEN
+                  Solution(2*i+1) = REAL(x(j))
+                  Solution(2*i+2) = AIMAG(x(j))
+                END IF
+                ForceVector(2*i+1) = REAL(b(j))
+                ForceVector(2*i+2) = AIMAG(b(j))
+              END IF
+            END DO
+
+            ! Some strategies (such as 'block') may depend on that these are set properly
+            ! to reflect the linear problem under study.
+            SaveRhs => Matrix % rhs
+            Matrix % rhs => ForceVector
+
+            SELECT CASE( Method )
+            CASE('multigrid')
+              CALL MultiGridSolve( Matrix, Solution, ForceVector, &
+                  DOFs, Solver, Solver % MultiGridLevel, NewSystem )
+            CASE('iterative')
+              CALL ParallelIter( Matrix, Matrix % ParallelInfo, DOFs, &
+                  Solution, ForceVector, Solver, Matrix % ParMatrix )
+            CASE('block')
+              CALL BlockSolveExt( Matrix, Solution, ForceVector, Solver )
+            CASE('direct')
+              CALL DirectSolver( Matrix, Solution, ForceVector, Solver )
+            CASE DEFAULT
+              CALL Fatal(Caller,'Unknown linear system method: '//TRIM(Method))
+            END SELECT
+
+            Matrix % rhs => SaveRhs
+
+            j = 0
+            DO i=0,n-1
+              IF ( OwnerList(2*i+1) % Neighbours(1) == me ) THEN
+                j = j + 1
+                x(j) = CMPLX(Solution(2*i+1), Solution(2*i+2), KIND=dp)
+              END IF
+            END DO
 
          ELSE IF (ido == 2) THEN
 !
@@ -1182,185 +1147,6 @@ CONTAINS
 !
 !------------------------------------------------------------------------------
      END SUBROUTINE ParallelArpackEigenSolveComplex
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE Jacobi( n, A, M, x, b, r, Rounds )
-!------------------------------------------------------------------------------
-       TYPE(Matrix_t), POINTER :: A, M
-       INTEGER :: Rounds
-       REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
-!------------------------------------------------------------------------------
-       INTEGER :: i,n
-!------------------------------------------------------------------------------
-       DO i=1,Rounds
-          CALL MGmv( A, x, r )
-          r(1:n) = b(1:n) - r(1:n)
-
-          r(1:n) = r(1:n) / M % Values(M % Diag)
-          x(1:n) = x(1:n) + r(1:n)
-       END DO
-!------------------------------------------------------------------------------
-    END SUBROUTINE Jacobi
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE CGParEigen( A, x, b, r, Rounds, Conv )
-!------------------------------------------------------------------------------
-       TYPE(Matrix_t), POINTER :: A
-       INTEGER :: Rounds
-       REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
-       REAL(KIND=dp) :: alpha,rho,oldrho, Conv
-!------------------------------------------------------------------------------
-!------------------------------------------------------------------------------
-       TYPE(Matrix_t), POINTER :: M
-       INTEGER :: i,n
-       REAL(KIND=dp), POINTER CONTIG :: Mx(:),Mb(:),Mr(:), Z(:), P(:), Q(:)
-       REAL(KIND=dp) :: RNorm
-!------------------------------------------------------------------------------
-       M => ParallelMatrix( A, Mx, Mb, Mr )
-       n = M % NumberOfRows
-       M % RHS(1:n) = b(1:n)
-
-       ALLOCATE( Z(n), P(n), Q(n) )
-
-       CALL MGmv( A, Mx, Mr )
-       Mr(1:n) = Mb(1:n) - Mr(1:n)
-
-       DO i=1,Rounds
-          Z(1:n) = Mr(1:n)
-          CALL CRS_LUSolve( n, M, Z )
-          rho = MGdot( n, Mr, Z )
-
-          IF ( i == 1 ) THEN
-             P(1:n) = Z(1:n)
-          ELSE
-             P(1:n) = Z(1:n) + rho * P(1:n) / oldrho
-          END IF
-
-          CALL MGmv( A, P, Q )
-          alpha  = rho / MGdot( n, P, Q )
-          oldrho = rho
-
-          Mx(1:n) = Mx(1:n) + alpha * P(1:n)
-          Mr(1:n) = Mr(1:n) - alpha * Q(1:n)
-
-          RNorm = MGnorm( n, Mr ) / MGNorm( n, Mb )
-          IF ( RNorm < Conv ) EXIT
-       END DO
-
-       WRITE( Message, * ) 'Iters: ', i, RNorm
-       CALL Info( 'CGParEigen', Message, Level=4 )
-
-       DEALLOCATE( Z, P, Q )
-
-       x(1:n)= Mx(1:n)
-       b(1:n)= Mb(1:n)
-!------------------------------------------------------------------------------
-    END SUBROUTINE CGParEigen
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    SUBROUTINE BiCGParEigen( A, x, b, r, Rounds, Conv )
-!------------------------------------------------------------------------------
-       TYPE(Matrix_t), POINTER :: A,M
-       INTEGER :: Rounds
-       REAL(KIND=dp) :: Conv
-       REAL(KIND=dp) CONTIG :: x(:),b(:),r(:)
-!------------------------------------------------------------------------------
-       INTEGER :: i,n
-       REAL(KIND=dp) :: RNorm
-       REAL(KIND=dp) :: alpha,beta,omega,rho,oldrho
-       REAL(KIND=dp), ALLOCATABLE :: Ri(:),P(:),V(:),T(:),T1(:),T2(:),S(:)
-       REAL(KIND=dp), POINTER CONTIG :: Mx(:),Mb(:),Mr(:)
-!------------------------------------------------------------------------------
-       M => ParallelMatrix( A, Mx, Mb, Mr )
-       n = M % NumberOfRows
-       M % RHS(1:n) = b(1:n)
-
-       CALL MGmv( A, Mx, Mr )
-       Mr(1:n) = Mb(1:n) - Mr(1:n)
-
-       ALLOCATE( Ri(n),P(n),V(n),T(n),T1(n),T2(n),S(n) )
-
-       Ri(1:n) = Mr(1:n)
-       P(1:n) = 0
-       V(1:n) = 0
-       omega  = 1
-       alpha  = 0
-       oldrho = 1
-       RNorm  = HUGE(RNorm)
-
-       DO i=1,Rounds
-          rho = MGdot( n, Mr, Ri )
-
-          beta = alpha * rho / ( oldrho * omega )
-          P(1:n) = Mr(1:n) + beta * (P(1:n) - omega*V(1:n))
-
-          V(1:n) = P(1:n)
-          CALL CRS_LUSolve( n, M, V )
-          T1(1:n) = V(1:n)
-          CALL MGmv( A, T1, V )
-
-          alpha = rho / MGdot( n, Ri, V )
-
-          S(1:n) = Mr(1:n) - alpha * V(1:n)
-
-          T(1:n) = S(1:n)
-          CALL CRS_LUSolve( n, M, T )
-          T2(1:n) = T(1:n)
-          CALL MGmv( A, T2, T )
-          omega = MGdot( n,T,S ) / MGdot( n,T,T )
-
-          oldrho = rho
-          Mr(1:n) = S(1:n) - omega*T(1:n)
-          Mx(1:n) = Mx(1:n) + alpha*T1(1:n) + omega*T2(1:n)
-
-          RNorm = MGnorm( n, Mr ) / MGNorm( n, Mb )
-          IF ( RNorm < Conv ) EXIT
-       END DO
-
-       IF ( RNorm >= Conv ) THEN
-         WRITE( Message,'(A,I0,A,ES12.3)') 'No convergence in ', Rounds, &
-             ' iterations, relative residual: ', RNorm
-         CALL Warn( 'BiCGParEigen', Message )
-       END IF
-
-       DEALLOCATE( Ri,P,V,T,T1,T2,S )
-
-       x(1:n) = Mx(1:n)
-       b(1:n) = Mb(1:n)
-!------------------------------------------------------------------------------
-    END SUBROUTINE BiCGParEigen
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    FUNCTION MGnorm( n, x ) RESULT(s)
-!------------------------------------------------------------------------------
-       INTEGER :: n
-       REAL(KIND=dp) :: s
-       REAL(KIND=dp) CONTIG :: x(:)
-!------------------------------------------------------------------------------
-       s = ParallelNorm( n, x )
-!------------------------------------------------------------------------------
-    END FUNCTION MGnorm
-!------------------------------------------------------------------------------
-
-
-!------------------------------------------------------------------------------
-    FUNCTION MGdot( n, x, y ) RESULT(s)
-!------------------------------------------------------------------------------
-       INTEGER :: n
-       REAL(KIND=dp) :: s
-       REAL(KIND=dp) CONTIG :: x(:),y(:)
-!------------------------------------------------------------------------------
-       s = ParallelDot( n, x, y )
-!------------------------------------------------------------------------------
-    END FUNCTION MGdot
 !------------------------------------------------------------------------------
 
 
