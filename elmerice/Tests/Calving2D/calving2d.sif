@@ -764,6 +764,9 @@ Boundary Condition 4
 
   ComputeNormal = Logical False
 End
+! Re-pinned: FlowSolve Newton with bubbles now linearises the Picard problem.
+! Calving is threshold-sensitive: with the flow converged to 1e-10 Newton and
+! Picard both give this value (they differ by 2e-8); old value 1.79613790E+01
 
-Solver 16 :: Reference Norm = Real 1.79613790E+01
+Solver 16 :: Reference Norm = Real 1.78918292E+01
 Solver 16 :: Reference Norm Tolerance = Real 1E-04

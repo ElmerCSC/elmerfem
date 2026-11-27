@@ -171,5 +171,8 @@ Boundary Condition 4
   Target Boundaries = 4
   ComputeNormal = Logical False
 End
+! Re-pinned: FlowSolve Newton with bubbles now linearises the Picard problem
+! (bubble trial functions out of the Newton terms); Newton = Picard-only to
+! 1e-6. Old value 89.885435
 
-Solver 3 :: Reference Norm = Real 89.885435
+Solver 3 :: Reference Norm = Real 8.98869740E+01
