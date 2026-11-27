@@ -64,7 +64,7 @@ MODULE NavierStokes
        PotentialForce, PotentialField, PotentialCoefficient, MagneticForce,     &
        Rotating, Omega, &
        DivDiscretization,  gradPDiscretization, NewtonLinearization,            &
-       Element, n, Nodes )
+       Element, n, Nodes, BubbleVelo )
 !------------------------------------------------------------------------------
 !
 !  REAL(KIND=dp) :: MassMatrix(:,:)
@@ -134,6 +134,12 @@ MODULE NavierStokes
          NewtonLinearization, Convect, DivDiscretization, gradPDiscretization, &
          PotentialForce, MagneticForce, Rotating
      CHARACTER(LEN=*) :: StabilizeFlag
+     ! The bubble part of the velocity iterate, (component, bubble), when the
+     ! caller has it (FlowSolve keeps it for Newton). It enters only the Newton
+     ! terms: see GradN below.
+     REAL(KIND=dp), OPTIONAL :: BubbleVelo(:,:)
+     REAL(KIND=dp) :: GradN(3,3), StrainN(3,3)
+     INTEGER :: nbv
      REAL(KIND=dp) :: Nodalmu(:),Nodalrho(:), &
        NodalPressure(:), LoadVector(:,:), NodalTemperature(:), &
        NodalCompressibility(:), NodalDrag(:,:), PotentialField(:), &
@@ -203,7 +209,7 @@ MODULE NavierStokes
      REAL(KIND=dp) :: DivLapConst, ComprConvConst, ViscNewtonLinConst
      REAL(KIND=dp),POINTER :: gradPDiscPtrP(:), gradPDiscPtrQ(:)
      REAL(KIND=dp) :: gradPDiscConst, CmodelConst
-     REAL(KIND=dp) ::SWxSU(n), StrainS(2*n, 4)
+     REAL(KIND=dp) ::SWxSU(n), StrainS(2*n, 4), StrainSN(2*n, 4)
      INTEGER :: P2P1stop, ii, jj, kk, ll
      ! end of transposed variable
 
@@ -457,6 +463,23 @@ MODULE NavierStokes
         Grad(2,i) = SUM( Uy(1:n) * dBasisdx(1:n,i) )
         IF ( DIM > 2 .OR. OutOfPlaneFlow ) Grad(3,i) = SUM( Uz(1:n) * dBasisdx(1:n,i) )
       END DO
+      ! GradN: of the nodal velocity, which Velo and the shear rate of mu are
+      ! built from, i.e. what the Picard problem is a function of. Grad adds
+      ! the bubble part of the iterate, when given, for the Newton terms: their
+      ! matrix part and load (u0.grad)u0 both use it and cancel at convergence
+      ! whatever it is, so it improves the Jacobian (to quadratic convergence)
+      ! without moving the solution off the Picard one.
+      GradN = Grad
+      IF ( PRESENT(BubbleVelo) ) THEN
+        nbv = MIN( NBasis-n, SIZE(BubbleVelo,2) )
+        IF ( nbv > 0 ) THEN
+          DO j=1,MIN(SIZE(BubbleVelo,1),3)
+            DO i=1,3
+              Grad(j,i) = Grad(j,i) + SUM( BubbleVelo(j,1:nbv) * dBasisdx(n+1:n+nbv,i) )
+            END DO
+          END DO
+        END IF
+      END IF
 !------------------------------------------------------------------------------
 !     Force at integration point
 !------------------------------------------------------------------------------
@@ -534,7 +557,10 @@ MODULE NavierStokes
               Element, Nodes, n, n, u, v, w,  muder0, LocalIP=t )
 
           ViscNewtonLin = NewtonLinearization .AND. muder0/=0._dp
-          IF ( ViscNewtonLin )  Strain = (Grad+TRANSPOSE(Grad))/2
+          IF ( ViscNewtonLin ) THEN
+            Strain = (Grad+TRANSPOSE(Grad))/2
+            StrainN = (GradN+TRANSPOSE(GradN))/2
+          END IF
         END IF
 
       ELSE
@@ -614,6 +640,19 @@ MODULE NavierStokes
               SW(p,j,i) = SW(p,j,i) - mu * SUM(dNodalBasisdx(p,1:n,i)*dBasisdx(1:n,j))
             END DO
           END DO
+
+          ! Coriolis term 2*rho*(Omega x u) of the rotating frame in the residual.
+          ! The centrifugal part is in Force and hence already in the load.
+          IF ( Rotating ) THEN
+            SU(p,1,2) = SU(p,1,2) - 2 * rho * Omega(3) * Basis(p)
+            SU(p,2,1) = SU(p,2,1) + 2 * rho * Omega(3) * Basis(p)
+            IF ( dim == 3 ) THEN
+              SU(p,1,3) = SU(p,1,3) + 2 * rho * Omega(2) * Basis(p)
+              SU(p,2,3) = SU(p,2,3) - 2 * rho * Omega(1) * Basis(p)
+              SU(p,3,1) = SU(p,3,1) - 2 * rho * Omega(2) * Basis(p)
+              SU(p,3,2) = SU(p,3,2) + 2 * rho * Omega(1) * Basis(p)
+            END IF
+          END IF
         END DO
       ELSE IF ( Vms ) THEN
 
@@ -693,21 +732,27 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
 !
     IF (ViscNewtonLin) THEN
+      ! Test side: the stress factor, full strain (StrainS). Trial side: the
+      ! derivative of the shear rate, nodal strain (StrainSN), see GradN.
       DO j=1,dim
         !$omp simd
         DO p=1,NBasis
           StrainS(p, j) = SUM(Strain(j,:)*dBasisdx(p,:))
+          StrainSN(p, j) = SUM(StrainN(j,:)*dBasisdx(p,:))
         END DO
       END DO
+      ! Trial functions q <= n only: mu is a function of the shear rate of the
+      ! NODAL velocity (EffectiveViscosity is given Ux(1:n)), so there is no
+      ! derivative with respect to a bubble dof; see the convection Newton term.
       DO i=1,dim
         DO j=1,dim
           !DIR$ Unroll(2)
-          DO q=1,NBasis
+          DO q=1,n
           !$omp simd
             DO p=1,NBasis
               !Jac(j,i)=Jac(j,i)
               JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = JacMTrabsp(((j-1)*(NBasis)) + (p),((i-1)*(NBasis)) &
-              + (q)) + s * 2 * muder0 * 4 * StrainS(q, i) * StrainS(p, j)
+              + (q)) + s * 2 * muder0 * 4 * StrainSN(q, i) * StrainS(p, j)
             END DO
           END DO
         END DO
@@ -784,7 +829,14 @@ MODULE NavierStokes
 !------------------------------------------------------------------------------
 !      Convection, Newton linearization
 !------------------------------------------------------------------------------
-            IF (NewtonLinearization ) THEN
+            ! Only for the non-bubble trial functions, q <= n. The convecting
+            ! velocity Velo, and Grad, are built from Ux(1:n), so the Picard
+            ! problem is rho*(u_nodal.grad)u and its derivative only sees
+            ! du_nodal. Including the bubble trial functions here left
+            ! rho*(u_bubble.grad)u0 uncancelled by the load (u0.grad)u0 at
+            ! convergence, and Newton converged to a different solution from
+            ! Picard (0.12 in max|u| on a Re 1000 cavity with "Bubbles").
+            IF (NewtonLinearization .AND. q <= n) THEN
               !$omp simd
               DO p=1,NBasis
                 !A(i,j) = A(i,j)
@@ -994,8 +1046,8 @@ MODULE NavierStokes
             StiffMatrixTrabsp(((3-1)*(NBasis)) + (p),((2-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((3-1)*(NBasis)) + (p), &
               ((2-1)*(NBasis)) + (q)) + masscoeff * Omega(1)
             !A(3,1) = A(3,1) &
-            StiffMatrixTrabsp(((1-1)*(NBasis)) + (p),((3-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((1-1)*(NBasis)) + (p), &
-              ((3-1)*(NBasis)) + (q)) - masscoeff * Omega(2)
+            StiffMatrixTrabsp(((3-1)*(NBasis)) + (p),((1-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((3-1)*(NBasis)) + (p), &
+              ((1-1)*(NBasis)) + (q)) - masscoeff * Omega(2)
           END DO ! p nbasis simd
         END IF
       END DO ! q nbasis

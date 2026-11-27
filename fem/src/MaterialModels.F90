@@ -405,7 +405,7 @@ this ise not in USE
         c2 = SUM( Basis(1:n) * c2n(1:n) )
         mu = Viscosity **(-1/c2)* ss**(-(c2-1)/(2*c2)) / 2
         IF ( PRESENT(muder) )  muder = &
-             Viscosity**(-1/c2)*(-(c2-1)/(2*c2))*ss*(-(c2-1)/(2*c2)-1) / 2
+             Viscosity**(-1/c2)*(-(c2-1)/(2*c2))*ss**(-(c2-1)/(2*c2)-1) / 2
 
      CASE ('carreau')
         c1n = ListGetReal( Material, 'Viscosity Difference',n,Element % NodeIndexes )
@@ -446,8 +446,9 @@ this ise not in USE
            mu = Viscosity + c1
         ELSE
            mu = Viscosity + c1 * LOG(c2*s+SQRT(c2*c2*ss+1))/(c2*s)
+           ! d mu / d ss of mu0 + c1*asinh(c2*s)/(c2*s), s = sqrt(ss)
            IF ( PRESENT(muder) ) muder = &
-                c1*(c2/(2*s)+c2**2/(2*SQRT(c2**2*ss+1)))/((c2*s+SQRT(c2*ss+1))*c2*s) - &
+                c1/(2*ss*SQRT(1+c2**2*ss)) - &
                 c1*LOG(c2*s+SQRT(c2**2*ss+1))/(c2*s**3)/2
         END IF
 
@@ -456,8 +457,11 @@ this ise not in USE
              n, Element % NodeIndexes,gotit )
         c2 = SUM( Basis(1:n) * c2n(1:n) )
         h  = ElementDiameter( Element, Nodes )
-        Viscosity = Viscosity + Density * c2 * h**2 * SQRT(2*ss) / 2
-        IF ( PRESENT(muder) ) muder = &
+        ! Into mu, the returned value: this used to be added to the argument
+        ! "Viscosity" instead, so the eddy viscosity was never applied and only
+        ! its derivative muder reached a Newton iteration.
+        mu = Viscosity + Density * c2 * h**2 * SQRT(2*ss) / 2
+        IF ( PRESENT(muder) .AND. ss > 0 ) muder = &
              Density*c2*h**2*SQRT(2._dp)/(4*SQRT(ss))
 
      CASE( 'ke','k-epsilon','rng k-epsilon','spalart-allmaras','k-omega','sst k-omega' )

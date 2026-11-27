@@ -135,7 +135,8 @@
 !------------------------------------------------------------------------------
      TYPE(Matrix_t),POINTER :: StiffMatrix
 
-     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m
+     INTEGER :: i,j,k,n,nb,nd,t,iter,LocalNodes,istat,q,m,nbG
+     REAL(KIND=dp), ALLOCATABLE :: BubbleVelo(:,:)
 
      TYPE(ValueList_t),POINTER :: Material, BC, BodyForce, Equation
      TYPE(Nodes_t) :: ElementNodes
@@ -657,7 +658,13 @@
 
 !------------------------------------------------------------------------------
        !CALL InitializeToZero( StiffMatrix, ForceVector )
-       CALL DefaultInitialize()
+       ! Steady Newton with condensed bubbles: the Jacobian takes the bubble part
+      ! of the iterate from the bubble history (NSBubbleRecoverH below), so it
+      ! is needed in steady runs too.
+      IF ( .NOT. Transient .AND. NewtonLinearization .AND. Bubbles ) &
+          CALL DefaultBubbleHistoryUpdate( Dofs=NSDOFs-1 )
+
+      CALL DefaultInitialize()
 !------------------------------------------------------------------------------
 
        bf_id   = -1
@@ -1073,13 +1080,31 @@
 !------------------------------------------------------------------------------
 ! Density needed for steady-state, also pressure for transient
 !------------------------------------------------------------------------------
+               ! Bubble part of the iterate for the Newton terms, see
+               ! NavierStokesCompose's BubbleVelo. Left unallocated (= absent)
+               ! when there is none to give.
+               IF ( ALLOCATED(BubbleVelo) ) DEALLOCATE( BubbleVelo )
+               IF ( NewtonLinearization .AND. Bubbles ) THEN
+                 nbG = nb
+                 IF ( nbG==0 .AND. .NOT. ASSOCIATED(Element % PDefs) ) nbG = n
+                 IF ( nbG > 0 .AND. ASSOCIATED(Solver % Variable % BubbleValues) ) THEN
+                   ALLOCATE( BubbleVelo(NSDOFs-1,nbG) )
+                   k = (Element % ElementIndex-1) * Solver % Variable % BubbleStride
+                   DO j = 1, nbG
+                     DO i = 1, NSDOFs-1
+                       BubbleVelo(i,j) = Solver % Variable % BubbleValues(k+(j-1)*(NSDOFs-1)+i)
+                     END DO
+                   END DO
+                 END IF
+               END IF
                CALL NavierStokesCompose( MASS,STIFF,FORCE, LoadVector, &
                    Viscosity,Density,U,V,W,MU,MV,MW,ReferencePressure+Pressure(1:n), &
                    LocalTemperature, Convect, StabilizeFlag, CompressibilityModel, &
                    PseudoCompressible, PseudoCompressibility, GasConstant, Porous, &
                    Drag, PotentialForce, PotentialField, PotentialCoefficient,  &
                    MagneticForce, Rotating, AngularVelocity, DivDiscretization, &
-                   GradPDiscretization, NewtonLinearization, Element,n,ElementNodes)
+                   GradPDiscretization, NewtonLinearization, Element,n,ElementNodes, &
+                   BubbleVelo )
 !------------------------------------------------------------------------------
            END SELECT
 !------------------------------------------------------------------------------
@@ -1219,6 +1244,16 @@
            END IF
 
            IF ( nb > 0 ) THEN
+             ! Keep the bubble part of this iterate for the next Newton
+             ! assembly (transient runs get it from NSCondensateTransientH).
+             IF ( NewtonLinearization .AND. ASSOCIATED(Solver % Variable % BubbleValues) ) THEN
+               xloc(1,1:nd) = U(1:nd)
+               xloc(2,1:nd) = V(1:nd)
+               IF ( NSDOFs == 4 ) xloc(3,1:nd) = W(1:nd)
+               xloc(NSDOFs,1:nd) = Pressure(1:nd)
+               CALL NSBubbleRecoverH( Solver % Variable, Element % ElementIndex, &
+                   nd, nb, NSDOFs-1, STIFF, FORCE, xloc(:,1:nd) )
+             END IF
              CALL NSCondensate( nd, nb, NSDOFs-1, STIFF, FORCE, TimeForce )
            END IF
          END IF

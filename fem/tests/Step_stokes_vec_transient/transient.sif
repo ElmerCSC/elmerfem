@@ -149,4 +149,8 @@ End
 ! retained solution untouched, and with the fix it does -- the norm and the
 ! probed velocity below both match "p:2" to every printed digit. Under the old
 ! bug they did not, which is what the spurious extra mass term looked like.
-Solver 1 :: Reference Norm = 1.33189411E-02
+! 1.33189411E-02 before the Newton terms were made to linearise the Picard
+! problem (they saw the bubble trial functions the Picard convecting velocity
+! does not), then 1.33184564E-02 until the convecting velocity included the P2
+! edge dofs (it was the vertex interpolant). Newton and Picard agree on it.
+Solver 1 :: Reference Norm = 1.33187645E-02

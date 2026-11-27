@@ -153,6 +153,8 @@ End
 Boundary Condition 4
   Target Boundaries = 4
 End
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 570.12040
 
-Solver 2 :: Reference Norm = 570.12040
+Solver 2 :: Reference Norm = 5.69958995E+02
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4

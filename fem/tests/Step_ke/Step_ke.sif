@@ -147,8 +147,10 @@ Boundary Condition 3
   Wall Law = True
   Boundary Layer Thickness = $bndry_layer
 End
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 0.235822415
 
 
-Solver 2 :: Reference Norm = Real 0.235822415
+Solver 2 :: Reference Norm = Real 2.36316902E-01
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-3
 RUN

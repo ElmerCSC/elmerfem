@@ -774,6 +774,47 @@ CONTAINS
 !> This version is suitable for flow models with velocity and pressure as
 !> unknowns.
 !------------------------------------------------------------------------------
+SUBROUTINE NSBubbleRecoverH( Var, ElementIndex, N, Nb, dim, K, F, x )
+!------------------------------------------------------------------------------
+!> Before NSCondensate eliminates them: the bubble part belonging to the
+!> retained-dof iterate x, Kbb^-1 (Fb - Kbl x), stored as this element's
+!> current bubble value in Var's bubble history (same slice layout as
+!> NSCondensateTransientH). Used by FlowSolve's steady Newton iteration, whose
+!> Jacobian needs the bubble part of the iterate.
+!------------------------------------------------------------------------------
+    USE LinearAlgebra, ONLY : InvertMatrix
+    TYPE(Variable_t) :: Var
+    INTEGER :: ElementIndex, N, Nb, dim
+    REAL(KIND=dp) :: K(:,:), F(:), x(:,:)
+    REAL(KIND=dp) :: Kbb(nb*dim,nb*dim), Kbl(nb*dim,n*(dim+1)), Fb(nb*dim), xl(n*(dim+1))
+    INTEGER :: m, i, p, boff, Cdofs((dim+1)*n), Bdofs(dim*nb)
+!------------------------------------------------------------------------------
+    m = 0
+    DO p = 1,n
+      DO i = 1,dim+1
+        m = m + 1
+        Cdofs(m) = (dim+1)*(p-1) + i
+        xl(m) = x(i,p)
+      END DO
+    END DO
+    m = 0
+    DO p = 1,nb
+      DO i = 1,dim
+        m = m + 1
+        Bdofs(m) = (dim+1)*(p-1) + i + n*(dim+1)
+      END DO
+    END DO
+    Kbb = K(Bdofs,Bdofs)
+    Kbl = K(Bdofs,Cdofs)
+    Fb  = F(Bdofs)
+    CALL InvertMatrix( Kbb,nb*dim )
+    boff = (ElementIndex-1)*Var % BubbleStride
+    Var % BubbleValues(boff+1:boff+dim*nb) = MATMUL( Kbb, Fb - MATMUL(Kbl,xl) )
+!------------------------------------------------------------------------------
+END SUBROUTINE NSBubbleRecoverH
+!------------------------------------------------------------------------------
+
+!------------------------------------------------------------------------------
 SUBROUTINE NSCondensate( N, Nb, dim, K, F, F1 )
 !------------------------------------------------------------------------------
     USE LinearAlgebra, ONLY : InvertMatrix

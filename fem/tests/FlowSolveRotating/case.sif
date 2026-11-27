@@ -1,0 +1,74 @@
+! Regression test for the rotating frame of reference in legacy FlowSolve
+! (Body Force "Angular Velocity(3)"): Coriolis 2 rho Omega x u and the
+! centrifugal load -rho Omega x (Omega x x).
+!
+! Same manufactured solution as IncompressibleNSRotating: unit cube,
+! rho = 1.3, mu = 0.1, Omega = (0.3, -0.7, 1.1) (all components non-zero),
+!   u = (y, z, x),  p = 0,
+!   f = (u.grad)u + 2 Omega x u + Omega (Omega.x) - |Omega|^2 x.
+! The linear exact solution is reproduced to round-off with
+! "Stabilization Method = Stabilized". This used to fail on two counts:
+!  - NavierStokes.F90 3D Coriolis block wrote the A(3,1) entry into the A(1,3)
+!    slot (wrong whenever Omega_y /= 0; also broke Bubbles in 3D),
+!  - the stabilised residual (SU) omitted the Coriolis term (broke the
+!    "Stabilized" method also in 2D).
+! Before the fix the max velocity error here was 0.105, now ~1e-13.
+
+Check Keywords Warn
+Header
+  Mesh DB "." "cube"
+End
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+End
+Equation 1
+  Active Solvers(1) = 1
+End
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "FlowSolve" "FlowSolver"
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Newton After Iterations = 3
+  Nonlinear System Convergence Tolerance = 1.0e-12
+  Stabilization Method = stabilized
+End
+Material 1
+  Density = 1.3
+  Viscosity = 0.1
+End
+Body Force 1
+  Angular Velocity(3) = Real 0.3 -0.7 1.1
+  Flow Bodyforce 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(2)+2*((-0.7)*(tx(0))-(1.1)*(tx(2)))+(0.3)*((0.3)*(tx(0))+(-0.7)*(tx(1))+(1.1)*(tx(2)))-(1.79)*(tx(0))"
+  Flow Bodyforce 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(0)+2*((1.1)*(tx(1))-(0.3)*(tx(0)))+(-0.7)*((0.3)*(tx(0))+(-0.7)*(tx(1))+(1.1)*(tx(2)))-(1.79)*(tx(1))"
+  Flow Bodyforce 3 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(1)+2*((0.3)*(tx(2))-(-0.7)*(tx(1)))+(1.1)*((0.3)*(tx(0))+(-0.7)*(tx(1))+(1.1)*(tx(2)))-(1.79)*(tx(2))"
+End
+Boundary Condition 1
+  Target Boundaries(6) = 1 2 3 4 5 6
+  Velocity 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(1)"
+  Velocity 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(2)"
+  Velocity 3 = Variable Coordinate 1, Coordinate 2, Coordinate 3
+    Real MATC "tx(0)"
+End
+Boundary Condition 2
+  Target Coordinates(1,3) = 0.0 0.0 0.0
+  Pressure = 0.0
+End
+
+! = sqrt(3/8), the exact nodal field (p = 0)
+Solver 1 :: Reference Norm = Real 0.61237244
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-6

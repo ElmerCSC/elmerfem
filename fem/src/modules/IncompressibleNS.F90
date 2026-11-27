@@ -74,10 +74,11 @@ MODULE IncompressibleLocalForms
   ! thread enters with identical resolved handle configuration.
   TYPE :: NSHandles_t
     TYPE(ValueHandle_t) :: Dens_h, Load_h(3)
+    TYPE(ValueHandle_t) :: PorousRes_h, PorousResC_h(3)
     TYPE(ValueHandle_t) :: Visc_h, ViscModel_h, ViscExp_h, ViscCritical_h, &
         ViscNominal_h, ViscDiff_h, ViscTrans_h, ViscYasuda_h, ViscGlenExp_h, ViscGlenFactor_h, &
         ViscArrSet_h, ViscArr_h, ViscTLimit_h, ViscRate1_h, ViscRate2_h, ViscEne1_h, ViscEne2_h, &
-        ViscTemp_h
+        ViscTemp_h, ViscSmag_h
     ! "Compressibility Model" = "Thermal": Boussinesq-type rho(T), see LocalBulkMatrix.
     TYPE(ValueHandle_t) :: CompressModel_h, HeatExpansionCoeff_h, CompressRefTemp_h
     ! Body Force "Boussinesq": the plain buoyancy-only approximation, exactly as
@@ -91,6 +92,9 @@ MODULE IncompressibleLocalForms
     LOGICAL :: SaveShear = .FALSE., SaveVisc = .FALSE., SaveWeight = .FALSE.
     TYPE(Variable_t), POINTER :: ShearVar => NULL(), ViscVar => NULL(), WeightVar => NULL()
     TYPE(Variable_t), POINTER :: CompressTempVar => NULL()
+    ! ALE: "Mesh Velocity" (MeshSolve's "Compute Mesh Velocity"), if present.
+    ! Subtracted from the convecting velocity, as FlowSolve.F90 does.
+    TYPE(Variable_t), POINTER :: MeshVeloVar => NULL()
   END TYPE NSHandles_t
   TYPE(NSHandles_t), ALLOCATABLE :: NSHandles(:)
 
@@ -110,6 +114,26 @@ MODULE IncompressibleLocalForms
   ! the bubble coefficients (Solver % Variable's BubbleValues/BubblePrevValues),
   ! and the saved shearrate/viscosity fields.
   TYPE(IntegRuleProbe_t), SAVE :: NSProbe
+
+  ! Rotating frame of reference: Body Force "Angular Velocity(3)", resolved per
+  ! BODY in IncompressibleNSSolver (serially, before the threaded assembly) so
+  ! that LocalBulkMatrix only ever reads a plain array. Same keyword and
+  ! semantics as FlowSolve.F90: only the array form selects a rotating frame.
+  ! The component form "Angular Velocity 1..3" means a rotating conductor in
+  ! the lab frame to MagnetoDynamics and is deliberately not read here.
+  LOGICAL :: NSRotating = .FALSE.
+  REAL(KIND=dp), ALLOCATABLE :: NSAngVel(:,:)
+
+  ! Porous media (Material "Porous Media" + "Porous Resistivity"), as
+  ! FlowSolve.F90: a Darcy drag mu*R_i*u_i in momentum equation i. Resolved per
+  ! BODY in IncompressibleNSSolver: NSPorousMode = 0 none, 1 constant array
+  ! "Porous Resistivity(n)" (values in NSPorousR), 2 components
+  ! "Porous Resistivity 1..3", 3 scalar "Porous Resistivity" for all
+  ! components. Modes 2 and 3 are read through handles at the integration
+  ! points, so they may vary in space or depend on variables.
+  LOGICAL :: NSPorous = .FALSE.
+  INTEGER, ALLOCATABLE :: NSPorousMode(:)
+  REAL(KIND=dp), ALLOCATABLE :: NSPorousR(:,:)
 
 CONTAINS
 
@@ -168,6 +192,18 @@ CONTAINS
     REAL(KIND=dp) :: HeatExpansionCoeffVal, CompressRefTempVal, GravityVec(3)
     REAL(KIND=dp) :: SpecHeatRatioVal, HeatCapacityVal, RefPressureVal, GasConstantVal
     REAL(KIND=dp) :: NodalTemp(n), NodalTempPrev(n)
+    ! ALE mesh velocity w: VeloVec below holds the convecting velocity u - w.
+    LOGICAL :: MeshVeloOn
+    REAL(KIND=dp) :: NodalMeshVelo(3,n)
+    REAL(KIND=dp), ALLOCATABLE :: MeshVeloVec(:,:)
+    ! Rotating frame (Body Force "Angular Velocity(3)"): Omega of this body and
+    ! the Coriolis matrix C, (Omega x u)_i = C_ij u_j.
+    LOGICAL :: Rotating
+    REAL(KIND=dp) :: Omega(3), CoriolisC(3,3)
+    ! Porous media: DragVec(:,i) = mu*R_i at the integration points.
+    LOGICAL :: Porous
+    REAL(KIND=dp), ALLOCATABLE :: DragVec(:,:)
+    REAL(KIND=dp), ALLOCATABLE :: CoordAtIp(:,:)
     REAL(KIND=dp), ALLOCATABLE :: drhodx(:,:), rhoPrevVec(:), TempAtIp(:), TempPrevAtIp(:), &
         dTempdx(:,:), dPressuredx(:,:), CompressWeight(:)
     REAL(KIND=dp), POINTER :: GravityWork(:,:)
@@ -180,6 +216,10 @@ CONTAINS
         VeloVec(:,:), PresVec(:), GradVec(:,:,:), ConvVec(:,:), MassPart(:,:)
     REAL(KIND=dp), POINTER :: muVec(:), LoadVec(:)
     REAL(KIND=dp), ALLOCATABLE :: muDerVec0(:),g(:,:,:),StrainRateVec(:,:,:)
+    REAL(KIND=dp), ALLOCATABLE :: gN(:,:,:), GradVecN(:,:,:)
+    ! Trial basis of the Newton terms: BasisVec without its bubble columns.
+    ! See the comment where it is set.
+    REAL(KIND=dp), ALLOCATABLE :: NewtonTrialVec(:,:)
     ! Caller-owned scratch for the viscosity vector; see EffectiveViscosityVec.
     REAL(KIND=dp), ALLOCATABLE, TARGET :: ViscWork(:)
     REAL(kind=dp) :: stifford(ntot,ntot,dim+1,dim+1), jacord(ntot,ntot,dim+1,dim+1), &
@@ -203,6 +243,7 @@ CONTAINS
     !$ tid = OMP_GET_THREAD_NUM() + 1
 
     ASSOCIATE( Dens_h => NSHandles(tid) % Dens_h, Load_h => NSHandles(tid) % Load_h, &
+        PorousRes_h => NSHandles(tid) % PorousRes_h, PorousResC_h => NSHandles(tid) % PorousResC_h, &
         CompressModel_h => NSHandles(tid) % CompressModel_h, &
         HeatExpansionCoeff_h => NSHandles(tid) % HeatExpansionCoeff_h, &
         CompressRefTemp_h => NSHandles(tid) % CompressRefTemp_h, &
@@ -250,19 +291,24 @@ CONTAINS
         PrevPressureVec(ngp), GradVec(ngp,dim,dim), ConvVec(ngp,ntot), &
         MassPart(ntot,ntot), PlainWeightVec(ngp), RadiusVec(ngp), HoopWeightVec(ngp), &
         drhodx(ngp,dim), rhoPrevVec(ngp), TempAtIp(ngp), TempPrevAtIp(ngp), CompressWeight(ngp), &
-        dTempdx(ngp,dim), dPressuredx(ngp,dim), &
-        STAT=allocstat)
+        dTempdx(ngp,dim), dPressuredx(ngp,dim), MeshVeloVec(ngp,dim), CoordAtIp(ngp,3), &
+        DragVec(ngp,3), STAT=allocstat)
     IF (allocstat /= 0) CALL Fatal('IncompressibleNSSolver::LocalBulkMatrix','Local storage allocation failed')
 
     ALLOCATE(VelocityMass(ntot,ntot), PressureMass(ntot, ntot), ForcePart(ntot))
 
     IF (Newton) THEN
-      ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim))
+      ALLOCATE(muDerVec0(ngp), g(ngp,ntot,dim), StrainRateVec(ngp,dim,dim), &
+          gN(ngp,ntot,dim), GradVecN(ngp,dim,dim))
       muDerVec0 = 0._dp
     END IF
 
     IF( InitHandles ) THEN
       CALL ListInitElementKeyword( Dens_h,'Material','Density')
+      CALL ListInitElementKeyword( PorousRes_h,'Material','Porous Resistivity')
+      DO i=1,3
+        CALL ListInitElementKeyword( PorousResC_h(i),'Material','Porous Resistivity '//I2S(i))
+      END DO
       CALL ListInitElementKeyword( Load_h(1),'Body Force','Flow Bodyforce 1')
       CALL ListInitElementKeyword( Load_h(2),'Body Force','Flow Bodyforce 2')
       CALL ListInitElementKeyword( Load_h(3),'Body Force','Flow Bodyforce 3')
@@ -275,6 +321,8 @@ CONTAINS
       CALL ListInitElementKeyword( RefPressure_h,'Material','Reference Pressure',DefRValue=0._dp)
       NSHandles(tid) % CompressTempVar => &
           VariableGet( CurrentModel % Mesh % Variables,'Temperature',ThisOnly=.TRUE.)
+      NSHandles(tid) % MeshVeloVar => &
+          VariableGet( CurrentModel % Mesh % Variables,'Mesh Velocity',ThisOnly=.TRUE.)
     END IF
 
     ! We assume constant density so far:
@@ -369,6 +417,41 @@ CONTAINS
     IF(.NOT. LinearAssembly) THEN
       CALL DGEMM('N', 'T', ngp, DOFs, n, 1._dp, BasisVec, ngp, NodalSol, &
           dofs, 0._dp, VeloPresVec, ngp)
+      ! The pressure is on the n vertices, but the velocity has nd dofs (the
+      ! edge/face dofs of a p:2 element, say): the convecting velocity u0 is
+      ! the whole of it, bubbles excepted (those are not kept in NodalSol).
+      IF( nd > n ) THEN
+        DO i = 1, dim
+          VeloPresVec(1:ngp,i) = MATMUL( BasisVec(1:ngp,1:nd), NodalSol(i,1:nd) )
+        END DO
+      END IF
+    END IF
+
+    ! The convecting velocity, u - w. In ALE form the time derivative Elmer
+    ! forms (nodal values that move with the mesh) is the one at fixed MESH
+    ! points, d/dt|_x = d/dt|_mesh - w.grad, so the convection term becomes
+    ! ((u-w).grad)u. Only the Picard half of the linearisation changes: the
+    ! Newton half (du.grad)u0 and its load (u0.grad)u0 do not involve w.
+    ! Nothing to do when convection is off -- FlowSolve.F90 likewise drops the
+    ! mesh velocity together with the rest of the convection term.
+    MeshVeloOn = .FALSE.
+    VeloVec = 0._dp
+    IF( .NOT. LinearAssembly ) VeloVec(1:ngp,1:dim) = VeloPresVec(1:ngp,1:dim)
+    IF( .NOT. StokesFlow .AND. ASSOCIATED( NSHandles(tid) % MeshVeloVar ) ) THEN
+      ASSOCIATE( MVar => NSHandles(tid) % MeshVeloVar )
+        NodalMeshVelo = 0._dp
+        DO i = 1, n
+          k = MVar % Perm( Element % NodeIndexes(i) )
+          IF( k > 0 ) NodalMeshVelo(1:dim,i) = MVar % Values( MVar % Dofs*(k-1)+1 : MVar % Dofs*(k-1)+dim )
+        END DO
+      END ASSOCIATE
+      IF( ANY( NodalMeshVelo /= 0._dp ) ) THEN
+        MeshVeloOn = .TRUE.
+        DO i = 1, dim
+          MeshVeloVec(1:ngp,i) = MATMUL( BasisVec(1:ngp,1:n), NodalMeshVelo(i,1:n) )
+          VeloVec(1:ngp,i) = VeloVec(1:ngp,i) - MeshVeloVec(1:ngp,i)
+        END DO
+      END IF
     END IF
 
     ! Return the effective viscosity. Non-newtonian and turbulence models supported.
@@ -509,6 +592,73 @@ CONTAINS
       END DO
     END IF
 
+    ! Rotating frame of reference, as FlowSolve.F90: in a frame rotating at a
+    ! constant Omega the momentum equation picks up rho*(2 Omega x u) on the
+    ! left (Coriolis, assembled below as a velocity coupling) and
+    ! -rho*Omega x (Omega x x) = rho*( |Omega|^2 x - Omega (Omega.x) ) on the
+    ! right (centrifugal, a load). Both are inertial, so rho-weighted whatever
+    ! "Specific Load" says. Omega is resolved per body in IncompressibleNSSolver.
+    Rotating = .FALSE.
+    IF( NSRotating ) THEN
+      Omega = NSAngVel(1:3, Element % BodyId)
+      Rotating = ANY( Omega /= 0._dp )
+    END IF
+    IF( Rotating ) THEN
+      CoordAtIp(1:ngp,1) = MATMUL( BasisVec(1:ngp,1:n), Nodes % x(1:n) )
+      CoordAtIp(1:ngp,2) = MATMUL( BasisVec(1:ngp,1:n), Nodes % y(1:n) )
+      CoordAtIp(1:ngp,3) = MATMUL( BasisVec(1:ngp,1:n), Nodes % z(1:n) )
+      weight_c(1:ngp) = MATMUL( CoordAtIp(1:ngp,1:3), Omega(1:3) )
+      DO i = 1, dim
+        LoadAtIpVec(1:ngp,i) = LoadAtIpVec(1:ngp,i) + rhoVec(1:ngp) * &
+            ( SUM(Omega**2) * CoordAtIp(1:ngp,i) - Omega(i) * weight_c(1:ngp) )
+      END DO
+
+      ! (Omega x u)_i = C_ij u_j. NavierStokes.F90's 3D block writes its last
+      ! entry, commented A(3,1), into the A(1,3) slot, cancelling A(1,3) and
+      ! leaving A(3,1) out, so legacy FlowSolve has no Omega_2 coupling in 3D.
+      ! This is the plain cross product.
+      CoriolisC = 0._dp
+      CoriolisC(1,2) = -Omega(3); CoriolisC(1,3) =  Omega(2)
+      CoriolisC(2,1) =  Omega(3); CoriolisC(2,3) = -Omega(1)
+      CoriolisC(3,1) = -Omega(2); CoriolisC(3,2) =  Omega(1)
+    END IF
+
+    ! Porous media, as FlowSolve.F90: Darcy drag mu*R_i*u_i on the left of
+    ! momentum equation i, with the (effective) viscosity mu. Linear in u for a
+    ! given mu, so the same for Picard and Newton (the shear dependence of mu is
+    ! not differentiated, as in FlowSolve), and kept for "Stokes Flow" too.
+    Porous = .FALSE.
+    IF( NSPorous ) THEN
+      SELECT CASE( NSPorousMode( Element % BodyId ) )
+      CASE( 1 )
+        Porous = .TRUE.
+        DO i = 1, dim
+          DragVec(1:ngp,i) = NSPorousR(i, Element % BodyId)
+        END DO
+      CASE( 2 )
+        Porous = .TRUE.
+        DO i = 1, dim
+          LoadVec => ListGetElementRealVec( PorousResC_h(i), ngp, BasisVec, Element, Found )
+          IF( Found ) THEN
+            DragVec(1:ngp,i) = LoadVec(1:ngp)
+          ELSE
+            DragVec(1:ngp,i) = 0._dp
+          END IF
+        END DO
+      CASE( 3 )
+        Porous = .TRUE.
+        LoadVec => ListGetElementRealVec( PorousRes_h, ngp, BasisVec, Element, Found )
+        DO i = 1, dim
+          DragVec(1:ngp,i) = LoadVec(1:ngp)
+        END DO
+      END SELECT
+      IF( Porous ) THEN
+        DO i = 1, dim
+          DragVec(1:ngp,i) = muVec(1:ngp) * DragVec(1:ngp,i)
+        END DO
+      END IF
+    END IF
+
     ! The continuity equation's own source term, div(rho u) = 0 divided through
     ! by rho: -div(u) - (1/rho)(d rho/dt + u.grad(rho)) = 0. The u.grad(rho) half
     ! is a genuine (dofs,i) STIFFNESS coupling -- see below, next to the other
@@ -539,13 +689,63 @@ CONTAINS
       MASS(dofs::dofs,dofs::dofs) = MASS(dofs::dofs,dofs::dofs) + MassPart(1:ntot,1:ntot)
     END IF
 
+    ! ALE, continuity row: the d(rho)/dt both models form above (the loads and
+    ! the Perfect Gas pressure MASS term) is again the mesh-point derivative,
+    ! d(rho)/dt|_x = d(rho)/dt|_mesh - w.grad(rho). The (dofs,i) stiffness term
+    ! below keeps the full u.grad(rho); the -w.grad(rho) half is a load, with
+    ! drhodx frozen at the current Picard iterate exactly as that term's is.
+    IF( MeshVeloOn .AND. Transient .AND. ( ThermalCompressible .OR. PerfectGasCompressible ) ) THEN
+      LoadAtIpVec(1:ngp,dofs) = LoadAtIpVec(1:ngp,dofs) - &
+          SUM( MeshVeloVec(1:ngp,1:dim) * drhodx(1:ngp,1:dim), 2 ) / rhoVec(1:ngp)
+    END IF
+
     IF ( Newton ) THEN
 
-      DO i = 1,dim
-        DO j = 1,dim
-          GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),nodalsol(i,1:ntot))
+      ! u0 of the Newton terms with the bubble part of the iterate added, the
+      ! one LCondensate stored at the previous assembly (one iterate behind).
+      ! This changes the Jacobian only: the Newton matrix term and its load
+      ! (u0.grad)u0 both use this GradVec and cancel at convergence whatever
+      ! the bubble part is, so the converged solution stays the Picard one
+      ! (see NewtonTrialVec below). Without it the Jacobian lacks
+      ! (du.grad)u_bubble and Newton converges only linearly.
+      BLOCK
+        REAL(KIND=dp) :: NodalSolN(dim+1,ntot)
+        INTEGER :: boff
+        NodalSolN = NodalSol
+        IF( nb > 0 .AND. ntot == nd + nb ) THEN
+          IF( ASSOCIATED( CurrentModel % Solver % Variable % BubbleValues ) ) THEN
+            boff = (Element % ElementIndex-1) * CurrentModel % Solver % Variable % BubbleStride
+            DO p = 1, nb
+              DO i = 1, dim
+                NodalSolN(i,nd+p) = CurrentModel % Solver % Variable % BubbleValues(boff+(p-1)*dim+i)
+              END DO
+            END DO
+          END IF
+        END IF
+        DO i = 1,dim
+          DO j = 1,dim
+            GradVec(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),NodalSolN(i,1:ntot))
+            ! Without the bubble part: what the shear rate of mu is made of.
+            GradVecN(1:ngp, i, j) = MATMUL(dBasisdxVec(1:ngp,1:ntot,j),NodalSol(i,1:ntot))
+          END DO
         END DO
-      END DO
+      END BLOCK
+
+      ! The Newton terms must linearise the problem the Picard terms define,
+      ! or the two iterations converge to different solutions. That problem
+      ! takes the convecting velocity u0 (VeloPresVec, dofs 1:nd) and the
+      ! shear rate of a non-newtonian viscosity from the non-bubble part of the
+      ! iterate: the condensed bubble DOFs are never written back to the
+      ! solution (NodalSol(:,nd+1:ntot) is zero here), so u0 has no bubble part.
+      ! Its derivative in a direction du is then (du_nodal.grad)u0 + ..., i.e.
+      ! the Newton terms see only the nodal trial functions. Letting them see
+      ! the bubble ones as well left (u_bubble.grad)u0 uncancelled by the load
+      ! (u0.grad)u0 at convergence: Newton then solved a different discrete
+      ! problem from Picard (a lid-driven cavity at Re 1000 differed by 0.12
+      ! in max|u|), with Picard and Newton identical only without bubbles.
+      ALLOCATE( NewtonTrialVec(ngp,ntot) )
+      NewtonTrialVec = BasisVec(1:ngp,1:ntot)
+      IF( ntot > nd ) NewtonTrialVec(:,nd+1:ntot) = 0._dp
 
       IF( .NOT. StokesFlow ) THEN
         DO i = 1,dim
@@ -555,24 +755,42 @@ CONTAINS
       END IF
 
       IF (ANY(muDerVec0(1:ngp)/=0)) THEN
+        ! d/du of 2*mu(ss)*eps(u0) in direction du is 2*mu'*d(ss)[du]*eps(u0):
+        ! the stress factor eps(u0) (test side, g) is the full strain, bubble
+        ! part included, while d(ss)[du] = 4 eps(u0):eps(du) (trial side, gN)
+        ! comes from the shear rate mu is a function of, the nodal part only.
+        ! Using the full strain on both sides is not the derivative of
+        ! anything, and with mu' < 0 (shear thinning) made Newton diverge.
         DO i = 1,dim
           DO j = 1,dim
             StrainRateVec(1:ngp,i,j) = ( GradVec(1:ngp,i,j) + GradVec(1:ngp,j,i) ) / 2
           END DO
         END DO
-
         muDerVec0(1:ngp) = muderVec0(1:ngp)*detJVec(1:ngp)*8
         DO i=1,dim
           DO q = 1,ntot
             g(1:ngp,q,i) = SUM(StrainRateVec(1:ngp,i,:)*dBasisdxvec(1:ngp,q,1:dim),2)
           END DO
         END DO
+        DO i = 1,dim
+          DO j = 1,dim
+            StrainRateVec(1:ngp,i,j) = ( GradVecN(1:ngp,i,j) + GradVecN(1:ngp,j,i) ) / 2
+          END DO
+        END DO
+        DO i=1,dim
+          DO q = 1,ntot
+            gN(1:ngp,q,i) = SUM(StrainRateVec(1:ngp,i,:)*dBasisdxvec(1:ngp,q,1:dim),2)
+          END DO
+        END DO
 
         DO i=1,dim
           DO j=1,dim
-            CALL LinearForms_udotv(ngp,ntot,dim,g(:,:,j),g(:,:,i),mudervec0,jacord(:,:,j,i))
+            CALL LinearForms_udotv(ngp,ntot,dim,g(:,:,j),gN(:,:,i),mudervec0,jacord(:,:,j,i))
           END DO
         END DO
+        ! The shear rate, hence mu, is a function of the nodal DOFs only, see
+        ! NewtonTrialVec above: no derivative with respect to a bubble DOF.
+        IF( ntot > nd ) jacord(:,nd+1:ntot,:,:) = 0._dp
       END IF
     END IF
 
@@ -866,7 +1084,7 @@ CONTAINS
         tauVec(1:ngp) = PStabCoeff * Kfam * hStab**2 / muVec(1:ngp)
       ELSE
         DO t = 1, ngp
-          VNorm = SQRT( SUM( VeloPresVec(t,1:dim)**2 ) )
+          VNorm = SQRT( SUM( VeloVec(t,1:dim)**2 ) )
           IF( rhoVec(t) * VNorm * hStab > 0.0_dp ) THEN
             PeStab = MIN( 1.0_dp, 2.0_dp * Kfam * rhoVec(t) * VNorm * hStab / muVec(t) )
             tauVec(t) = hStab * PeStab / ( 2.0_dp * rhoVec(t) * VNorm )
@@ -885,7 +1103,7 @@ CONTAINS
         DO k = 1, dim
           DO q = 1, ntot
             ConvVec(1:ngp,q) = ConvVec(1:ngp,q) + &
-                rhoVec(1:ngp) * VeloPresVec(1:ngp,k) * dBasisdxVec(1:ngp,q,k)
+                rhoVec(1:ngp) * VeloVec(1:ngp,k) * dBasisdxVec(1:ngp,q,k)
           END DO
         END DO
       END IF
@@ -900,6 +1118,28 @@ CONTAINS
         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             dBasisdxVec(:,:,i), dBasisdxVec(:,:,i), weight_a, StiffOrd(:,:,dofs,dofs))
       END DO
+
+      ! The Coriolis force is part of the momentum residual too (and present
+      ! even for Stokes flow): PSPG -tau*(grad q, rho*2 Omega x u). The
+      ! centrifugal half is a load and enters with the other loads further down.
+      IF( Rotating ) THEN
+        DO i = 1, dim
+          DO j = 1, dim
+            IF( CoriolisC(i,j) == 0._dp ) CYCLE
+            CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                dBasisdxVec(:,:,i), BasisVec, weight_a, StiffOrd(:,:,dofs,j), &
+                2._dp*CoriolisC(i,j)*rhoVec)
+          END DO
+        END DO
+      END IF
+
+      ! Likewise the porous drag: PSPG -tau*(grad q, mu*R_i*u_i).
+      IF( Porous ) THEN
+        DO i = 1, dim
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              dBasisdxVec(:,:,i), BasisVec, weight_a, StiffOrd(:,:,dofs,i), DragVec(:,i))
+        END DO
+      END IF
 
       IF( .NOT. StokesFlow ) THEN
         ! The rest of the residual, and the SUPG weight. Writing R for
@@ -937,6 +1177,26 @@ CONTAINS
               ConvVec, dBasisdxVec(:,:,i), weight_b, StiffOrd(:,:,i,dofs))
         END DO
 
+        ! SUPG against Coriolis, tau*(rho*(u.grad)v_i, rho*2 C_ij u_j)
+        IF( Rotating ) THEN
+          DO i = 1, dim
+            DO j = 1, dim
+              IF( CoriolisC(i,j) == 0._dp ) CYCLE
+              CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                  ConvVec, BasisVec, weight_b, StiffOrd(:,:,i,j), &
+                  2._dp*CoriolisC(i,j)*rhoVec)
+            END DO
+          END DO
+        END IF
+
+        ! SUPG against the porous drag, tau*(rho*(u.grad)v_i, mu*R_i*u_i)
+        IF( Porous ) THEN
+          DO i = 1, dim
+            CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+                ConvVec, BasisVec, weight_b, StiffOrd(:,:,i,i), DragVec(:,i))
+          END DO
+        END IF
+
         ! THE TRANSIENT TERM. rho*du/dt is part of the momentum residual whenever
         ! the assembly carries a time derivative, so it must be part of what the
         ! two weights are applied to, or the scheme stabilises an operator the
@@ -970,10 +1230,10 @@ CONTAINS
           DO i = 1, dim
             DO j = 1, dim
               CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-                  ConvVec, BasisVec, weight_b, StiffOrd(:,:,i,j), &
+                  ConvVec, NewtonTrialVec, weight_b, StiffOrd(:,:,i,j), &
                   rhoVec*GradVec(:,i,j))
               CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-                  dBasisdxVec(:,:,i), BasisVec, weight_a, StiffOrd(:,:,dofs,j), &
+                  dBasisdxVec(:,:,i), NewtonTrialVec, weight_a, StiffOrd(:,:,dofs,j), &
                   rhoVec*GradVec(:,i,j))
             END DO
           END DO
@@ -994,7 +1254,7 @@ CONTAINS
       ! Accumulate convection block once, then scatter to diagonal velocity blocks
       VelocityMass = 0._dp
       DO k = 1, dim
-        weight_a(1:ngp) = rhovec(1:ngp) * veloPresVec(1:ngp,k)
+        weight_a(1:ngp) = rhovec(1:ngp) * VeloVec(1:ngp,k)
         CALL LinearForms_UdotV(ngp, ntot, elemdim, &
             basisvec, dbasisdxvec(:,:,k), detJvec, VelocityMass, weight_a)
       END DO
@@ -1006,10 +1266,30 @@ CONTAINS
         DO i = 1, dim
           DO j = 1, dim
             CALL LinearForms_UdotV(ngp, ntot, elemdim, &
-                basisvec, basisvec, detJvec, stifford(:,:,i,j), rhovec*gradvec(:,i,j))
+                basisvec, NewtonTrialVec, detJvec, stifford(:,:,i,j), rhovec*gradvec(:,i,j))
           END DO
         END DO
       END IF
+    END IF
+
+    ! Coriolis, rho*(2 Omega x u): linear in u, so the same for Picard and
+    ! Newton, and kept for "Stokes Flow" too, as in FlowSolve.F90.
+    IF( Rotating ) THEN
+      DO i = 1, dim
+        DO j = 1, dim
+          IF( CoriolisC(i,j) == 0._dp ) CYCLE
+          CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+              BasisVec, BasisVec, detJVec, StiffOrd(:,:,i,j), 2._dp*CoriolisC(i,j)*rhoVec)
+        END DO
+      END DO
+    END IF
+
+    ! Porous drag mu*R_i*u_i, see its setup above.
+    IF( Porous ) THEN
+      DO i = 1, dim
+        CALL LinearForms_UdotV(ngp, ntot, elemdim, &
+            BasisVec, BasisVec, detJVec, StiffOrd(:,:,i,i), DragVec(:,i))
+      END DO
     END IF
 
     ! add loads
@@ -1073,7 +1353,14 @@ CONTAINS
 
     IF(StokesFlow) THEN
       IF ( nb>0 ) THEN
-        CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
+        IF( Newton ) THEN
+          ! Keep the bubble part of this iterate for the next Newton
+          ! assembly, see NewtonTrialVec.
+          CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE, &
+              x=NodalSol, Element_id=Element % ElementIndex)
+        ELSE
+          CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
+        END IF
       ELSE IF ( .NOT. PStab ) THEN
         DO p = n+1,ntot
           i = DOFs * p
@@ -1140,6 +1427,9 @@ CONTAINS
         IF (Transient) THEN
           CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE, &
               PrevNodalSol, NodalSol, Element % ElementIndex)
+        ELSE IF( Newton ) THEN
+          CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE, &
+              x=NodalSol, Element_id=Element % ElementIndex)
         ELSE
           CALL LCondensate(nd, nb, dim, MASS, STIFF, FORCE)
         END IF
@@ -1211,7 +1501,8 @@ CONTAINS
       CHARACTER(LEN=MAX_NAME_LEN) :: ViscModel
       REAL(KIND=dp) :: c1, c2, c3, c4, Ehf, Tlimit, ArrheniusFactor, A1, A2, Q1, Q2, ViscCond
       REAL(KIND=dp), ALLOCATABLE :: ss(:), s(:), ArrheniusFactorVec(:), DensVec(:)
-      REAL(KIND=dp), POINTER :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:)
+      REAL(KIND=dp), POINTER :: ViscVec0(:), ViscVec(:), TempVec(:), EhfVec(:), SmagVec(:)
+      REAL(KIND=dp) :: hSmag
       CHARACTER(*), PARAMETER :: Caller = 'EffectiveViscosityVec'
 
       ! All handle/cache state lives in NSHandles(tid) (see NSHandles_t, module scope)
@@ -1221,6 +1512,7 @@ CONTAINS
           ViscExp_h => NSHandles(tid) % ViscExp_h, ViscCritical_h => NSHandles(tid) % ViscCritical_h, &
           ViscNominal_h => NSHandles(tid) % ViscNominal_h, ViscDiff_h => NSHandles(tid) % ViscDiff_h, &
           ViscTrans_h => NSHandles(tid) % ViscTrans_h, ViscYasuda_h => NSHandles(tid) % ViscYasuda_h, &
+          ViscSmag_h => NSHandles(tid) % ViscSmag_h, &
           ViscGlenExp_h => NSHandles(tid) % ViscGlenExp_h, ViscGlenFactor_h => NSHandles(tid) % ViscGlenFactor_h, &
           ViscArrSet_h => NSHandles(tid) % ViscArrSet_h, ViscArr_h => NSHandles(tid) % ViscArr_h, &
           ViscTLimit_h => NSHandles(tid) % ViscTLimit_h, ViscRate1_h => NSHandles(tid) % ViscRate1_h, &
@@ -1255,6 +1547,7 @@ CONTAINS
           CALL ListInitElementKeyword( ViscDiff_h,'Material','Viscosity Difference')
           CALL ListInitElementKeyword( ViscTrans_h,'Material','Viscosity Transition')
           CALL ListInitElementKeyword( ViscYasuda_h,'Material','Yasuda Exponent')
+          CALL ListInitElementKeyword( ViscSmag_h,'Material','Smagorinsky Constant')
 
           ! Do these initializations for glen's model only
           IF ( ListCompareElementAnyString( ViscModel_h,'glen') ) THEN
@@ -1496,7 +1789,7 @@ CONTAINS
         ViscVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)* ss(1:ngp)**(-(c2-1)/(2*c2)) / 2
 
         IF (ViscNewton ) THEN
-          ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)*(-(c2-1)/(2*c2)-1) / 2
+          ViscDerVec(1:ngp) = ViscVec0(1:ngp)**(-1/c2)*(-(c2-1)/(2*c2))*ss(1:ngp)**(-(c2-1)/(2*c2)-1) / 2
         END IF
 
       CASE ('carreau')
@@ -1541,17 +1834,34 @@ CONTAINS
             ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
             ViscDerVec(1:ngp) = 0.0_dp
           ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))
-            ViscDerVec(1:ngp) = c1*(c2/(2*s(1:ngp))+c2**2/(2*SQRT(c2**2*ss(1:ngp)+1)))/ &
-                ((c2*s(1:ngp)+SQRT(c2*ss(1:ngp)+1))*c2*s(1:ngp)) - &
+            ! mu0 + c1*asinh(c2*s)/(c2*s), s = sqrt(ss), and d mu / d ss
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*s(1:ngp))
+            ViscDerVec(1:ngp) = c1/(2*ss(1:ngp)*SQRT(1+c2**2*ss(1:ngp))) - &
                 c1*LOG(c2*s(1:ngp)+SQRT(c2**2*ss(1:ngp)+1))/(c2*s(1:ngp)**3)/2
           END WHERE
         ELSE
           WHERE( c2*s(1:ngp) < 1.0d-5 )
             ViscVec(1:ngp) = ViscVec0(1:ngp) + c1
           ELSE WHERE
-            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*ss(1:ngp))
+            ViscVec(1:ngp) = ViscVec0(1:ngp) + c1 * LOG(c2*s(1:ngp)+SQRT(c2*c2*ss(1:ngp)+1))/(c2*s(1:ngp))
           END WHERE
+        END IF
+
+      CASE( 'smagorinsky' )
+        ! As the scalar EffectiveViscosity in MaterialModels.F90 (FlowSolve):
+        ! mu = mu0 + rho*C*h^2*sqrt(2*ss)/2, with h the element diameter and
+        ! C = "Smagorinsky Constant" (it is c in this formula, not the textbook
+        ! Cs: c = 2*Cs^2 when h is taken as the filter width).
+        SmagVec => ListGetElementRealVec( ViscSmag_h, ngp, BasisVec, Element, Found )
+        IF( .NOT. Found ) CALL Fatal(Caller, &
+            '"Viscosity Model = Smagorinsky" needs "Smagorinsky Constant"')
+        hSmag = ElementDiameter( Element, Nodes )
+        ViscVec(1:ngp) = ViscVec0(1:ngp) + &
+            DensVec(1:ngp) * SmagVec(1:ngp) * hSmag**2 * SQRT(2*ss(1:ngp)) / 2
+        IF( ViscNewton ) THEN
+          ! d mu / d ss, singular at ss = 0 where it is left at zero.
+          WHERE( ss(1:ngp) > 0._dp ) ViscDerVec(1:ngp) = &
+              DensVec(1:ngp) * SmagVec(1:ngp) * hSmag**2 * SQRT(2._dp) / (4*SQRT(ss(1:ngp)))
         END IF
 
       CASE('ke','k-epsilon','rng k-epsilon','spalart-allmaras','k-omega','sst k-omega')
@@ -1637,7 +1947,7 @@ CONTAINS
       ! (MatrixAssembly.F90), keyed by Element_id.
 
   !------------------------------------------------------------------------------
-      LOGICAL :: ComputeBubblePart
+      LOGICAL :: ComputeBubblePart, StoreBubblePart
       REAL(KIND=dp) :: Kbb(nb*dim,nb*dim), Fb(nb*dim)
       REAL(KIND=dp) :: BubblePrevSlice(nb*dim), BubbleCurSlice(nb*dim)
       REAL(KIND=dp) :: Kbl(nb*dim,n*(dim+1)), Klb(n*(dim+1), nb*dim)
@@ -1647,7 +1957,11 @@ CONTAINS
       INTEGER :: DOFs
       INTEGER :: p, q, Cdofs((dim+1)*n), Bdofs(dim*nb)
   !------------------------------------------------------------------------------
-      ComputeBubblePart = PRESENT(x) .AND. PRESENT(xprev) .AND. PRESENT(Element_id)
+      ! StoreBubblePart: recover and store the bubble part for the current
+      ! iterate x (also steady, for the Newton terms, see NewtonTrialVec).
+      ! ComputeBubblePart: in addition, form the BDF(1) time derivative.
+      StoreBubblePart = PRESENT(x) .AND. PRESENT(Element_id)
+      ComputeBubblePart = StoreBubblePart .AND. PRESENT(xprev)
 
       DOFs = dim + 1
 
@@ -1671,6 +1985,16 @@ CONTAINS
         END DO
       END DO
 
+      IF (StoreBubblePart) THEN
+        q = 0
+        DO p = 1,n
+          DO i = 1,DOFs
+            q = q + 1
+            xl(q) = x(i,p)
+          END DO
+        END DO
+      END IF
+
       ! The following only works for the BDF(1) method:
       IF (ComputeBubblePart) THEN
         xlprev = 0
@@ -1678,7 +2002,6 @@ CONTAINS
         DO p = 1,n
           DO i = 1,DOFs
             q = q + 1
-            xl(q) = x(i,p)
             xlprev(cdofs(q)) = xprev(i,p) ! cdofs identity mapping?
           END DO
         END DO
@@ -1731,7 +2054,7 @@ CONTAINS
       ! class of thing as an integration point history -- and a re-assembly
       ! at another rule would leave the wrong one behind for the next
       ! timestep to read.
-      IF (ComputeBubblePart .AND. .NOT. NSProbe % Override) THEN
+      IF (StoreBubblePart .AND. .NOT. NSProbe % Override) THEN
         BubbleCurSlice = MATMUL(Kbb,Fb-MATMUL(Kbl,xl))
         CALL BubbleHistorySetCur( CurrentModel % Solver % Variable, Element_id, dim*nb, BubbleCurSlice )
       END IF
@@ -2599,7 +2922,9 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! mesh with no p-bubble at all. Dofs=dim, since there is no pressure
   ! bubble, so only the velocity components are bubble-augmented.
   !-----------------------------------------------------------------------------
-  IF (Transient .AND. Mesh % MaxBDOFs > 0) CALL DefaultBubbleHistoryUpdate( Dofs=dim )
+  ! Also steady: the Newton terms read the bubble part of the iterate from the
+  ! same storage (see NewtonTrialVec in LocalBulkMatrix).
+  IF (Mesh % MaxBDOFs > 0) CALL DefaultBubbleHistoryUpdate( Dofs=dim )
 
   Params => GetSolverParams()
 
@@ -2650,6 +2975,80 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
       'Cylindric/Cylindric Symmetric coordinates need a genuine swirl velocity '// &
       'component and the full metric terms, which are not here: use FlowSolve, '// &
       'which dispatches to NavierStokesCylindrical for them')
+
+  ! Rotating frame: Omega per body, see NSAngVel in IncompressibleLocalForms.
+  BLOCK
+    TYPE(ValueList_t), POINTER :: BF
+    REAL(KIND=dp), POINTER :: OmegaWrk(:,:)
+    INTEGER :: ib, bf_id
+
+    IF( ALLOCATED( NSAngVel ) ) DEALLOCATE( NSAngVel )
+    ALLOCATE( NSAngVel(3, Model % NumberOfBodies) )
+    NSAngVel = 0._dp
+    NSRotating = .FALSE.
+    DO ib = 1, Model % NumberOfBodies
+      bf_id = ListGetInteger( Model % Bodies(ib) % Values, 'Body Force', Found )
+      IF( .NOT. Found ) CYCLE
+      BF => Model % BodyForces(bf_id) % Values
+      OmegaWrk => ListGetConstRealArray( BF, 'Angular Velocity', Found )
+      IF( .NOT. Found ) CYCLE
+      IF( SIZE(OmegaWrk,1) /= 3 ) CALL Fatal(Caller, &
+          'Body Force "Angular Velocity" must be given as a 3-vector, "Angular Velocity(3)"')
+      NSAngVel(1:3,ib) = OmegaWrk(1:3,1)
+      IF( ALL( NSAngVel(1:3,ib) == 0._dp ) ) CYCLE
+      NSRotating = .TRUE.
+      IF( CurrentCoordinateSystem() /= Cartesian ) CALL Fatal(Caller, &
+          'Body Force "Angular Velocity" (rotating frame) is implemented for Cartesian coordinates only')
+      ! In 2D only rotation about the z-axis keeps the flow in the plane.
+      IF( dim == 2 .AND. ANY( NSAngVel(1:2,ib) /= 0._dp ) ) CALL Fatal(Caller, &
+          'In 2D "Angular Velocity" must be about the z-axis: its x/y components '// &
+          'would give out-of-plane Coriolis forces')
+    END DO
+  END BLOCK
+
+  ! Porous media: mode and constant array per body, see NSPorousMode.
+  BLOCK
+    TYPE(ValueList_t), POINTER :: Mat
+    TYPE(ValuelistEntry_t), POINTER :: ptr
+    INTEGER :: ib, mat_id, nr
+
+    IF( ALLOCATED( NSPorousMode ) ) DEALLOCATE( NSPorousMode, NSPorousR )
+    ALLOCATE( NSPorousMode(Model % NumberOfBodies), NSPorousR(3, Model % NumberOfBodies) )
+    NSPorousMode = 0
+    NSPorousR = 0._dp
+    NSPorous = .FALSE.
+    DO ib = 1, Model % NumberOfBodies
+      mat_id = ListGetInteger( Model % Bodies(ib) % Values, 'Material', Found )
+      IF( .NOT. Found ) CYCLE
+      Mat => Model % Materials(mat_id) % Values
+      IF( .NOT. ListGetLogical( Mat, 'Porous Media', Found ) ) CYCLE
+      NSPorous = .TRUE.
+      ptr => ListFind( Mat, 'Porous Resistivity', Found )
+      nr = 1
+      IF( Found ) THEN
+        ! Nested: FValues is not associated for every keyword type, and
+        ! Fortran does not short-circuit .AND.
+        IF( ASSOCIATED( ptr % FValues ) ) nr = SIZE( ptr % FValues, 1 )
+      END IF
+      IF( .NOT. Found ) THEN
+        NSPorousMode(ib) = 2
+      ELSE IF( nr > 1 ) THEN
+        ! Array form: constant only, the varying case has the component form.
+        IF( ptr % TYPE /= LIST_TYPE_CONSTANT_TENSOR ) CALL Fatal(Caller, &
+            'An array "Porous Resistivity(n)" must be constant: give a varying '// &
+            'resistivity as "Porous Resistivity 1..3" (or a scalar "Porous Resistivity")')
+        NSPorousMode(ib) = 1
+        NSPorousR(1:MIN(3,SIZE(ptr % FValues,1)),ib) = &
+            ptr % FValues(1:MIN(3,SIZE(ptr % FValues,1)),1,1)
+      ELSE IF( ptr % TYPE == LIST_TYPE_CONSTANT_TENSOR .AND. nr == 1 ) THEN
+        ! "Porous Resistivity(1) = r": the same r for every component.
+        NSPorousMode(ib) = 1
+        NSPorousR(1:3,ib) = ptr % FValues(1,1,1)
+      ELSE
+        NSPorousMode(ib) = 3
+      END IF
+    END DO
+  END BLOCK
 
   IF( CurrentCoordinateSystem() == AxisSymmetric ) THEN
     IF( GradPVersion ) CALL Fatal(Caller, &

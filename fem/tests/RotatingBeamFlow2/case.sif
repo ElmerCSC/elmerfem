@@ -197,6 +197,10 @@ End
 
 
 Solver 1 :: Reference Norm = 4.20042962E-01
-Solver 2 :: Reference Norm = 6.86673725E-01
-Solver 3 :: Reference Norm = 1.70630082E-02
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 6.86673725E-01
+Solver 2 :: Reference Norm = 6.86683146E-01
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 1.70630082E-02
+Solver 3 :: Reference Norm = 1.70641590E-02
 

@@ -332,10 +332,14 @@ Boundary Condition 6
   Top surface = Variable Zb
      REAL MATC "tx(0)+H"
 End
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 207.29755
 
-Solver 3 :: Reference Norm =  207.29755
+Solver 3 :: Reference Norm =  2.07344482E+02
 Solver 3 :: Reference Norm Tolerance = 1.0E-06
-Solver 5 :: Reference Norm = 9.36764080E-02
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 9.36764080E-02
+Solver 5 :: Reference Norm = 9.36815288E-02
 Solver 5 :: Reference Norm Tolerance = 1.0E-06
 ! The norm seems to be zero now!
 !Solver 8 :: Reference Norm =  31.2285175 

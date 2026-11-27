@@ -177,9 +177,15 @@ End
 ! own Reference Norm update). This value reflects both solvers migrated
 ! together (recalibrated once already for KESolver alone, then shifted
 ! again once V2FSolver's own default changed to match it).
-Solver 1 :: Reference Norm = 6.99200832E+01
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 6.99200832E+01
+Solver 1 :: Reference Norm = 7.00532011E+01
 Solver 1 :: Reference Norm Tolerance = Real 1.0e-4
-Solver 2 :: Reference Norm = 1.46282906E+03
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 1.46282906E+03
+Solver 2 :: Reference Norm = 1.46437280E+03
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4
-Solver 3 :: Reference Norm = 1.00889183E+01
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 1.00889183E+01
+Solver 3 :: Reference Norm = 1.00991579E+01
 Solver 3 :: Reference Norm Tolerance = Real 1.0e-4

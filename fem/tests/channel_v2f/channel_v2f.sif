@@ -152,7 +152,9 @@ Boundary Condition 4
   Target Boundaries = 4
   Noslip Wall BC = Logical True
 End
+! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
+! trial functions out of the Newton terms); old value 8.3258717
 
-Solver 3 :: Reference Norm = Real 8.3258717
+Solver 3 :: Reference Norm = Real 8.31165244E+00
 Solver 3 :: Reference Norm Tolerance = Real 1e-3
 RUN
