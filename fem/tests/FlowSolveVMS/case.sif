@@ -1,0 +1,98 @@
+! Regression test for FlowSolve's residual-based VMS ("Stabilization Method =
+! vms", NavierStokes.F90). Manufactured solution in the unit cube, rho = 1,
+! mu = 0.1, linear in space and time so that BDF and the trilinear element
+! reproduce it exactly:
+!   u = (1+t)*(y, z, x),  p = x,
+!   f = du/dt + (u.grad)u + grad p = (y,z,x) + (1+t)^2*(z,x,y) + (1,0,0).
+! Transient BDF2 with Newton. Every term of a residual-based method vanishes
+! on the exact solution, so the discrete one is exact to round-off: max|p|
+! (SaveScalars) is exactly 1. Four bugs failed this before they were fixed:
+! the sign of the Reynolds stress force-force load, the Newton load leaking
+! into the VMS residual, the u_t(x)u_t Reynolds terms counted twice, and the
+! BDF2 history array Work(3,n) too small for the 4 dofs of a 3D solution.
+!
+! (VMS solves for the kinematic pressure p/rho; rho = 1 here.)
+! NB: MATC "^" binds looser than "*", hence the explicit (1+t)*(1+t).
+
+Check Keywords Warn
+Header
+  Mesh DB "." "cube"
+End
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 2
+  Timestep Sizes = 0.1
+  Timestep Intervals = 3
+  Steady State Max Iterations = 1
+End
+Body 1
+  Equation = 1
+  Material = 1
+  Body Force = 1
+  Initial Condition = 1
+End
+Initial Condition 1
+  Velocity 1 = Variable Coordinate 2
+    Real MATC "tx"
+  Velocity 2 = Variable Coordinate 3
+    Real MATC "tx"
+  Velocity 3 = Variable Coordinate 1
+    Real MATC "tx"
+  Pressure = Variable Coordinate 1
+    Real MATC "tx"
+End
+Equation 1
+  Active Solvers(2) = 1 2
+End
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "FlowSolve" "FlowSolver"
+  Stabilization Method = vms
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 50
+  Nonlinear System Convergence Tolerance = 1.0e-12
+  Nonlinear System Newton After Iterations = 3
+End
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Timestep
+  Variable 1 = Pressure
+  Operator 1 = max abs
+  Show Norm Index = 1
+End
+Material 1
+  Density = 1.0
+  Viscosity = 0.1
+End
+Body Force 1
+  Flow Bodyforce 1 = Variable Coordinate 1, Coordinate 2, Coordinate 3, Time
+    Real MATC "tx(1)+(1+tx(3))*(1+tx(3))*tx(2)+1"
+  Flow Bodyforce 2 = Variable Coordinate 1, Coordinate 2, Coordinate 3, Time
+    Real MATC "tx(2)+(1+tx(3))*(1+tx(3))*tx(0)"
+  Flow Bodyforce 3 = Variable Coordinate 1, Coordinate 2, Coordinate 3, Time
+    Real MATC "tx(0)+(1+tx(3))*(1+tx(3))*tx(1)"
+End
+Boundary Condition 1
+  Target Boundaries(6) = 1 2 3 4 5 6
+  Velocity 1 = Variable Coordinate 2, Time
+    Real MATC "(1+tx(1))*tx(0)"
+  Velocity 2 = Variable Coordinate 3, Time
+    Real MATC "(1+tx(1))*tx(0)"
+  Velocity 3 = Variable Coordinate 1, Time
+    Real MATC "(1+tx(1))*tx(0)"
+End
+Boundary Condition 2
+  Target Coordinates(1,3) = 0.0 0.0 0.0
+  Pressure = 0.0
+End
+
+Solver 1 :: Reference Norm = Real 0.796084166
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-6
+! max|p| = 1 (exact)
+Solver 2 :: Reference Norm = Real 1.0
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-6

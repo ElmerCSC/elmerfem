@@ -1,0 +1,77 @@
+! Regression test for "VMS Wall" with "Stabilization Method = VMS" in
+! IncompressibleNS. Here "VMS Wall" is the turbulent wall function of "Wall
+! Law" (tangential friction rho*u_tau^2/|u_t|, u_tau from the log law at the
+! wall distance), with the wall distance defaulting to the height of the
+! parent element when "Boundary Layer Thickness" is not given. FlowSolve's
+! VMSWalls applied rho*u_tau^2 itself as the coefficient of u.v on all
+! components (its consistency terms, built from tangential derivatives,
+! vanish), about 30% less wall shear on this case.
+!
+! Plane channel 10 x 1, 40 x 10 quads, uniform inflow 1, nu = 1e-4; as with
+! "Wall Law" the wall-normal velocity is given ("Velocity 2 = 0"). The same
+! case with "Wall Law" and "Boundary Layer Thickness = 0.1" (= the element
+! height) gives the identical solution.
+
+Check Keywords Warn
+Header
+  Mesh DB "." "ch"
+End
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady State
+  Steady State Max Iterations = 1
+End
+Body 1
+  Equation = 1
+  Material = 1
+End
+Equation 1
+  Active Solvers(2) = 1 2
+End
+Solver 1
+  Equation = Navier-Stokes
+  Procedure = "IncompressibleNS" "IncompressibleNSSolver"
+  Stabilization Method = vms
+  Linear System Solver = Direct
+  Linear System Direct Method = UMFPack
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Nonlinear System Newton After Iterations = 5
+  Nonlinear System Relaxation Factor = 0.8
+End
+Solver 2
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Exec Solver = After Timestep
+  Variable 1 = Pressure
+  Operator 1 = max abs
+  Show Norm Index = 1
+End
+Material 1
+  Density = 1.0
+  Viscosity = 1.0e-4
+End
+Boundary Condition 1
+  Name = "walls"
+  Target Boundaries(2) = 1 3
+  VMS Wall = Logical True
+  Velocity 2 = 0.0
+End
+Boundary Condition 2
+  Name = "inlet"
+  Target Boundaries(1) = 4
+  Velocity 1 = 1.0
+  Velocity 2 = 0.0
+End
+Boundary Condition 3
+  Name = "outlet"
+  Target Boundaries(1) = 2
+  Velocity 2 = 0.0
+End
+
+Solver 1 :: Reference Norm = Real 6.94008675E-01
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-5
+! max|p|
+Solver 2 :: Reference Norm = Real 6.12318588E-02
+Solver 2 :: Reference Norm Tolerance = Real 1.0e-5
