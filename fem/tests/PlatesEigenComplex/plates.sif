@@ -44,8 +44,8 @@ Solver 1
   Linear System Solver = Iterative
   Linear System Max Iterations = 500
   Linear System Residual Output = 0
-  Linear System Iterative Method = BiCGStab
-  Linear System Preconditioning = ILU0
+  Linear System Iterative Method = IDRS
+  Linear System Preconditioning = ILU2
   Linear System Convergence Tolerance = 1.0e-8
   Nonlinear System Newton After Tolerance = 1.0e-3
   Nonlinear System Newton After Iterations = 20
