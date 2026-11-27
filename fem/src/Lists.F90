@@ -5118,8 +5118,8 @@ CONTAINS
                      T(count) = HUGE(1.0_dp)
                    END DO
                  END IF
-                 ! We found the values, nothing to do anymore. 
-                 RETURN
+                 ! Values for this variable found, continue with the next one.
+                 CYCLE
                END IF
              END BLOCK
            END IF
