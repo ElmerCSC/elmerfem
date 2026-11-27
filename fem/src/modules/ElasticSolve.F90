@@ -581,6 +581,9 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
   LOGICAL :: UmatInverted, UmatBroken, UmatNotConverged
   ! The UMAT's DDSDDE is the Abaqus tangent (Jaumann rate), see "UMAT Tangent".
   LOGICAL :: UmatJaumann = .FALSE., UmatRelaxWarned = .FALSE.
+  ! "UMAT Bbar": the volumetric strain of the linear elements is taken from the
+  ! element centre, B-bar for small and F-bar for large deflection.
+  LOGICAL :: UmatBbar = .FALSE.
   CHARACTER(LEN=MAX_NAME_LEN) :: UmatTangent, UmatTangentIn
   INTEGER :: UmatTangentLen
   ! Backtracking line search of the UMAT Newton iteration, see UmatLinesearchRetry.
@@ -1995,6 +1998,7 @@ SUBROUTINE ElasticSolver( Model, Solver, dt, TransientSimulation )
          EXIT
        END IF
 
+
      ELSE
        IF ( DefaultLinesearch( Converged ) ) GOTO 100
        IF( iter >= MinNonlinearIter .AND. Converged ) EXIT
@@ -2565,6 +2569,7 @@ CONTAINS
               CALL Fatal(Caller, 'Unknown "UMAT Tangent": '//TRIM(UmatTangent)// &
                   ' (use "Material" or "Jaumann")')
             END SELECT
+            UmatBbar = GetLogical(Material, 'UMAT Bbar', GotIt)
           END IF
           PrevMaterial => Material
         END IF
@@ -3562,6 +3567,16 @@ CONTAINS
     REAL(KIND=dp) :: WorkVec1(1:6,1), WorkVec2(1:6,1)
     REAL(KIND=dp) :: JauH(3,3), JauA(3,3)
     REAL(KIND=dp) :: s, u, v, w, r
+    ! B-bar / F-bar ("UMAT Bbar"): the quantities at the element centre ("Cen"),
+    ! the current and the previous ("Prev") ones, and the divergence parts of
+    ! the trial gradients, TrL(q,j) = tr( d(grad u)/d(u_qj) F^-1 ).
+    LOGICAL :: UseBbar
+    REAL(KIND=dp) :: BasisCen(ntot), dBasisCen(ntot,3), rCen, DetJCen
+    REAL(KIND=dp) :: GradCen(3,3), GradCenPrev(3,3), InvCen(3,3)
+    REAL(KIND=dp) :: DetCen, DetCenPrev, ThetaCen, ThetaCenPrev, Theta, ThetaPrev
+    REAL(KIND=dp) :: TrL(ntot,3), TrLCen(ntot,3), BarScale, BarScalePrev
+    REAL(KIND=dp) :: DefGBar(3,3), DefG0Bar(3,3), BarQ(3,3), BarC(3,3), BarG
+    REAL(KIND=dp) :: BarInv(3,3), DetPrev
 
     INTEGER :: i, j, k, l, p, q, t, dim, cdim, totdofs
     INTEGER :: ipindex
@@ -3694,6 +3709,106 @@ CONTAINS
     QuasiActive = QuasiStationary .AND. .NOT. ( ANY( NodalDamping(1:n) /= 0.0_dp ) &
         .OR. GotRayleighAlpha .OR. GotRayleighBeta )
 
+    ! ------------------------------------------------------------------------------
+    ! B-bar / F-bar of the linear elements with more than one integration point.
+    ! Under plastic or nearly incompressible flow their volume constraint at every
+    ! point locks them; the volumetric part of the strain is taken from the
+    ! element instead. Small strain (B-bar, the mean dilatation of Hughes, 1980):
+    !   eps_bar = eps + (theta_avg - theta)/3 I,    theta = tr(eps)
+    ! with the volume average theta_avg: from the element centre it would not
+    ! pass the patch test on a distorted element, as the centre's divergence
+    ! times the volume is not the integral of the divergence there. Large
+    ! deflection (F-bar, de Souza Neto et al., 1996), from the centre:
+    !   F_bar = (J_cen/J)^(1/3) F
+    ! The strain and the UMAT see the barred quantities, the stress is integrated
+    ! as before over the actual configuration. The tangent gets a term coupling
+    ! to the centre, see BarG below, which makes it nonsymmetric under F-bar.
+    ! ------------------------------------------------------------------------------
+    UseBbar = UmatBbar
+    IF ( UseBbar ) THEN
+      SELECT CASE( Element % TYPE % ElementCode )
+      CASE( 404, 706, 808 )
+      CASE DEFAULT
+        ! One point (linear triangles, tetrahedra) or quadratic elements: either
+        ! nothing to average or no locking to cure.
+        UseBbar = .FALSE.
+      END SELECT
+    END IF
+
+    IF ( UseBbar ) THEN
+      i = Element % TYPE % NumberOfNodes
+      u = SUM( Element % TYPE % NodeU(1:i) ) / i
+      v = SUM( Element % TYPE % NodeV(1:i) ) / i
+      w = 0.0_dp
+      IF ( Element % TYPE % DIMENSION == 3 ) w = SUM( Element % TYPE % NodeW(1:i) ) / i
+      stat = ElementInfo( Element, Nodes, u, v, w, DetJCen, BasisCen, dBasisCen )
+
+      GradCen = 0.0_dp
+      GradCenPrev = 0.0_dp
+      GradCen(1:cdim,1:cdim) = MATMUL(NodalDisplacement(1:cdim,1:nd),dBasisCen(1:nd,1:cdim))
+      GradCenPrev(1:cdim,1:cdim) = MATMUL(PrevNodalDisplacement(1:cdim,1:nd),dBasisCen(1:nd,1:cdim))
+      rCen = 1.0_dp
+      IF ( AxialSymmetry ) THEN
+        rCen = SUM( BasisCen(1:n) * Nodes % x(1:n) )
+        GradCen(3,3) = SUM( NodalDisplacement(1,1:nd) * BasisCen(1:nd) ) / rCen
+        GradCenPrev(3,3) = SUM( PrevNodalDisplacement(1,1:nd) * BasisCen(1:nd) ) / rCen
+      END IF
+
+      IF ( .NOT. LargeDeflection ) THEN
+        ! B-bar: the volume averages of the dilatation and of the divergence
+        ! of each trial function
+        s = 0.0_dp
+        ThetaCen = 0.0_dp
+        ThetaCenPrev = 0.0_dp
+        TrLCen = 0.0_dp
+        DO t=1,IntegStuff % n
+          stat = ElementInfo( Element, Nodes, IntegStuff % u(t), IntegStuff % v(t), &
+              IntegStuff % w(t), SqrtElementMetric, Basis, dBasis )
+          u = SqrtElementMetric * IntegStuff % s(t)
+          r = 1.0_dp
+          IF ( AxialSymmetry ) THEN
+            r = SUM( Basis(1:n) * Nodes % x(1:n) )
+            u = u * r
+          END IF
+          s = s + u
+          DO q=1,ntot
+            DO j=1,cdim
+              TrLCen(q,j) = TrLCen(q,j) + u * dBasis(q,j)
+            END DO
+            IF ( AxialSymmetry ) TrLCen(q,1) = TrLCen(q,1) + u * Basis(q) / r
+          END DO
+          DO j=1,cdim
+            ThetaCen = ThetaCen + u * SUM( NodalDisplacement(j,1:nd) * dBasis(1:nd,j) )
+            ThetaCenPrev = ThetaCenPrev + u * SUM( PrevNodalDisplacement(j,1:nd) * dBasis(1:nd,j) )
+          END DO
+          IF ( AxialSymmetry ) THEN
+            ThetaCen = ThetaCen + u * SUM( NodalDisplacement(1,1:nd) * Basis(1:nd) ) / r
+            ThetaCenPrev = ThetaCenPrev + u * SUM( PrevNodalDisplacement(1,1:nd) * Basis(1:nd) ) / r
+          END IF
+        END DO
+        TrLCen = TrLCen / s
+        ThetaCen = ThetaCen / s
+        ThetaCenPrev = ThetaCenPrev / s
+      ELSE
+        DetCen = Det3x3( Identity + GradCen )
+        DetCenPrev = Det3x3( Identity + GradCenPrev )
+        IF( .NOT. ( DetCen > 0.0_dp .AND. DetCen <= HUGE(DetCen) ) ) THEN
+          UmatInverted = .TRUE.
+          RETURN
+        END IF
+        InvCen = Identity + GradCen
+        CALL InvertMatrix( InvCen, 3 )
+
+        ! The variation of the volume change at the centre per trial function:
+        DO q=1,ntot
+          DO j=1,cdim
+            TrLCen(q,j) = SUM( dBasisCen(q,1:cdim) * InvCen(1:cdim,j) )
+          END DO
+          IF ( AxialSymmetry ) TrLCen(q,1) = TrLCen(q,1) + BasisCen(q) / rCen * InvCen(3,3)
+        END DO
+      END IF
+    END IF
+
     DO t=1,IntegStuff % n
       ipindex = GetIpIndex( t, usolver=solver, element=element, ipvar = UmatEnergyVar )
 
@@ -3779,13 +3894,43 @@ CONTAINS
         CALL InvertMatrix( InvDefG, dim )
       END IF
 
+      ! F-bar: the deformation gradients the strain and the UMAT see. The volume
+      ! change of the previous one is that of its own centre too, so that the
+      ! strain increment is the barred one.
+      DefGBar = DefG
+      DefG0Bar = DefG0
+      BarScale = 1.0_dp
+      IF ( UseBbar ) THEN
+        IF ( LargeDeflection ) THEN
+          BarScale = ( DetCen / DetDefG )**(1.0_dp/3)
+          DefGBar = BarScale * DefG
+          DetPrev = Det3x3( DefG0 )
+          BarScalePrev = 1.0_dp
+          IF ( DetPrev > 0.0_dp ) BarScalePrev = ( DetCenPrev / DetPrev )**(1.0_dp/3)
+          DefG0Bar = BarScalePrev * DefG0
+        END IF
+        ! The divergence part of each trial gradient, in the current configuration
+        ! under large deflection:
+        IF ( LargeDeflection ) THEN
+          BarInv = InvDefG
+        ELSE
+          BarInv = Identity
+        END IF
+        DO q=1,ntot
+          DO j=1,cdim
+            TrL(q,j) = SUM( dBasis(q,1:cdim) * BarInv(1:cdim,j) )
+          END DO
+          IF ( AxialSymmetry ) TrL(q,1) = TrL(q,1) + Basis(q) / r * BarInv(3,3)
+        END DO
+      END IF
+
       SELECT_STRAIN_MEASURE: IF (HenckyStrain) THEN
         ! TO DO:
         ! - warn if a Hencky umat has not been implemented
         ! --------------------------------------------
         ! The right Cauchy-Green deformation tensor
         ! --------------------------------------------
-        C = MATMUL( TRANSPOSE(DefG0), DefG0 )
+        C = MATMUL( TRANSPOSE(DefG0Bar), DefG0Bar )
 
         ! -----------------------------------------------------------
         ! Compute the spectral decomposition of C
@@ -3812,7 +3957,7 @@ CONTAINS
         ! -----------------------------------------------------------
         ! Repeat for the current right Cauchy-Green deformation tensor:
         ! -----------------------------------------------------------
-        C = MATMUL( TRANSPOSE(DefG), DefG )
+        C = MATMUL( TRANSPOSE(DefGBar), DefGBar )
 
         DO i=1,3
           k = i
@@ -3857,6 +4002,22 @@ CONTAINS
               MATMUL(TRANSPOSE(Grad(1:dim,1:dim)),Grad(1:dim,1:dim))
           Strain0(1:dim,1:dim) = Strain0(1:dim,1:dim) + 0.5d0 * &
               MATMUL(TRANSPOSE(Grad0(1:dim,1:dim)),Grad0(1:dim,1:dim))
+        END IF
+
+        IF ( UseBbar ) THEN
+          IF ( LargeDeflection ) THEN
+            ! The Green-Lagrange strains of F_bar
+            Strain = 0.5_dp * ( MATMUL(TRANSPOSE(DefGBar),DefGBar) - Identity )
+            Strain0 = 0.5_dp * ( MATMUL(TRANSPOSE(DefG0Bar),DefG0Bar) - Identity )
+          ELSE
+            ! B-bar: the mean dilatation
+            Theta = Grad(1,1) + Grad(2,2) + Grad(3,3)
+            ThetaPrev = Grad0(1,1) + Grad0(2,2) + Grad0(3,3)
+            DO i=1,3
+              Strain(i,i) = Strain(i,i) + ( ThetaCen - Theta ) / 3
+              Strain0(i,i) = Strain0(i,i) + ( ThetaCenPrev - ThetaPrev ) / 3
+            END DO
+          END IF
         END IF
 
       END IF SELECT_STRAIN_MEASURE
@@ -3937,7 +4098,7 @@ CONTAINS
           EnergyPlast, EnergyVisc, rpl, ddsddt(1:ntens), drplde(1:ntens), drpldt, &
           stran(1:ntens), dstran(1:ntens), TimeAtStep, dtime, Temp, dTemp, &
           predef, dpred, cmname, ndi, nshr, ntens, NStateV, InProps, NrInProps, coords, &
-          drot, pnewdt, celent, DefG0, DefG, ElementIndex, t, layer, kspt, kstep, kinc)
+          drot, pnewdt, celent, DefG0Bar, DefGBar, ElementIndex, t, layer, kspt, kstep, kinc)
 
       ! ---------------------------------------------------------------------------
       ! Update data which gives the state variables corresponding to the current
@@ -3990,6 +4151,16 @@ CONTAINS
           END DO
         END IF
 
+        ! B-bar: the mean dilatation rows. The normal strains are rows 1-3 in
+        ! every case (xx yy zz, or rr zz hoop).
+        IF ( UseBbar ) THEN
+          DO q=1,ntot
+            DO j=1,cdim
+              B(1:3,(q-1)*dofs+j) = B(1:3,(q-1)*dofs+j) + ( TrLCen(q,j) - TrL(q,j) ) / 3
+            END DO
+          END DO
+        END IF
+
         CALL StrainEnergyDensity(StiffMatrix, StressDer, B, ntens, totdofs, s)
 
         ! Internal force terms for the residual vector:
@@ -4035,6 +4206,35 @@ CONTAINS
         ! The first Piola-Kirchhoff stress
         !--------------------------------------------------
         Stress1 = DetDefG * MATMUL(Stress,TRANSPOSE(InvDefG))
+
+        ! F-bar: with L = dF F^-1 the barred rate is L + (tr L_cen - tr L)/3 I, so
+        ! the stress rate gets the extra (tr L_cen - tr L)/3 times the response
+        ! to a unit dilatation. Its contribution to <dS1, Grad> is
+        ! BarG * (tr L_cen - tr L), BarG from the test function:
+        !   Jaumann:  BarG = < J (DDSDDE:I/3 - sigma) F^-T, Grad >
+        !             (the -sigma tr(d) of the Cauchy rate now goes with tr L_cen,
+        !             the derivative of J still with tr L)
+        !   Material: BarG = < C_bar/3, DDSDDE^T : J sym(Grad F^-1) >,
+        !             C_bar = F_bar^T F_bar, as dE_bar = s^2 sym(F^T dF) + (..)/3 C_bar
+        ! with s = (J_cen/J)^(1/3) scaling the ordinary material term.
+        IF ( UseBbar ) THEN
+          IF ( UmatJaumann ) THEN
+            WorkVec2(1:ntens,1) = StressDer(1:ntens,1) + StressDer(1:ntens,2) + &
+                StressDer(1:ntens,3)
+            BarQ = WorkVec2(1,1)*SymBasis1 + WorkVec2(2,1)*SymBasis2 + &
+                WorkVec2(3,1)*SymBasis3
+            SELECT CASE(nshr)
+            CASE(1)
+              BarQ = BarQ + 2.0d0*WorkVec2(4,1)*SymBasis4
+            CASE(3)
+              BarQ = BarQ + 2.0d0*WorkVec2(4,1)*SymBasis4 + &
+                  2.0d0*WorkVec2(5,1)*SymBasis5 + 2.0d0*WorkVec2(6,1)*SymBasis6
+            END SELECT
+            BarQ = DetDefG * MATMUL( BarQ / 3 - Stress, TRANSPOSE(InvDefG) )
+          ELSE
+            BarC = MATMUL( TRANSPOSE(DefGBar), DefGBar ) / 3
+          END IF
+        END IF
 
         DO p = 1,ntot
           DO i = 1,cdim
@@ -4162,7 +4362,23 @@ CONTAINS
             ELSE
               ! DDSDDE is the derivative of the Cauchy stress with respect to the
               ! Green-Lagrange strain: <DDSDDE : sym(F^T U), H> = <U, F WorkTensor3>.
-              dStress1 = WorkTensor2 + MATMUL(DefG,WorkTensor3)
+              dStress1 = WorkTensor2 + BarScale**2 * MATMUL(DefG,WorkTensor3)
+            END IF
+
+            ! F-bar: the coupling to the centre, see BarQ and BarC above
+            IF ( UseBbar ) THEN
+              IF ( UmatJaumann ) THEN
+                BarG = SUM( BarQ * Grad )
+              ELSE
+                BarG = SUM( BarC * WorkTensor3 )
+              END IF
+              DO q = 1,ntot
+                DO j = 1,cdim
+                  StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) = &
+                      StiffMatrix(cdim*(p-1)+i,cdim*(q-1)+j) + &
+                      BarG * ( TrLCen(q,j) - TrL(q,j) ) * s
+                END DO
+              END DO
             END IF
 
             IF (AxialSymmetry) THEN

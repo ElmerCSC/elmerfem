@@ -215,9 +215,7 @@ vector. When there is none, as in a case driven by prescribed displacements
 only, it is relative to the reaction forces of the current iterate instead
 (the residual at the constrained degrees of freedom). `Nonlinear System
 Convergence Tolerance` is then a fraction of the forces carried, whatever
-the units. (With `Calculate Loads = True` the saved load vector holds the
-whole residual, reactions included, so the scale is the reaction norm at the
-start of the step.) Near a limit load the residual stops decreasing at some
+the units. `Calculate Loads` does not change this. Near a limit load the residual stops decreasing at some
 level, from the line search and from points switching between loading and
 unloading. A tolerance below that level is never met, and every try is
 rejected as not converged. In a tensile test through necking, 1e-2 passed
@@ -261,6 +259,56 @@ not converge at all. In a test with a plastic beam stretched to 8 % strain
 
 Without `Large Deflection` the two conventions are the same, and the keyword
 has no effect.
+
+### Locking of linear elements: UMAT Bbar
+
+Plastic flow, and a nearly incompressible material, keeps the volume constant.
+A fully integrated linear element has to keep it at each integration point,
+which it can only do by hardly deforming. The mesh is then too stiff
+(volumetric locking). Quadratic elements, such as 820 with
+`Element Integration Points = "-brick 8"` (the C3D20R of Abaqus and CalculiX),
+do not lock. For linear elements, set in the Material section:
+
+| Keyword (Material section) | Type | Default | Meaning |
+|---|---|---|---|
+| `UMAT Bbar` | Logical | False | Take the volume change of the linear elements (404, 706, 808) from the whole element. |
+
+- Small strain (`Large Deflection = False`): B-bar, the mean dilatation of
+  Hughes (1980). The volumetric part of the strain is replaced by its average
+  over the element. The tangent stays symmetric.
+- Large deflection: F-bar (de Souza Neto et al., 1996). At each integration
+  point the UMAT gets `F_bar = (J_c/J)^(1/3) F`, where `J_c` is the volume
+  change at the element centre. The tangent gets a term coupling to the
+  centre and is not symmetric. Both `UMAT Tangent` conventions are supported.
+
+This is what the Abaqus C3D8 element does as well. It is not reduced
+integration: `Element Integration Points = "-brick 1"` on 808 leaves the
+hourglass modes free, and the iteration fails.
+
+Results with 808 bricks:
+
+| Case | Without | `UMAT Bbar` | 820 reference |
+|---|---|---|---|
+| Cantilever tip, nu = 0.4999, small strain | -0.0079 | -0.0366 | -0.0383 |
+| Same, distorted mesh | -0.0028 | -0.0358 | |
+| Plastic bar at 10 % elongation, force | 461.7 | 449.7 | 450.1 |
+
+In an axisymmetric thick cylinder with nu = 0.4999 (404 elements), the inner
+displacement was 28 % of the exact value without and 99.9 % with it. The
+Newton iteration stays quadratic. The patch test (a uniform strain on a
+distorted mesh) is passed exactly.
+
+Notes:
+
+- Wedges (706) gain little. Their triangular cross section locks like a linear
+  triangle. In the bar above the force went from 463.7 to 460.1.
+- Linear triangles and tetrahedra have one integration point, and quadratic
+  elements do not lock. For them the keyword has no effect.
+- Shear locking in bending is not affected. Use several linear elements
+  through the thickness, or quadratic elements.
+- With F-bar the first Newton iterates of a very large step can be rougher.
+  A 15 % uniform axisymmetric stretch in one step from rest did not converge
+  with `UMAT Tangent = Material`. In four steps it converged.
 
 ### Quasi-static cases
 
