@@ -1651,7 +1651,13 @@ END FUNCTION MaskedNorm
     ELSE
       CALL Info('IterSolve','Returned return code: '//I2S(HUTI_INFO),Level=15)
       IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
-        CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
+        DoFatal = ListGetLogical( Params,'Linear System Abort Not Converged',Found )
+        IF(.NOT. Found ) DoFatal = .TRUE.
+        IF( DoFatal ) THEN
+          CALL NumericalError( 'IterSolve', 'System diverged over maximum tolerance.')
+        ELSE
+          CALL Info('IterSolve','Iterator failed to converge.',Level=6)
+        END IF
       ELSE IF( HUTI_INFO == HUTI_MAXITER ) THEN
         DoFatal = ListGetLogical( Params,'Linear System Abort Not Converged',Found )
         IF(.NOT. Found ) DoFatal = .TRUE.
@@ -1664,7 +1670,12 @@ END FUNCTION MaskedNorm
         CALL Warn('IterSolve','Iteration halted due to problem in algorithm, trying to continue')
       END IF
       IF( ASSOCIATED( Solver % Variable ) ) THEN
-        Solver % Variable % LinConverged = 0
+        ! 2 = diverged: the solution is not usable, see ComputeChange.
+        IF( HUTI_INFO == HUTI_DIVERGENCE ) THEN
+          Solver % Variable % LinConverged = 2
+        ELSE
+          Solver % Variable % LinConverged = 0
+        END IF
       END IF
     END IF
 !------------------------------------------------------------------------------

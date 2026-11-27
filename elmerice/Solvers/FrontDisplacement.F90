@@ -361,7 +361,7 @@ END SUBROUTINE FDMeshSolver_Init
     IF ( .NOT. Found ) ComputeMeshVelocity = .TRUE.
     
     IF ( ComputeMeshVelocity ) THEN
-      k = MIN( SIZE(Solver % Variable % PrevValues,2), Solver % DoneTime )
+      k = MIN( SIZE(Solver % Variable % PrevValues,2), Solver % TimeLevels )
       
       j = ListGetInteger( Solver % Values,'Compute Front Displacement Velocity Order', Found)
       IF( Found ) THEN

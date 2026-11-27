@@ -5,4 +5,4 @@ CONFIGURE_FILE( plates.sif plates.sif COPYONLY)
 
 file(COPY plates.grd ELMERSOLVER_STARTINFO DESTINATION "${CMAKE_CURRENT_BINARY_DIR}/")
 
-ADD_ELMER_TEST(PlatesEigenComplex LABELS quick plate complex_eigen eigen)
+ADD_ELMER_TEST(PlatesEigenComplex NPROCS 1 2 4 LABELS quick plate complex_eigen eigen eigen_parallel)

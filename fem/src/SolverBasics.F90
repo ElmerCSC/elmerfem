@@ -55,8 +55,7 @@ MODULE SolverBasics
    USE ElementUtils
    USE IpFieldInterface
    USE PElementVisual
-   USE LumpingUtils, ONLY : ComponentStokesTheorem, ComponentCoilEnergy, BoundaryWaveFlux, &
-       UpdateDependentComponents, ComponentNodalForceReduction
+   USE LumpingUtils, ONLY : UpdateDependentComponents
    USE TimeIntegrate
    USE ModelDescription
    USE ParallelUtils, ONLY : ParallelVector, ParallelInitSolve,  ParallelNorm, &
@@ -268,6 +267,7 @@ CONTAINS
 !------------------------------------------------------------------------------
      INTEGER :: PredCorrOrder       !< Order of predictor-corrector scheme
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      IF ( PRESENT(UElement) ) THEN
        Element => UElement
      ELSE
@@ -316,7 +316,7 @@ CONTAINS
 #endif
      END IF
 !------------------------------------------------------------------------------
-     Order = MIN(Solver % DoneTime, Solver % Order)
+     Order = MIN(Solver % TimeLevels, Solver % Order)
 
      DO i=1,n
        DO j=1,DOFs
@@ -389,7 +389,7 @@ CONTAINS
        PredCorrOrder = ListGetInteger( Solver % Values, &
            'Predictor-Corrector Scheme Order', GotIt)
        IF (.NOT. GotIt) PredCorrOrder = 2
-       PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
+       PredCorrOrder = MIN(PredCorrOrder, Solver % TimeLevels /2)
        CALL AdamsBashforth( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol(:,1), zeta, PredCorrOrder)
 
@@ -397,7 +397,7 @@ CONTAINS
        PredCorrOrder = ListGetInteger( Solver % Values, &
            'Predictor-Corrector Scheme Order', GotIt)
        IF (.NOT. GotIt) PredCorrOrder = 2
-       PredCorrOrder = MIN(PredCorrOrder, Solver % DoneTime /2)
+       PredCorrOrder = MIN(PredCorrOrder, Solver % TimeLevels /2)
        CALL AdamsMoulton( n*DOFs, dt, MassMatrix, StiffMatrix, Force, &
            PrevSol, PredCorrOrder )
 
@@ -432,10 +432,11 @@ CONTAINS
      CHARACTER(:), ALLOCATABLE :: Method
 !------------------------------------------------------------------------------
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      CALL Info('Add1stOrderTime_CRS','Adding time discretization to CRS matrix',Level=20)
 
 !------------------------------------------------------------------------------
-     Order = MIN(Solver % DoneTime, Solver % Order)
+     Order = MIN(Solver % TimeLevels, Solver % Order)
      IF(Order == 0 ) THEN
        CALL Info('Add1stOrderTime_CRS','Zeroth order, nothing to do!',Level=20)
        RETURN
@@ -512,6 +513,7 @@ CONTAINS
 
 !------------------------------------------------------------------------------
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      IF ( Solver % Matrix % Lumped ) THEN
 !------------------------------------------------------------------------------
 #ifndef OLD_LUMPING
@@ -627,6 +629,7 @@ CONTAINS
      REAL(KIND=dp), POINTER :: PrevValues(:,:)
      TYPE(Solver_t) :: Solver
 
+     Solver % TimeIntegrated = .TRUE.  ! for the error estimate of adaptive timestepping
      IF( Matrix % Lumped ) THEN
        CALL Fatal('Add2ndOrderTime_CRS','Implement matrix lumping for this!')
      END IF
@@ -2636,6 +2639,7 @@ END FUNCTION SearchNodeL
 
 !------------------------------------------------------------------------------
      Solver % DoneTime = Solver % DoneTime + 1
+     Solver % TimeLevels = Solver % TimeLevels + 1
 !------------------------------------------------------------------------------
 
      IF ( .NOT. ASSOCIATED( Solver % Matrix ) .OR. &
@@ -2752,12 +2756,12 @@ END FUNCTION SearchNodeL
            IF(.NOT.GotIt) Solver % Alpha = -0.05_dp
          END SELECT
        ELSE
-         IF (Solver % DoneTime==1 .AND.Solver % Beta/= 0.0_dp) Solver % Beta = 1.0_dp
+         IF (Solver % TimeLevels==1 .AND.Solver % Beta/= 0.0_dp) Solver % Beta = 1.0_dp
        END IF
 
        SELECT CASE( Solver % TimeOrder )
        CASE(1)
-         Order = MIN(Solver % DoneTime, Solver % Order)
+         Order = MIN(Solver % TimeLevels, Solver % Order)
          DO i=Order, 2, -1
            Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
          END DO
@@ -2779,7 +2783,7 @@ END FUNCTION SearchNodeL
          Var % PrevValues(:,7) = Var % PrevValues(:,6)
        END SELECT
      ELSE
-       Order = MIN(Solver % DoneTime, Solver % Order)
+       Order = MIN(Solver % TimeLevels, Solver % Order)
        DO i=Order, 2, -1
          Var % PrevValues(:,i) = Var % PrevValues(:,i-1)
        END DO
@@ -2794,7 +2798,7 @@ END FUNCTION SearchNodeL
      END IF
 
      IF( ListGetLogical( Solver % Values,'Nonlinear Timestepping', GotIt ) ) THEN
-       IF( Solver % DoneTime > 1 ) THEN
+       IF( Solver % TimeLevels > 1 ) THEN
          A => Solver % Matrix
          CALL Info('InitializeTimestep','Saving previous linear system for timestepping',Level=12)
          IF( .NOT. ASSOCIATED( A % BulkValues ) ) THEN
@@ -2875,7 +2879,7 @@ END FUNCTION SearchNodeL
     Simulation = ListGetString( CurrentModel % Simulation, 'Simulation Type' )
     IF ( Simulation == 'transient' ) THEN
       Method = ListGetString( Solver % Values, 'Timestepping Method' )
-      Order = MIN(Solver % DoneTime, Solver % Order)
+      Order = MIN(Solver % TimeLevels, Solver % Order)
 
       IF ( Order <= 0 .OR. Solver % TimeOrder /= 1 .OR. Method=='bdf' ) RETURN
 
@@ -4116,6 +4120,15 @@ END FUNCTION SearchNodeL
           CALL Info(Caller,'Enforcing continuation of iteration',Level=6)
           Solver % Variable % NonlinConverged = 0
         END IF
+      END IF
+
+      ! The linear solver diverged ("Linear System Abort Not Converged = False"):
+      ! the solution is garbage, so iterating further is pointless. Report the
+      ! nonlinear iteration as diverged, which ends it and lets adaptive
+      ! timestepping or "Convergence Control" reduce the step.
+      IF( Solver % Variable % LinConverged == 2 ) THEN
+        CALL Warn(Caller,'Linear system solver diverged: nonlinear iteration diverged')
+        Solver % Variable % NonlinConverged = 2
       END IF
 
       IF( .NOT. Solver % NewtonActive ) THEN
@@ -6733,7 +6746,10 @@ END FUNCTION SearchNodeL
         IF( nIp > 0 ) THEN
           IpCount = IpCount + nIp
         ELSE
-          IP = GaussPointsAdapt( Element )
+          ! The rule of this solver, which need not be the current one when the
+          ! variables are created: a solver stating "Element Integration Points"
+          ! got its -ip variables sized for the rule of another.
+          IP = GaussPointsAdapt( Element, Solver )
           IpCount = IpCount + Ip % n
         END IF
       END IF
@@ -7706,7 +7722,7 @@ END SUBROUTINE DerivateExportedVariables
     CALL Info(Caller,'Assuming '//I2S(dim)//&
         ' active dimensions',Level=10)
 
-    ! Add the lasrgest entry that allocates the whole list matrix structure
+    ! Add the largest entry that allocates the whole list matrix structure
     CALL AddToMatrixElement(A_fs,i,j,0.0_dp)
     CALL AddToMatrixElement(A_sf,j,i,0.0_dp)
 

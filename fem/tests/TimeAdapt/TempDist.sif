@@ -22,6 +22,10 @@ Simulation
 
   Adaptive Timestepping  = True
   Adaptive Time Error    = 0.05
+  ! The original error measure: relative change in the solver norms, here the
+  ! embedded estimate of Runge-Kutta 2. TimeAdaptRK2 is the same case with the
+  ! default weighted measure.
+  Adaptive Error Type = String "norm"
   Adaptive Keep Smallest = 3
   Adaptive Min Timestep  = 1.0e-6
   Adaptive Max Timestep  = Real 0.01

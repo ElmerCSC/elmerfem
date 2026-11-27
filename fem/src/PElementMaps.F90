@@ -47,6 +47,7 @@
 
 MODULE PElementMaps
   USE Types
+  USE H1Basis, ONLY : H1Basis_SD_BrickBubbleIndices
   Use GeneralUtils
 
   IMPLICIT NONE
@@ -941,7 +942,8 @@ CONTAINS
 !> set of an element of degree p. Mirrors getBubbleDOFs above: that function is
 !> the VOLUME of the bubble index loops, this one is their EXTENT along one
 !> axis, and both are read off the same loop bounds in ElemInfo.F90 (and their
-!> copies in H1Basis.F90 for the vectorised path). Keep the three in step.
+!> copies in H1Basis.F90 for the vectorised path; for serendipity bricks the
+!> order is H1Basis_SD_BrickBubbleIndices, shared by both). Keep them in step.
 !>
 !> This matters because tensor-product quadrature counts are formed as
 !> (degree+1)**dim, which is only valid for a PER-DIRECTION degree. The
@@ -954,13 +956,15 @@ CONTAINS
 !> routines use different index conventions (SD_* takes degrees directly, the
 !> plain ones add +2) and the loop bounds compensate -- so only the label moves.
 !------------------------------------------------------------------------------
-  FUNCTION getBubbleMaxDegree1D( Element, p ) RESULT(deg)
+  FUNCTION getBubbleMaxDegree1D( Element, p, nb ) RESULT(deg)
 !------------------------------------------------------------------------------
     IMPLICIT NONE
 
     TYPE(Element_t) :: Element
     INTEGER, INTENT(IN) :: p
+    INTEGER, INTENT(IN), OPTIONAL :: nb  !< Number of bubbles actually used
     INTEGER :: deg
+    INTEGER :: nbub
 
     IF (.NOT. ASSOCIATED(Element % PDefs)) THEN
       deg = p
@@ -983,11 +987,24 @@ CONTAINS
       ! dominates the out-of-plane k <= p-3.
       CASE (7)
         deg = p - 2
-      ! Brick: "DO i=2,p-4 ; DO j=2,p-i-2 ; DO k=2,p-i-j" over
-      ! Phi(i)*Phi(j)*Phi(k), so with the other two at their minimum of 2 one
-      ! index reaches p-4.
+      ! Brick: Phi(i)*Phi(j)*Phi(k), i,j,k >= 2, i+j+k <= p (ordered by
+      ! H1Basis_SD_BrickBubbleIndices), so with the other two at their minimum
+      ! of 2 one index reaches p-4 (a truncated set may reach less, see below).
       CASE (8)
         deg = p - 4
+        ! A truncated set ("b:N" not a complete count) is the head of the
+        ! ordering of H1Basis_SD_BrickBubbleIndices and may reach less, e.g.
+        ! "b:7" only Phi(3) while its complete set "b:10" reaches Phi(4).
+        IF (PRESENT(nb)) THEN
+          nbub = nb
+          IF (nbub > 0 .AND. nbub < (p-3)*(p-4)*(p-5)/6) THEN
+            BLOCK
+              INTEGER :: ind(3,nbub), n
+              CALL H1Basis_SD_BrickBubbleIndices(p, nbub, ind, n)
+              IF (n > 0) deg = MAXVAL(ind(:,1:n))
+            END BLOCK
+          END IF
+        END IF
       END SELECT
     END IF
 
@@ -1201,7 +1218,7 @@ CONTAINS
       ! "p:N" element, where edgeP == N already dominates and is genuinely
       ! per-direction; it bites only when an explicit "b:" raises the bubble
       ! degree above the edge and face degrees.
-      bubbleP = getBubbleMaxDegree1D( Element, bubbleP )
+      bubbleP = getBubbleMaxDegree1D( Element, bubbleP, Element % BDOFs )
 
       ! Get the number r of Gauss points for the product of two basis functions:
       ! r = (2*max(p)+1)/2

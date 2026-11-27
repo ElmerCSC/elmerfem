@@ -2725,7 +2725,10 @@ CONTAINS
        Force = 0.0_dp
        SForce = 0.0_dp
 
-       IP = GaussPoints( Element )
+       ! The rule of the primary solver: GetTensors may read values stored at its
+       ! integration points, as the UMAT stress is, which an "Element Integration
+       ! Points" of the solver makes differ from the default rule.
+       IP = GaussPointsAdapt( Element, Proj % Solver )
        DO t=1,IP % n
          stat = ElementInfo( Element, Nodes, IP % u(t), IP % v(t), IP % w(t), &
              detJ, Basis, dBasisdx )
@@ -2740,9 +2743,20 @@ CONTAINS
          T2 = 0.0_dp
          CALL GetTensors( Proj, Element, Nodes, n, nd, t, Basis, dBasisdx, T1, T2 )
 
-         CALL NodalProjectorMass( Mass, Basis, nd, Weight )
          CALL NodalProjectorTensor( Force, Basis, nd, ncomp, Weight, T1 )
          IF ( Two ) CALL NodalProjectorTensor( SForce, Basis, nd, ncomp, Weight, T2 )
+       END DO
+
+       ! The mass matrix over the element's own rule: a reduced rule of the
+       ! solver need not integrate it to full rank (8 points on a 20-node
+       ! brick give rank 8), and the fit would be singular.
+       IP = GaussPoints( Element )
+       DO t=1,IP % n
+         stat = ElementInfo( Element, Nodes, IP % u(t), IP % v(t), IP % w(t), &
+             detJ, Basis, dBasisdx )
+         Weight = IP % s(t) * detJ
+         IF ( CSymmetry ) Weight = Weight * SUM( Basis(1:n) * Nodes % x(1:n) )
+         CALL NodalProjectorMass( Mass, Basis, nd, Weight )
        END DO
 
        CALL DefaultUpdateEquations( Mass, Zero(1:nd) )

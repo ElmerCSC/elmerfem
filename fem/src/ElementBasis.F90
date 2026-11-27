@@ -2837,18 +2837,16 @@ CONTAINS
            ! Get p from bubble DOFs
            p = getEffectiveBubbleP(element,p,bdofs)
 
-           ! For each bubble calculate value of basis function and its derivative
-           ! for index pairs i,j,k=2,..,p-4, i+j+k=6,..,p
+           ! Same order as in ElementInfo, see H1Basis_SD_BrickBubbleIndices
            IF(SerendipityPBasis) THEN
-             DO i=2,p-4
-               DO j=2,p-i-2
-                 DO k=2,p-i-j
-                   IF ( q >= SIZE(BasisDegree) ) CYCLE
-                   q = q + 1
-                   BasisDegree(q) = i+j+k
-                 END DO
-               END DO
+             SD_bubbles_brick: BLOCK
+             INTEGER :: BubbleInd(3,MAX(0,SIZE(BasisDegree)-q)), nbi, l
+             CALL H1Basis_SD_BrickBubbleIndices(p, SIZE(BubbleInd,2), BubbleInd, nbi)
+             DO l=1,nbi
+               q = q + 1
+               BasisDegree(q) = SUM(BubbleInd(:,l))
              END DO
+             END BLOCK SD_bubbles_brick
            ELSE
              DO i=0,p-2
                 DO j=0,p-2

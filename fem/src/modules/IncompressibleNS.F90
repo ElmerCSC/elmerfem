@@ -2984,8 +2984,17 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   IF(.NOT.Found) Serendipity = .TRUE.
 
   IF(Serendipity) THEN
+    ! The brick is b:7, not the complete set b:4: Q1 pressure has a
+    ! checkerboard mode whose elementwise gradient (yz,xz,xy) is odd in two
+    ! coordinates, and none of the four bubbles of b:4 is, so condensation can
+    ! not see it and with velocity given on the whole boundary the pressure
+    ! is singular (arbitrary +-amplitude around the right mean). b:7 is
+    ! bubble*{1,x,y,z,xy,xz,yz}, which spans the gradient of any trilinear
+    ! function (see H1Basis_SD_BrickBubbleIndices), and integrates with the
+    ! same 4^3 rule as b:4. In 2D the quad b:3 already holds bubbles odd in
+    ! one coordinate, which is all the 2D checkerboard (gradient (y,x)) needs.
     CALL ListAddNewString(GetSolverParams(),'Element', &
-      'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:4 -prism b:4 -pyramid b:4')
+      'p:1 -tri b:1 -tetra b:1 -quad b:3 -brick b:7 -prism b:4 -pyramid b:4')
     ! The pyramid entry here CANNOT BE BUILT, and stays anyway. ElementInfoVec
     ! refuses a p-pyramid under the serendipity scheme outright -- "p-Pyramid not
     ! available for serendipity scheme, please use full polynomial scheme
@@ -3015,7 +3024,8 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
     !
     ! The other five entries were checked against their own ladders and are all
     ! on them: tri 1, tetra 1, quad 4 of (1,4,9), brick 8 of (1,8,27), pyramid 4
-    ! of (1,4,10).
+    ! of (1,4,10). (Any count now works for the brick; 8 holds all the
+    ! Phi(2)/Phi(3) products, i.e. the b:7 set of the serendipity string.)
     CALL ListAddNewString(GetSolverParams(),'Element', &
       'p:1 -tri b:1 -tetra b:1 -quad b:4 -brick b:8 -prism b:9 -pyramid b:4')
   END IF

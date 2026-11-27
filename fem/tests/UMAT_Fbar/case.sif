@@ -1,0 +1,75 @@
+! F-bar ("UMAT Bbar" with Large Deflection) of linear bricks with a UMAT. A
+! cantilever of a nearly incompressible material (nu = 0.49) on a distorted
+! mesh of 808 bricks, bent by a tip load in two steps. The tip moves -1.18,
+! against -0.64 of the locked bricks. The F-bar tangent of "UMAT Tangent =
+! Material" keeps the Newton iteration quadratic near the solution.
+Header
+  Mesh DB "." "beam"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian 3D
+  Simulation Type = Transient
+  Timestepping Method = BDF
+  BDF Order = 1
+  Timestep Sizes = 1
+  Timestep Intervals = 2
+  Steady State Max Iterations = 1
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Material 1
+  Number of Material Constants = Integer 3
+  Number of State Variables = Integer 0
+  ! {density, Young's modulus, Poisson's ratio}:
+  Material Constants(3) = Real 1.0 1.0e5 0.49
+  UMAT Subroutine = File "UMATLib" "linear_isotropic"
+  UMAT Bbar = Logical True
+  Density = 1.0
+End
+
+Solver 1
+  Equation = Elasticity With UMAT
+  Variable = -dofs 3 Displacement
+  Procedure = "ElasticSolve" "ElasticSolver"
+  Linear System Solver = Direct
+  Nonlinear System Max Iterations = 30
+  Nonlinear System Convergence Tolerance = 1.0e-8
+  Large Deflection = True
+  Time Derivative Order = 1
+  Quasi Stationary = Logical True
+  Nonlinear System Linesearch = True
+End
+
+Solver 2
+  Exec Solver = After Timestep
+  Equation = SaveScalars
+  Procedure = "SaveData" "SaveScalars"
+  Filename = tip.dat
+  Variable 1 = Displacement 2
+  Operator 1 = min
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Boundary Condition 1
+  Target Boundaries = 1
+  Displacement 1 = 0
+  Displacement 2 = 0
+  Displacement 3 = 0
+End
+
+Boundary Condition 2
+  Target Boundaries = 2
+  Surface Traction 2 = Variable Time
+    Real MATC "-20*tx"
+End
+
+Solver 1 :: Reference Norm = Real 0.34980706

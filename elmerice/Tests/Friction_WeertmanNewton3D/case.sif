@@ -178,9 +178,9 @@ Boundary Condition 6
 
   Top Surface = Real 1000.0
 End
-! Re-pinned: Newton with bubbles now linearises the Picard problem (bubble
-! trial functions out of the Newton terms); old value 903.83845
-
-
-Solver 2 :: Reference Norm = 8.98803785E+02
+! History: 903.83845 with b:4 bricks and the old Newton terms; 903.747018 with
+! the default b:7 (IncompressibleNS _Init0, removes the 3D checkerboard
+! pressure mode); 898.803785 with b:4 and Newton linearising the Picard
+! problem (bubble trial functions out of the Newton terms). Both changes:
+Solver 2 :: Reference Norm = 8.98692333E+02
 Solver 2 :: Reference Norm Tolerance = Real 1.0e-4

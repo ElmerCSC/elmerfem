@@ -48,6 +48,7 @@ MODULE SolveCore
     USE ParallelUtils, ONLY : ParallelDot, PartitionVector
     USE Multigrid, ONLY : MultigridSolve
     USE BoundaryConditionUtils, ONLY : EnforceDirichletConditions, SetDirichletBoundaries
+    USE LumpingUtils, ONLY : BoundaryWaveFlux, ComponentCoilEnergy, ComponentStokesTheorem
     USE MatrixScaling, ONLY : ScaleLinearSystem, BackScaleLinearSystem
     USE MatrixAssembly, ONLY : CreateChildMatrix
     USE IterSolve, ONLY : NumericalError
@@ -1583,6 +1584,9 @@ CONTAINS
     IF(.NOT. GotIt) THEN
       CALL Fatal(Caller,'Give "Linear System Solver", e.g. "iterative" or "direct"')
     END IF
+
+    ! Not every linear solver reports its status: forget the one of an earlier solve.
+    IF( ASSOCIATED( Solver % Variable ) ) Solver % Variable % LinConverged = -1
 
     IF( ListGetLogical( Params,'Linear System Skip Mask',Found ) ) THEN
       IF(.NOT. ASSOCIATED(A % SkipMask)) THEN

@@ -124,4 +124,6 @@ Boundary Condition 3
 End
 
 
-Solver 1 :: Reference Norm = 5.09555195
+! 5.09555195 before the extruded mesh got its stabilization parameters
+! (MeshStabParams); until then hK was zero and "Stabilize = True" had no effect.
+Solver 1 :: Reference Norm = 5.09515299

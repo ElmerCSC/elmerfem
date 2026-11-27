@@ -18,9 +18,6 @@ Compilation for macOS
     ** install qt4 with `brew install cartr/qt4/qt@4` 
     ** install qwt with `brew install cartr/qt4/qwt-qt4`
     ** `cmake .. -D WITH_OpenMP:BOOLEAN=TRUE -D WITH_MPI:BOOLEAN=TRUE -D WITH_ELMERGUI:BOOLEAN=TRUE`
- * With ElmerPost:
-    ** `brew cask install xquartz`
-    ** ....
  * `make`
  * `make install`
 

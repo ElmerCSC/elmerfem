@@ -2343,6 +2343,7 @@ CONTAINS
 
     !------------------------------------------------------------------------------
     Solver % DoneTime = 0
+    Solver % TimeLevels = 0
     IF ( .NOT. ASSOCIATED( Solver % Variable ) ) RETURN
     IF ( .NOT. ASSOCIATED( Solver % Variable % Values ) ) RETURN
     IF (SIZE(Solver % Variable % Values)==0 ) THEN
@@ -3052,12 +3053,20 @@ CONTAINS
     DivergenceExit = .FALSE.
 
     IF ( TransientSimulation ) THEN
-      DO k=1,nSolvers
-        Solver => Model % Solvers(k)
-        IF ( C_ASSOCIATED(Solver % PROCEDURE) ) THEN
-          CALL InitializeTimestep(Solver)
-         END IF
-      END DO
+      ! A call for only the solvers after the timestep continues the timestep
+      ! of the previous call: the timestep must not be initialized again.
+      ExecSlot = .TRUE.
+      IF( PRESENT( BeforeTime ) ) THEN
+        IF( PRESENT( AtTime ) ) ExecSlot = BeforeTime .OR. AtTime
+      END IF
+      IF( ExecSlot ) THEN
+        DO k=1,nSolvers
+          Solver => Model % Solvers(k)
+          IF ( C_ASSOCIATED(Solver % PROCEDURE) ) THEN
+            CALL InitializeTimestep(Solver)
+          END IF
+        END DO
+      END IF
     END IF
 
     IF( TransientSimulation .OR. Scanning ) THEN
