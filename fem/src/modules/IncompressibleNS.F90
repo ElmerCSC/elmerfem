@@ -132,6 +132,11 @@ MODULE IncompressibleLocalForms
   ! components. Modes 2 and 3 are read through handles at the integration
   ! points, so they may vary in space or depend on variables.
   LOGICAL :: NSPorous = .FALSE.
+
+  ! "Stabilization Method = VMS": residual-based variational multiscale
+  ! stabilisation, see the VMS block in LocalBulkMatrix. Set in
+  ! IncompressibleNSSolver before the (threaded) assembly.
+  LOGICAL :: NSVMS = .FALSE.
   INTEGER, ALLOCATABLE :: NSPorousMode(:)
   REAL(KIND=dp), ALLOCATABLE :: NSPorousR(:,:)
 
@@ -203,6 +208,9 @@ CONTAINS
     ! Porous media: DragVec(:,i) = mu*R_i at the integration points.
     LOGICAL :: Porous
     REAL(KIND=dp), ALLOCATABLE :: DragVec(:,:)
+    ! VMS: the body force without the Newton load, and the VMS parts of the
+    ! mass matrix and load, see the VMS block.
+    REAL(KIND=dp), ALLOCATABLE :: LoadPhys(:,:), VMSMass(:,:,:,:), VMSLoad(:,:)
     REAL(KIND=dp), ALLOCATABLE :: CoordAtIp(:,:)
     REAL(KIND=dp), ALLOCATABLE :: drhodx(:,:), rhoPrevVec(:), TempAtIp(:), TempPrevAtIp(:), &
         dTempdx(:,:), dPressuredx(:,:), CompressWeight(:)
@@ -697,6 +705,14 @@ CONTAINS
     IF( MeshVeloOn .AND. Transient .AND. ( ThermalCompressible .OR. PerfectGasCompressible ) ) THEN
       LoadAtIpVec(1:ngp,dofs) = LoadAtIpVec(1:ngp,dofs) - &
           SUM( MeshVeloVec(1:ngp,1:dim) * drhodx(1:ngp,1:dim), 2 ) / rhoVec(1:ngp)
+    END IF
+
+    ! The physical body force, for the VMS residual, before the Newton load is
+    ! added below: the VMS residual operator is the Picard one, so the Newton
+    ! load in it would keep the residual from vanishing at the solution.
+    IF( NSVMS ) THEN
+      ALLOCATE( LoadPhys(ngp,dim) )
+      LoadPhys(1:ngp,1:dim) = LoadAtIpVec(1:ngp,1:dim)
     END IF
 
     IF ( Newton ) THEN
@@ -1243,6 +1259,8 @@ CONTAINS
 
     ! Masses (use symmetry)
     ! Compute bilinear form G=G+(alpha u, u) = u .dot. (grad u)
+    IF( NSVMS ) CALL VMSTerms()
+
     IF ( .NOT. StokesFlow ) THEN
       CALL LinearForms_UdotU(ngp, ntot, elemdim, BasisVec, DetJVec, VelocityMass, rhovec)
 
@@ -1306,6 +1324,15 @@ CONTAINS
     !
     ! weight_a is rebuilt rather than carried down from that block: the convection
     ! assembly between here and there overwrites it. tauVec is untouched.
+    IF( NSVMS ) THEN
+      DO i = 1, dofs
+        FORCE(i::dofs) = FORCE(i::dofs) + VMSLoad(1:ntot,i)
+        DO j = 1, dofs
+          MASS(i::dofs,j::dofs) = MASS(i::dofs,j::dofs) + VMSMass(1:ntot,1:ntot,i,j)
+        END DO
+      END DO
+    END IF
+
     IF ( PStab ) THEN
       weight_a(1:ngp) = -tauVec(1:ngp) * detJVec(1:ngp)
       ForcePart = 0._dp
@@ -1473,6 +1500,241 @@ CONTAINS
 !------------------------------------------------------------------------------
 
   CONTAINS
+
+!------------------------------------------------------------------------------
+!> Residual-based variational multiscale (VMS) terms, "Stabilization Method =
+!> VMS": the formulation of FlowSolve's NavierStokes.F90 (after its fixes, see
+!> test FlowSolveVMS), in the same per integration point form. Fine scales
+!> u' = -tau_M*R, p' = -tau_C*div(u), R the momentum residual; added to the
+!> Galerkin terms assembled elsewhere:
+!>   continuity  -(grad q, u')                       (PSPG-like)
+!>   momentum    ((u.grad)v, -u') + (v, (u'.grad)u)  (SUPG + cross stress)
+!>               - (grad v, u'(x)u')                 (Reynolds stress)
+!>               + (div v, tau_C div u)              (grad-div)
+!> with tau_M = (u.G u + C1^2 nu^2 G:G/dim [+ 4/dt^2])^-1/2 and tau_C =
+!> 1/(tau_M g.g), G and g from the element metric. Products of two residuals
+!> are linearised with one of them frozen at the previous iterate, halves
+!> taken both ways. The viscous part of R uses the recovered second
+!> derivatives (gradients evaluated at the nodes and interpolated).
+!>
+!> As in FlowSolve the terms are built in kinematic form (nu = mu/rho, R and
+!> the force per unit mass, pressure p/rho). The momentum rows are then scaled
+!> by rho, the continuity row by -1 (this solver's continuity row is -(q,
+!> div u), FlowSolve's +(q, div u)) and the pressure enters as p/rho, so the
+!> unknown is the physical pressure here -- FlowSolve's VMS gives p/rho.
+!>
+!> The residual operator includes the Coriolis and porous drag terms (it did
+!> not in FlowSolve, which has neither in VMS). Picard in u: the Newton terms
+!> of this solver act on the Galerkin part only, and the VMS residual uses the
+!> physical force (LoadPhys), so Newton and Picard share the solution.
+!------------------------------------------------------------------------------
+    SUBROUTINE VMSTerms()
+      REAL(KIND=dp) :: dNod(n,n,3), GradNod(n,3,3), LC(3,n), Gmat(3,3), Gvec(3)
+      REAL(KIND=dp) :: RM(n,4,4), P(4), F(3), PV(3), Velo(3), Grad(3,3), Rx(3,3)
+      REAL(KIND=dp) :: U0(3), LapB(n), LapU(3), PrevV(dim+1,n), PrevV2(dim+1,n), dtV(3,n)
+      REAL(KIND=dp) :: Kloc(n,n,4,4), Mloc(n,n,4,4), Floc(n,4)
+      REAL(KIND=dp) :: rho, nu, w, wm, wc, tauM, tauC, tau2, C1, minl, maxl, detJ, u, v, ww
+      REAL(KIND=dp) :: Bas(n), dBas(n,3)
+      INTEGER :: tt, pp, qq, ii, jj, kk, rr, c, Order
+      LOGICAL :: st
+
+      IF( nb > 0 .OR. nd /= n .OR. ntot /= n ) CALL Fatal(Caller, &
+          '"Stabilization Method = VMS" is for the equal-order linear element "n:1": '// &
+          'no bubbles, no higher-order dofs')
+      IF( ThermalCompressible .OR. PerfectGasCompressible ) CALL Fatal(Caller, &
+          '"Stabilization Method = VMS" is for incompressible flow only')
+      IF( IsAxiSymmetric .OR. GradPVersion .OR. DivCurlForm ) CALL Fatal(Caller, &
+          '"Stabilization Method = VMS" is implemented for the Cartesian default '// &
+          '(Grad-U, divergence pressure) form only')
+
+      c = dim + 1
+      ALLOCATE( VMSMass(ntot,ntot,dofs,dofs), VMSLoad(ntot,dofs) )
+      VMSMass = 0._dp; VMSLoad = 0._dp
+      Kloc = 0._dp; Mloc = 0._dp; Floc = 0._dp
+
+      ! Gradients of the basis and of the iterate at the nodes, for the
+      ! recovered second derivatives.
+      DO pp = 1, n
+        st = ElementInfo( Element, Nodes, Element % TYPE % NodeU(pp), &
+            Element % TYPE % NodeV(pp), Element % TYPE % NodeW(pp), detJ, Bas, dBas )
+        dNod(1:n,pp,1:3) = dBas(1:n,1:3)
+        DO ii = 1, dim
+          DO jj = 1, 3
+            GradNod(pp,ii,jj) = SUM( NodalSol(ii,1:n) * dBas(1:n,jj) )
+          END DO
+        END DO
+      END DO
+
+      ! Reference coordinates scaled to [-1,1], for the element metric G.
+      LC(1,1:n) = Element % TYPE % NodeU(1:n)
+      LC(2,1:n) = Element % TYPE % NodeV(1:n)
+      LC(3,1:n) = Element % TYPE % NodeW(1:n)
+      DO ii = 1, Element % TYPE % DIMENSION
+        minl = MINVAL(LC(ii,1:n)); maxl = MAXVAL(LC(ii,1:n))
+        LC(ii,1:n) = 2*(LC(ii,1:n)-minl)/(maxl-minl)-1
+      END DO
+      C1 = 2._dp / Element % StabilizationMK
+
+      ! Time derivative of the iterate, by the BDF the solver uses.
+      dtV = 0._dp
+      IF( Transient ) THEN
+        Order = MIN( CurrentModel % Solver % DoneTime, CurrentModel % Solver % Order )
+        CALL GetLocalSolution( PrevV, tStep=-1 )
+        IF( Order < 2 ) THEN
+          dtV(1:dim,1:n) = ( NodalSol(1:dim,1:n) - PrevV(1:dim,1:n) ) / dt
+        ELSE
+          CALL GetLocalSolution( PrevV2, tStep=-2 )
+          dtV(1:dim,1:n) = ( 1.5_dp*NodalSol(1:dim,1:n) - 2*PrevV(1:dim,1:n) + &
+              0.5_dp*PrevV2(1:dim,1:n) ) / dt
+        END IF
+      END IF
+
+      DO tt = 1, ngp
+        w = detJVec(tt)
+        rho = rhoVec(tt)
+        ! Momentum rows times rho, the continuity row times -1, see above.
+        wm = w * rho
+        wc = -w
+        nu = muVec(tt) / rho
+        Bas(1:n) = BasisVec(tt,1:n)
+        dBas(1:n,1:3) = dBasisdxVec(tt,1:n,1:3)
+
+        Velo = 0._dp
+        IF( .NOT. StokesFlow ) Velo(1:dim) = VeloVec(tt,1:dim)
+        U0 = 0._dp; Grad = 0._dp; PV = 0._dp; F = 0._dp
+        DO ii = 1, dim
+          U0(ii) = SUM( NodalSol(ii,1:n) * Bas(1:n) )
+          DO jj = 1, dim
+            Grad(ii,jj) = SUM( NodalSol(ii,1:n) * dBas(1:n,jj) )
+          END DO
+          PV(ii) = SUM( dtV(ii,1:n) * Bas(1:n) )
+          F(ii) = LoadPhys(tt,ii) / rho
+        END DO
+
+        ! Reaction terms of the residual (kinematic): Coriolis 2 Omega x u
+        ! and the porous drag mu*R_i*u_i/rho.
+        Rx = 0._dp
+        IF( Rotating ) Rx(1:dim,1:dim) = 2*CoriolisC(1:dim,1:dim)
+        IF( Porous ) THEN
+          DO ii = 1, dim
+            Rx(ii,ii) = Rx(ii,ii) + DragVec(tt,ii) / rho
+          END DO
+        END IF
+
+        ! Recovered Laplacians of the basis and of the iterate.
+        DO qq = 1, n
+          LapB(qq) = 0._dp
+          DO jj = 1, dim
+            LapB(qq) = LapB(qq) + SUM( dNod(qq,1:n,jj) * dBas(1:n,jj) )
+          END DO
+        END DO
+        LapU = 0._dp
+        DO ii = 1, dim
+          DO jj = 1, dim
+            LapU(ii) = LapU(ii) + SUM( GradNod(1:n,ii,jj) * dBas(1:n,jj) )
+          END DO
+        END DO
+
+        ! The residual operator RM(q,eq,var) and the residual P of the iterate.
+        RM = 0._dp
+        DO qq = 1, n
+          DO ii = 1, dim
+            RM(qq,ii,ii) = SUM( Velo(1:dim) * dBas(qq,1:dim) ) - nu * LapB(qq)
+            DO jj = 1, dim
+              RM(qq,ii,jj) = RM(qq,ii,jj) + Rx(ii,jj) * Bas(qq)
+            END DO
+            RM(qq,ii,c) = dBas(qq,ii) / rho
+            RM(qq,c,ii) = dBas(qq,ii)
+          END DO
+        END DO
+        P = 0._dp
+        DO ii = 1, dim
+          P(ii) = SUM( Velo(1:dim) * Grad(ii,1:dim) ) - nu * LapU(ii) + &
+              SUM( NodalSol(c,1:n) * dBas(1:n,ii) ) / rho + SUM( Rx(ii,1:dim) * U0(1:dim) )
+          P(c) = P(c) + Grad(ii,ii)
+        END DO
+
+        ! tau_M and tau_C from the element metric.
+        Gmat = 0._dp; Gvec = 0._dp
+        DO ii = 1, dim
+          DO jj = 1, dim
+            Gvec(ii) = Gvec(ii) + SUM( LC(jj,1:n) * dBas(1:n,ii) )
+            DO kk = 1, dim
+              Gmat(ii,jj) = Gmat(ii,jj) + SUM( LC(kk,1:n) * dBas(1:n,ii) ) * &
+                  SUM( LC(kk,1:n) * dBas(1:n,jj) )
+            END DO
+          END DO
+        END DO
+        IF( Transient ) THEN
+          tauM = 1._dp / SQRT( SUM( Velo*MATMUL(Gmat,Velo) ) + &
+              C1**2 * nu**2 * SUM(Gmat*Gmat) / dim + 4/dt**2 )
+        ELSE
+          tauM = 1._dp / SQRT( SUM( Velo*MATMUL(Gmat,Velo) ) + &
+              C1**2 * nu**2 * SUM(Gmat*Gmat) / dim )
+        END IF
+        tauC = 1._dp / ( tauM * SUM( Gvec*Gvec ) )
+        tau2 = tauM**2
+
+        ! The kinematic contributions of FlowSolve, weighted to this solver's rows.
+        DO ii = 1, dim
+          DO pp = 1, n
+            DO qq = 1, n
+              Mloc(pp,qq,c,ii) = Mloc(pp,qq,c,ii) + wc * tauM * Bas(qq) * dBas(pp,ii)
+              DO kk = 1, c
+                Kloc(pp,qq,c,kk) = Kloc(pp,qq,c,kk) + wc * tauM * RM(qq,ii,kk) * dBas(pp,ii)
+              END DO
+            END DO
+            Floc(pp,c) = Floc(pp,c) + wc * tauM * F(ii) * dBas(pp,ii)
+          END DO
+
+          DO jj = 1, dim
+            DO pp = 1, n
+              DO qq = 1, n
+                Kloc(pp,qq,ii,jj) = Kloc(pp,qq,ii,jj) + wm * ( &
+                    tauM * P(ii) * Bas(qq) * dBas(pp,jj) / 2 &
+                  - tauM * F(ii) * Bas(qq) * dBas(pp,jj) &
+                  + tauC * RM(qq,c,jj) * dBas(pp,ii) )
+                Kloc(pp,qq,ii,ii) = Kloc(pp,qq,ii,ii) + wm * ( &
+                  - tauM * P(jj) * dBas(qq,jj) * Bas(pp) / 2 &
+                  + tauM * F(jj) * dBas(qq,jj) * Bas(pp) )
+
+                Mloc(pp,qq,ii,jj) = Mloc(pp,qq,ii,jj) + wm * ( &
+                  - tauM * Bas(qq) * Grad(ii,jj) * Bas(pp) &
+                  - tau2 * P(ii) * Bas(qq) * dBas(pp,jj) &
+                  + tau2 * Bas(qq) * F(ii) * dBas(pp,jj) &
+                  - tau2 * PV(ii) * Bas(qq) * dBas(pp,jj) / 2 )
+                Mloc(pp,qq,ii,ii) = Mloc(pp,qq,ii,ii) + wm * ( &
+                    tauM * Bas(qq) * Velo(jj) * dBas(pp,jj) &
+                  - tau2 * Bas(qq) * P(jj) * dBas(pp,jj) &
+                  + tau2 * Bas(qq) * F(jj) * dBas(pp,jj) &
+                  - tau2 * Bas(qq) * PV(jj) * dBas(pp,jj) / 2 )
+
+                DO kk = 1, c
+                  Kloc(pp,qq,ii,kk) = Kloc(pp,qq,ii,kk) + wm * ( &
+                    - tauM * RM(qq,jj,kk) * Grad(ii,jj) * Bas(pp) / 2 &
+                    + tauM * RM(qq,ii,kk) * Velo(jj) * dBas(pp,jj) / 2 &
+                    - tau2 * RM(qq,ii,kk) * P(jj) * dBas(pp,jj) / 2 &
+                    - tau2 * P(ii) * RM(qq,jj,kk) * dBas(pp,jj) / 2 &
+                    + tau2 * RM(qq,ii,kk) * F(jj) * dBas(pp,jj) &
+                    + tau2 * F(ii) * RM(qq,jj,kk) * dBas(pp,jj) )
+                END DO
+              END DO
+              ! Reynolds stress, force-force part, on the right hand side.
+              Floc(pp,ii) = Floc(pp,ii) + wm * tau2 * F(ii) * F(jj) * dBas(pp,jj)
+            END DO
+          END DO
+        END DO
+      END DO
+
+      DO ii = 1, c
+        DO kk = 1, c
+          StiffOrd(1:n,1:n,ii,kk) = StiffOrd(1:n,1:n,ii,kk) + Kloc(1:n,1:n,ii,kk)
+          VMSMass(1:n,1:n,ii,kk) = Mloc(1:n,1:n,ii,kk)
+        END DO
+        VMSLoad(1:n,ii) = Floc(1:n,ii)
+      END DO
+    END SUBROUTINE VMSTerms
+
 
 
     FUNCTION EffectiveViscosityVec( ngp, BasisVec, dBasisdxVec, Element, NodalSol, &
@@ -2086,7 +2348,7 @@ CONTAINS
     CHARACTER(LEN=MAX_NAME_LEN) :: str, FSSAFlag
     INTEGER :: c,i,j,k,l,p,q,t,ngp,norm_comp,no_slip_comp
     LOGICAL :: NormalTangential, HaveSlip, HaveForce, HavePres, HaveFrictionW, HaveFrictionU, &
-        HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, HaveWallLaw, &
+        HaveFriction, HaveNormal, FrictionNormal, Found, Stat, HaveFSSA, HaveWallLaw, VMSWall, &
         FoundLoad, GotRelax, LocalNewton, HaveNormalSlip
     REAL(KIND=dp) :: ExtPressure, s, detJ, FSSAtheta, wut0, wexp, wcoeff, un, ut, rho, mu, &
         WallDist, WallRoughness, FrictionVelocity, DFX
@@ -2094,6 +2356,9 @@ CONTAINS
         Vect(3), Velo(3), TanFrictionCoeff, DummyVals(1), LoadVec(dim), FSSAaccum, &
         NewtonRelax
     TYPE(Nodes_t), SAVE :: Nodes
+    TYPE(ValueHandle_t), SAVE :: MassFlux_h
+    REAL(KIND=dp) :: MassFlux, rhoB
+    LOGICAL :: HaveMassFlux
     TYPE(ValueHandle_t), SAVE :: ExtPressure_h, SurfaceTraction_h, SlipCoeff_h, NormalSlipCoeff_h, &
         NormalTangential_h, NormalTangentialVelo_h, WeertmanCoeff_h, WeertmanExp_h, &
         FrictionUt0_h, FrictionNormal_h, FrictionCoeff_h, &
@@ -2120,6 +2385,11 @@ CONTAINS
       IF( .NOT. ListGetElementSomewhere( ExtPressure_h) ) THEN
         CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','External Pressure')
       END IF
+      ! FlowSolve's alias of "External Pressure".
+      IF( .NOT. ListGetElementSomewhere( ExtPressure_h) ) THEN
+        CALL ListInitElementKeyword( ExtPressure_h,'Boundary Condition','Normal Pressure')
+      END IF
+      CALL ListInitElementKeyword( MassFlux_h,'Boundary Condition','Mass Flux')
       CALL ListInitElementKeyword( SurfaceTraction_h,'Boundary Condition','Surface Traction',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( SlipCoeff_h,'Boundary Condition','Slip Coefficient',InitVec3D=.TRUE.)
       CALL ListInitElementKeyword( NormalSlipCoeff_h,'Boundary Condition','Normal Slip Coefficient')
@@ -2228,7 +2498,16 @@ CONTAINS
     ! (KESolver's EpsilonWall, Komega/SSTKomega's OmegaWall). Treated as just
     ! another nonlinear friction law feeding the slip-coefficient mechanism
     ! below, Picard-linearized like the generic "Friction Coefficient" case.
-    HaveWallLaw = ListGetLogical( BC, 'Wall Law', Found ) .AND. .NOT. HaveFriction
+    !
+    ! "VMS Wall" (FlowSolve's wall BC for its VMS) is the same wall law here.
+    ! FlowSolve's version applied rho*u_tau^2 itself as the coefficient of u.v
+    ! on all velocity components (its consistency terms, built from the
+    ! boundary element's own tangential derivatives, vanish): this is the
+    ! dimensionally right friction rho*u_tau^2/|u_t| on the tangential
+    ! components, i.e. the wall function. As with "Wall Law", the wall-normal
+    ! velocity is the case's own Dirichlet condition (e.g. "Velocity 2 = 0").
+    VMSWall = ListGetLogical( BC, 'VMS Wall', Found )
+    HaveWallLaw = ( ListGetLogical( BC, 'Wall Law', Found ) .OR. VMSWall ) .AND. .NOT. HaveFriction
 
     IF( HaveFriction .OR. HaveWallLaw ) THEN
       wut0 = ListGetElementReal( FrictionUt0_h, Element = Element )
@@ -2292,8 +2571,10 @@ CONTAINS
 
       ! Nothing to do, exit the routine
       !---------------------------------
+      HaveMassFlux = ListGetElementSomewhere( MassFlux_h )
+      IF( HaveMassFlux ) HaveMassFlux = ListCheckPresent( BC, 'Mass Flux' )
       IF(.NOT. (HaveForce .OR. HavePres .OR. HaveSlip .OR. HaveNormalSlip .OR. &
-          HaveFriction .OR. HaveWallLaw .OR. HaveFSSA)) RETURN
+          HaveFriction .OR. HaveWallLaw .OR. HaveFSSA .OR. HaveMassFlux)) RETURN
 
       ! Calculate normal vector only if needed, which is almost always...
       IF( HavePres .OR. NormalTangential .OR. HaveFriction .OR. HaveWallLaw .OR. HaveFSSA .OR. HaveNormalSlip ) THEN
@@ -2357,7 +2638,12 @@ CONTAINS
           ! never sees ut==0. Picard-linearized: no analytic d(TanFrictionCoeff)/dut.
           rho = ListGetElementRealParent( Dens_h, Basis, Element, Found )
           mu  = ListGetElementRealParent( Visc_h, Basis, Element, Found )
-          WallDist = ListGetElementReal( WallLayerThickness_h, Basis, Element, GaussPoint = t )
+          WallDist = ListGetElementReal( WallLayerThickness_h, Basis, Element, GaussPoint = t, Found = Found )
+          ! "VMS Wall" without "Boundary Layer Thickness": the height of the
+          ! parent element over this face, as FlowSolve's VMS wall did.
+          IF( (.NOT. Found .OR. WallDist <= 0._dp) .AND. VMSWall ) WallDist = ParentHeight( Element )
+          IF( WallDist <= 0._dp ) CALL Fatal('IncompressibleNSSolver::LocalBoundaryMatrix', &
+              '"Wall Law"/"VMS Wall" needs a positive "Boundary Layer Thickness"')
           WallRoughness = ListGetElementReal( WallRoughness_h, Basis, Element, GaussPoint = t, Found = Found )
           IF( .NOT. Found ) WallRoughness = 0._dp
 
@@ -2524,6 +2810,20 @@ CONTAINS
         END IF
       END IF
 
+      ! "Mass Flux" m (as FlowSolve): mass flux INTO the domain through the
+      ! boundary, rho*u.n = -m. With "GradP Discretization" the continuity row
+      ! is (u, grad q) = -(div u, q) + <u.n, q>, so u.n is natural there and
+      ! is given by the load <u.n, q> = -<m/rho, q> (the solver refuses "Mass
+      ! Flux" without it, where it would be a source on the boundary instead).
+      MassFlux = ListGetElementReal( MassFlux_h, Basis, Element, Found, GaussPoint = t )
+      IF( Found ) THEN
+        rhoB = ListGetElementRealParent( Dens_h, Basis, Element, Found )
+        IF( .NOT. Found ) rhoB = 1.0_dp
+        DO q=1,nd
+          FORCE(q*c) = FORCE(q*c) - s * MassFlux / rhoB * Basis(q)
+        END DO
+      END IF
+
       !FSSA stabilization: sum_i <u_i*n_i*v_z> * StabCoeff, i=1,..,dim
       !---------------------------------------------------------------
 
@@ -2585,6 +2885,43 @@ CONTAINS
 
     CALL DefaultUpdateEquations( STIFF, FORCE )
 
+  CONTAINS
+
+!------------------------------------------------------------------------------
+!> Height of the parent element over a boundary face: distance from the face
+!> centroid to the centroid of the parent's nodes not on the face (FlowSolve's
+!> VMS wall used this as the wall distance when none was given).
+!------------------------------------------------------------------------------
+    FUNCTION ParentHeight( Face ) RESULT( h )
+      TYPE(Element_t), POINTER :: Face
+      REAL(KIND=dp) :: h
+      TYPE(Element_t), POINTER :: Parent
+      TYPE(Mesh_t), POINTER :: Mesh
+      REAL(KIND=dp) :: c(3), cf(3)
+      INTEGER :: i, k, m
+
+      h = 0._dp
+      Mesh => CurrentModel % Solver % Mesh
+      Parent => Face % BoundaryInfo % Left
+      IF( .NOT. ASSOCIATED( Parent ) ) Parent => Face % BoundaryInfo % Right
+      IF( .NOT. ASSOCIATED( Parent ) ) RETURN
+      cf = 0._dp
+      m = Face % TYPE % NumberOfNodes
+      DO i = 1, m
+        k = Face % NodeIndexes(i)
+        cf = cf + [ Mesh % Nodes % x(k), Mesh % Nodes % y(k), Mesh % Nodes % z(k) ]
+      END DO
+      cf = cf / m
+      c = 0._dp; m = 0
+      DO i = 1, Parent % TYPE % NumberOfNodes
+        k = Parent % NodeIndexes(i)
+        IF( ANY( Face % NodeIndexes == k ) ) CYCLE
+        c = c + [ Mesh % Nodes % x(k), Mesh % Nodes % y(k), Mesh % Nodes % z(k) ]
+        m = m + 1
+      END DO
+      IF( m > 0 ) h = SQRT( SUM( (c/m - cf)**2 ) )
+    END FUNCTION ParentHeight
+
   END SUBROUTINE LocalBoundaryMatrix
 
 
@@ -2634,6 +2971,11 @@ SUBROUTINE IncompressibleNSSolver_Init0(Model, Solver, dt, Transient)
   ! anything else this solver reads.
   IF( GetLogical( GetSolverParams(), 'Pressure Stabilization', Found ) .OR. &
       GetStabilizeFlag( GetSolverParams() ) ) THEN
+    CALL ListAddNewString(GetSolverParams(),'Element','n:1')
+    RETURN
+  END IF
+  ! VMS is an equal-order method too (see VMSTerms in LocalBulkMatrix).
+  IF( ListGetString( GetSolverParams(), 'Stabilization Method', Found ) == 'vms' ) THEN
     CALL ListAddNewString(GetSolverParams(),'Element','n:1')
     RETURN
   END IF
@@ -2705,7 +3047,7 @@ SUBROUTINE IncompressibleNSSolver_init(Model, Solver, dt, Transient)
     CALL Fatal( Caller,'Use >Surface Traction 1< instead of >Pressure 1<')
   END IF
   IF( ListCheckPresentAnyBC( Model, 'Pressure 2' ) ) THEN
-    CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 2<')
+    CALL Fatal( Caller,'Use >Surface Traction 2< instead of >Pressure 2<')
   END IF
   IF( ListCheckPresentAnyBC( Model, 'Pressure 3' ) ) THEN
     CALL Fatal( Caller,'Use >Surface Traction 3< instead of >Pressure 3<')
@@ -2952,6 +3294,11 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   LinearAssembly = GetLogical(Params, 'Linear Equation', Found )
   StokesFlow = GetLogical(Params, 'Stokes Flow', Found )
   GradPVersion = GetLogical(Params, 'GradP Discretization', Found)
+  ! "Mass Flux" prescribes u.n, which is a natural condition only when the
+  ! continuity equation is integrated by parts; in the default form the same
+  ! load would be a mass source on the boundary, not a flux.
+  IF( ListCheckPresentAnyBC( Model, 'Mass Flux' ) .AND. .NOT. GradPVersion ) &
+      CALL Fatal(Caller, '"Mass Flux" needs "GradP Discretization = True"')
   DivCurlForm = GetLogical(Params, 'Div-Curl Discretization', Found)
   SpecificLoad = GetLogical(Params,'Specific Load',Found)
 
@@ -3068,6 +3415,18 @@ SUBROUTINE IncompressibleNSSolver(Model, Solver, dt, Transient)
   ! "Stabilize"/"Stabilization Method" is an accepted synonym -- see the
   ! matching comment in IncompressibleNSSolver_Init0.
   PStab = GetLogical(Params, 'Pressure Stabilization', Found) .OR. GetStabilizeFlag(Params)
+  ! "Stabilization Method = VMS": residual-based VMS, see VMSTerms.
+  NSVMS = ( ListGetString(Params, 'Stabilization Method', Found) == 'vms' )
+  IF( NSVMS ) THEN
+    IF( PStab ) CALL Fatal(Caller, &
+        '"Stabilization Method = VMS" and "Pressure Stabilization" are alternatives, not a combination')
+    IF( Mesh % NumberOfBulkElements > 0 ) THEN
+      IF( Mesh % Elements(1) % StabilizationMK <= 0.0_dp ) CALL Fatal(Caller, &
+          '"Stabilization Method = VMS" needs the element stabilization parameters '// &
+          '(MeshStabParams), which this mesh has not got')
+    END IF
+    CALL Info(Caller, 'Using residual-based VMS stabilization', Level=5)
+  END IF
   PStabCoeff = GetConstReal(Params, 'Pressure Stabilization Coefficient', Found)
   IF (.NOT. Found) PStabCoeff = 1.0_dp
 

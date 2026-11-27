@@ -534,7 +534,12 @@
        ELSE IF(StabilizeFlag == 'pbubbles' ) THEN
          Bubbles = .TRUE.
        ELSE IF(StabilizeFlag == 'vms' ) THEN
-         CONTINUE
+         ! The VMS assembly (NavierStokes.F90) divides the momentum equation
+         ! by the density, so the variable solved for is the kinematic
+         ! pressure p/rho, unlike with the other methods. Kept as is for
+         ! existing cases; IncompressibleNS's VMS gives the pressure itself.
+         CALL Info('FlowSolver','"Stabilization Method = VMS": the pressure '//&
+             'field is the kinematic pressure p/rho',Level=4)
        ELSE
          CALL Fatal('FlowSolver','Unknown "stabilization method": '//TRIM(StabilizeFlag))
        END IF

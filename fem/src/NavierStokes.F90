@@ -139,6 +139,7 @@ MODULE NavierStokes
      ! terms: see GradN below.
      REAL(KIND=dp), OPTIONAL :: BubbleVelo(:,:)
      REAL(KIND=dp) :: GradN(3,3), StrainN(3,3)
+     REAL(KIND=dp) :: VForce(4)
      INTEGER :: nbv
      REAL(KIND=dp) :: Nodalmu(:),Nodalrho(:), &
        NodalPressure(:), LoadVector(:,:), NodalTemperature(:), &
@@ -176,7 +177,7 @@ MODULE NavierStokes
 
      REAL(KIND=dp) :: Tau_M, Tau_C, Gmat(3,3),Gvec(3), dt=0._dp, C1, NodalVelo(4,n), &
        RM(n,4,4),LC(3,n), gradP(n), PRM(4), GradNodal(n,4,3), PVelo(3), NodalPVelo(4,n), &
-       Work(3,n), maxl, minl, Strain(3,3), muder0, muder, ViscConstantCondition
+       Work(4,n), maxl, minl, Strain(3,3), muder0, muder, ViscConstantCondition
 
      INTEGER :: i,j,k,l,c,p,q,t,dim
 
@@ -364,6 +365,9 @@ MODULE NavierStokes
         IF ( Order<2 ) THEN
           NodalPVelo(1:dim,1:n)=(NodalVelo(1:dim,1:n)-NodalPVelo(1:dim,1:n))/dt
         ELSE
+          ! Work holds all dim+1 components (velocity and pressure), like
+          ! NodalPVelo: it was Work(3,n), too small in 3D, which scrambled
+          ! the BDF2 history and broke 3D transient VMS from the 2nd step on.
           CALL GetVectorLocalSolution( Work, tStep=-2 )
           NodalPVelo(1:dim,1:n)=(1.5_dp*NodalVelo(1:dim,1:n)- &
                  2._dp*NodalPVelo(1:dim,1:n)+0.5_dp*Work(1:dim,1:n) )/dt
@@ -533,6 +537,12 @@ MODULE NavierStokes
         END DO
       END IF
 
+      ! The physical force, for the VMS residual: the Newton load added to
+      ! Force just below belongs to the Galerkin part only. The VMS residual
+      ! operator RM is the Picard one, so with the Newton load in it the
+      ! residual did not vanish at the solution (Newton converged to a wrong
+      ! one). The "stabilized" residual SU has the Newton term, and keeps Force.
+      VForce = Force
       IF ( Convect .AND. NewtonLinearization ) THEN
         Uvelo = 0.0_dp
         Uvelo(1) = SUM( Basis(1:n) * Ux(1:n) )
@@ -1172,10 +1182,10 @@ MODULE NavierStokes
               ((i-1)*(NBasis)) + (q)) - s * rho * Tau_M * PRM(j) * dBasisdx(q,j) * Basis(p)/2
               !A(i,j) = A(i,j) &
               StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-              ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M * rho*Force(i) * Basis(q) * dBasisdx(p,j)
+              ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M * rho*VForce(i) * Basis(q) * dBasisdx(p,j)
               !A(i,i) = A(i,i) &
               StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-              ((i-1)*(NBasis)) + (q)) + s * rho * Tau_M * rho*Force(j) * dBasisdx(q,j) * Basis(p)
+              ((i-1)*(NBasis)) + (q)) + s * rho * Tau_M * rho*VForce(j) * dBasisdx(q,j) * Basis(p)
               !A(i,j) = A(i,j) &
               StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
               ((j-1)*(NBasis)) + (q)) + s * rho*Tau_C*RM(q,dim+1,j) * dBasisdx(p,i)
@@ -1194,16 +1204,20 @@ MODULE NavierStokes
               ((i-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * rho*Basis(q) * PRM(j) * dBasisdx(p,j)
               !M(i,i) = M(i,i) &
               MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-              ((i-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(j) * dBasisdx(p,j)
+              ((i-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Basis(q) * rho*VForce(j) * dBasisdx(p,j)
               !M(i,j) = M(i,j) &
               MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-              ((j-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Basis(q) * rho*Force(i) * dBasisdx(p,j)
+              ((j-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Basis(q) * rho*VForce(i) * dBasisdx(p,j)
               !M(i,i) = M(i,i) &
               MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((i-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-              ((i-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * rho*Basis(q) * PVelo(j) * dBasisdx(p,j)
+              ((i-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * rho*Basis(q) * PVelo(j) * dBasisdx(p,j)/2
               !M(i,j) = M(i,j) &
               MassMatrixTrabsp(((i-1)*(NBasis)) + (p),((j-1)*(NBasis)) + (q)) = MassMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-              ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * PVelo(i) * rho*Basis(q) * dBasisdx(p,j)
+              ! The time derivative part u_t(x)u_t of the Reynolds stress,
+              ! linearised as (u_t(x)PVelo + PVelo(x)u_t)/2 like the R(x)R
+              ! part: without the halves it was 2*u_t(x)u_t at convergence
+              ! and a time-dependent linear solution was not reproduced.
+              ((j-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * PVelo(i) * rho*Basis(q) * dBasisdx(p,j)/2
 
             END DO ! p nbasis simd
           END DO ! Q nbasis
@@ -1226,10 +1240,10 @@ MODULE NavierStokes
                 ((k-1)*(NBasis)) + (q)) - s * rho * Tau_M**2 * PRM(i) * RM(q,j,k) * dBasisdx(p,j)/2
                 !A(i,k) = A(i,k) &
                 StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-                ((k-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * RM(q,i,k) * rho*Force(j) * dBasisdx(p,j)
+                ((k-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * RM(q,i,k) * rho*VForce(j) * dBasisdx(p,j)
                 !A(i,k) = A(i,k) &
                 StiffMatrixTrabsp(((i-1)*(NBasis)) + (p),((k-1)*(NBasis)) + (q)) = StiffMatrixTrabsp(((i-1)*(NBasis)) + (p), &
-                ((k-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*Force(i) * RM(q,j,k) * dBasisdx(p,j)
+                ((k-1)*(NBasis)) + (q)) + s * rho * Tau_M**2 * rho*VForce(i) * RM(q,j,k) * dBasisdx(p,j)
               END DO ! p nbasis simd
             END DO ! Q nbasis
           END DO ! k dim+1
@@ -1285,9 +1299,13 @@ MODULE NavierStokes
        ELSE IF ( Vms ) THEN
          DO i=1,dim
            DO j=1,dim
-             Load(i) = Load(i) - s * rho*Tau_M**2 * rho*Force(i) * rho*Force(j) * dBasisdx(p,j)
+             ! Reynolds stress -(grad v : u'(x)u'), u' = -tau_M*(R - f): its
+             ! force-force part -tau_M^2 f_i f_j dv_i/dx_j moves to the right
+             ! hand side with a PLUS. It was subtracted, so the VMS residual
+             ! did not vanish at the exact solution (linear MMS failed).
+             Load(i) = Load(i) + s * rho*Tau_M**2 * rho*VForce(i) * rho*VForce(j) * dBasisdx(p,j)
            END DO
-           Load(dim+1) = Load(dim+1) + s * rho*Tau_M * rho*Force(i) * dBasisdx(p,i)
+           Load(dim+1) = Load(dim+1) + s * rho*Tau_M * rho*VForce(i) * dBasisdx(p,i)
          END DO
        END IF
      END DO
