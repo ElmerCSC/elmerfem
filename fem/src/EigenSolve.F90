@@ -173,6 +173,7 @@ CONTAINS
       LOGICAL   ::     Stat, Iterative = .FALSE., NewSystem, Damped, Stability, ScaleSystem
 
       LOGICAL :: Factorize, FreeFactorize,FoundFactorize,FoundFreeFactorize
+      LOGICAL :: NoPrecRecompute, FoundNoPrecRecompute
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL
 !
       REAL(KIND=dp), POINTER CONTIG :: SaveValues(:), SaveRhs(:)
@@ -289,7 +290,7 @@ CONTAINS
       CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
       FreeFactorize = ListGetLogical( Params, &
-          'Linear System Free Fctorization', FoundFreeFactorize )
+          'Linear System Free Factorization', FoundFreeFactorize )
       CALL ListAddLogical( Params,  &
           'Linear System Free Factorization',.FALSE. )
 
@@ -341,8 +342,8 @@ CONTAINS
       Iterative = ListGetString( Params, &
           'Linear System Solver', stat ) == 'iterative'
 
-      stat = ListGetLogical( Params,  'No Precondition Recompute', stat  )
-      IF ( Iterative .AND. Stat ) THEN
+      NoPrecRecompute = ListGetLogical( Params, 'No Precondition Recompute', FoundNoPrecRecompute )
+      IF ( Iterative .AND. NoPrecRecompute ) THEN
          CALL ListAddLogical( Params, 'No Precondition Recompute', .FALSE. )
       END IF
 
@@ -482,6 +483,12 @@ CONTAINS
         CALL ListAddLogical( Params, 'Linear System Free Factorization', FreeFactorize )
       END IF
 
+      IF ( FoundNoPrecRecompute ) THEN
+        CALL ListAddLogical( Params, 'No Precondition Recompute', NoPrecRecompute )
+      ELSE
+        CALL ListRemove( Params, 'No Precondition Recompute' )
+      END IF
+
 !     %-----------------------------------------%
 !     | Either we have convergence, or there is |
 !     | an error.                               |
@@ -607,7 +614,7 @@ CONTAINS
 
          END DO
 
-         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenScaling = .TRUE. )
+         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenVectors = EigVectors )
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -904,10 +911,11 @@ END SUBROUTINE CheckResiduals
       CHARACTER ::     BMAT*1, Which*2, DirectMethod*200
       INTEGER   ::     IDO, NCV, lWORKL, kinfo, i, j, k, l, p, IERR, iter, &
                        NCONV, maxitr, ishfts, mode, istat
-      LOGICAL   ::     First, Stat, Direct = .FALSE., FactorizeSetting, &
+      LOGICAL   ::     First, Stat, Direct = .FALSE., &
                        Iterative = .FALSE., NewSystem, &
                        rvec = .TRUE.
       LOGICAL :: Factorize, FreeFactorize,FoundFactorize,FoundFreeFactorize
+      LOGICAL :: NoPrecRecompute, FoundNoPrecRecompute
       REAL(KIND=dp) :: SigmaR, SigmaI, TOL
 
       COMPLEX(KIND=dp) :: s
@@ -1010,7 +1018,7 @@ END SUBROUTINE CheckResiduals
       CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
       FreeFactorize = ListGetLogical( Params, &
-          'Linear System Refactorize', FoundFreeFactorize )
+          'Linear System Free Factorization', FoundFreeFactorize )
       CALL ListAddLogical( Params,'Linear System Free Factorization',.FALSE. )
 
       Direct = ( ListGetString( Params,'Linear System Solver', stat ) == 'direct' )
@@ -1026,8 +1034,8 @@ END SUBROUTINE CheckResiduals
 
       Iterative = ( ListGetString( Params,'Linear System Solver', stat ) == 'iterative' )
 
-      stat = ListGetLogical( Params, 'No Precondition Recompute', stat  )
-      IF ( Iterative .AND. Stat ) THEN
+      NoPrecRecompute = ListGetLogical( Params, 'No Precondition Recompute', FoundNoPrecRecompute )
+      IF ( Iterative .AND. NoPrecRecompute ) THEN
          CALL ListAddLogical( Params, 'No Precondition Recompute', .FALSE. )
       END IF
 !
@@ -1105,6 +1113,12 @@ END SUBROUTINE CheckResiduals
         CALL ListRemove( Params, 'Linear System Free Factorization' )
       ELSE
         CALL ListAddLogical( Params, 'Linear System Free Factorization', FreeFactorize )
+      END IF
+
+      IF ( FoundNoPrecRecompute ) THEN
+        CALL ListAddLogical( Params, 'No Precondition Recompute', NoPrecRecompute )
+      ELSE
+        CALL ListRemove( Params, 'No Precondition Recompute' )
       END IF
 !
 !     %-----------------------------------------%
@@ -1258,7 +1272,7 @@ END SUBROUTINE CheckResiduals
                        maxitr, mode, istat, dofs
       LOGICAL   ::     First, Stat, Direct = .FALSE., FoundFactorize, ScaleSystem, &
                        Iterative = .FALSE., NewSystem, Factorize, FreeFactorize, FoundFreeFactorize, &
-                       StandardForm
+                       StandardForm, NoPrecRecompute, FoundNoPrecRecompute
 
       CHARACTER(:), ALLOCATABLE :: DirectMethod, Method
       COMPLEX(KIND=dp) :: Sigma
@@ -1282,7 +1296,7 @@ END SUBROUTINE CheckResiduals
 !     | to solve problems of different sizes, and to get   |
 !     | different parts of the spectrum. However, the      |
 !     | following conditions must be satisfied:            |
-!     |               NEV + 1 <= NCV                       |
+!     |               NEV + 2 <= NCV                       |
 !     |                   NCV <= N                         |
 !     %----------------------------------------------------%
 !
@@ -1378,7 +1392,7 @@ END SUBROUTINE CheckResiduals
       CALL ListAddLogical( Params, 'Linear System Refactorize',.TRUE. )
 
       FreeFactorize = ListGetLogical( Params, &
-          'Linear System Refactorize', FoundFreeFactorize )
+          'Linear System Free Factorization', FoundFreeFactorize )
 
       CALL ListAddLogical( Params,  &
           'Linear System Free Factorization',.FALSE. )
@@ -1434,9 +1448,9 @@ END SUBROUTINE CheckResiduals
       Iterative = ListGetString( Params, &
         'Linear System Solver', stat ) == 'iterative'
 
-      stat = ListGetLogical( Params,  'No Precondition Recompute', stat  )
+      NoPrecRecompute = ListGetLogical( Params, 'No Precondition Recompute', FoundNoPrecRecompute )
 
-      IF ( Iterative .AND. Stat ) THEN
+      IF ( Iterative .AND. NoPrecRecompute ) THEN
          CALL ListAddLogical( Params, 'No Precondition Recompute', .FALSE. )
       END IF
 
@@ -1545,9 +1559,23 @@ END SUBROUTINE CheckResiduals
          END IF
        END DO
 
-       CALL ListAddLogical( Params, 'Linear System Refactorize', .TRUE. )
-       CALL ListAddLogical( Params, &
-                           'Linear System Free Factorization', .TRUE. )
+       IF ( FoundFactorize ) THEN
+         CALL ListAddLogical( Params, 'Linear System Refactorize', Factorize )
+       ELSE
+         CALL ListRemove( Params, 'Linear System Refactorize' )
+       END IF
+
+       IF ( FoundFreeFactorize ) THEN
+         CALL ListAddLogical( Params, 'Linear System Free Factorization', FreeFactorize )
+       ELSE
+         CALL ListRemove( Params, 'Linear System Free Factorization' )
+       END IF
+
+       IF ( FoundNoPrecRecompute ) THEN
+         CALL ListAddLogical( Params, 'No Precondition Recompute', NoPrecRecompute )
+       ELSE
+         CALL ListRemove( Params, 'No Precondition Recompute' )
+       END IF
 !
 !     %-----------------------------------------%
 !     | Either we have convergence, or there is |
@@ -1653,7 +1681,7 @@ END SUBROUTINE CheckResiduals
             END DO
          END DO
 
-         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenScaling = .TRUE. )
+         IF (ScaleSystem) CALL BackScaleLinearSystem( Solver, Matrix, EigenVectors = EigVectors )
 
          ! Restore matrix values, if modified when using shift:
          ! ---------------------------------------------------
@@ -1795,19 +1823,13 @@ END SUBROUTINE CheckResidualsComplex
          CALL Error( Caller, 'Lumped matrixes are not allowed' )
       END IF
 
-      Params = Solver % Values
+      Params => Solver % Values
       IF (  ListGetString( Params, 'Linear System Solver', Stat ) == 'direct' ) THEN
         CALL Error( Caller, 'Direct solver is not allowed' )
       END IF
 
       IF ( Solver % MultiGridSolver ) THEN
         CALL Error( Caller, 'MultiGrid solver is not allowed' )
-      END IF
-
-      Stat = ListGetLogical( Params,'No Precondition Recompute', Stat  )
-
-      IF ( Stat ) THEN
-        CALL ListAddLogical( Params,'No Precondition Recompute', .FALSE. )
       END IF
 
 

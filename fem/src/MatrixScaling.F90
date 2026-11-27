@@ -731,13 +731,18 @@ CONTAINS
 !>  Scale the system back to original.
 !--------------------------------------------------------------
   SUBROUTINE BackScaleLinearSystem( Solver,A,b,x,DiagScaling,&
-      ConstraintScaling, EigenScaling )
+      ConstraintScaling, EigenVectors )
 
     TYPE(Solver_t) :: Solver
     TYPE(Matrix_t) :: A
     REAL(KIND=dp), OPTIONAL :: b(:),x(:)
-    LOGICAL, OPTIONAL :: ConstraintScaling, EigenScaling
+    LOGICAL, OPTIONAL :: ConstraintScaling
     REAL(KIND=dp), OPTIONAL, TARGET :: DiagScaling(:)
+    !> The eigenvectors of the scaled system, given as rows, to be scaled back.
+    !> The array may have fewer columns than the matrix has (complex) rows, e.g.
+    !> when A is a collection matrix with the rows of constraints, whose part is
+    !> not stored.
+    COMPLEX(KIND=dp), OPTIONAL :: EigenVectors(:,:)
 
     CHARACTER(:), ALLOCATABLE :: str
     LOGICAL :: Found
@@ -799,25 +804,21 @@ CONTAINS
         b(1:n) = b(1:n) / Diag(1:n) * A % RhsScaling
       END IF
 
-      IF( PRESENT( EigenScaling ) ) THEN
-        IF( EigenScaling ) THEN
-          ! TODO: Add threading
-          ! The matrix may have more rows than the variable, e.g. a collection
-          ! matrix with the rows of constraints, whose part is not stored.
-          m = SIZE( Solver % Variable % EigenVectors, 2 )
-          DO i=1,Solver % NOFEigenValues
-            !
-            !           Solve x:  INV(D)x = y
-            !           --------------------------
-            IF ( Solver % Matrix % COMPLEX ) THEN
-              m = MIN( m, n/2 )
-              Solver % Variable % EigenVectors(i,1:m) = &
-                  Solver % Variable % EigenVectors(i,1:m) * Diag(1:2*m-1:2)
-            ELSE
-              m = MIN( m, n )
-              Solver % Variable % EigenVectors(i,1:m) = &
-                  Solver % Variable % EigenVectors(i,1:m) * Diag(1:m)
-            END IF
+      IF( PRESENT( EigenVectors ) ) THEN
+        ! TODO: Add threading
+        !
+        !      Solve x:  INV(D)x = y
+        !      --------------------------
+        m = SIZE( EigenVectors, 2 )
+        IF ( A % COMPLEX ) THEN
+          m = MIN( m, n/2 )
+          DO j=1,m
+            EigenVectors(:,j) = EigenVectors(:,j) * Diag(2*j-1)
+          END DO
+        ELSE
+          m = MIN( m, n )
+          DO j=1,m
+            EigenVectors(:,j) = EigenVectors(:,j) * Diag(j)
           END DO
         END IF
       END IF
@@ -918,11 +919,8 @@ CONTAINS
         b(1:n) = Bscl * b(1:n)
       END IF
 
-      IF( PRESENT( EigenScaling ) ) THEN
-        IF( EigenScaling ) THEN
-          Solver % Variable % EigenVectors = &
-              Solver % Variable % EigenVectors * Xscl
-        END IF
+      IF( PRESENT( EigenVectors ) ) THEN
+        EigenVectors = EigenVectors * Xscl
       END IF
 
       IF( Ascl > 0.0 .AND. ABS(Ascl-1.0_dp) > EPSILON(Ascl) ) THEN

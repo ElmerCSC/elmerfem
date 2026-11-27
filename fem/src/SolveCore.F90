@@ -1414,14 +1414,15 @@ CONTAINS
 !   --------------------------------
     IF ( EigenAnalysis ) THEN
       IF ( ScaleSystem ) THEN
-        ! WIP: The serial complex-valued eigensolver does the scaling. The serial
-        !      real-valued eigensolver does it in the standard undamped case with
-        !      a consistent mass matrix (mode 3). The other versions have not yet
-        !      been modified to do so. Keep this consistent with ArpackEigenSolve.
-        IF ( ParEnv % PEs > 1 ) THEN
-          OuterScaling = .TRUE.
-        ELSE IF ( A % Complex ) THEN
+        ! WIP: The complex-valued eigensolvers (both serial and parallel) do the
+        !      scaling. The serial real-valued eigensolver does it in the standard
+        !      undamped case with a consistent mass matrix (mode 3). The other versions
+        !      have not yet been modified to do so. Keep this consistent with
+        !      ArpackEigenSolve, ArpackEigenSolveComplex and ParallelArpackEigenSolveComplex.
+        IF ( A % Complex ) THEN
           OuterScaling = .FALSE.
+        ELSE IF ( ParEnv % PEs > 1 ) THEN
+          OuterScaling = .TRUE.
         ELSE
           OuterScaling = A % Lumped .OR. &
               ListGetLogical( Params, 'Eigen System Damped', GotIt ) .OR. &
@@ -1437,7 +1438,8 @@ CONTAINS
           Solver % Variable % EigenVectors, Solver )
 
       IF ( ScaleSystem ) THEN
-        IF ( OuterScaling ) CALL BackScaleLinearSystem( Solver, A, EigenScaling = .TRUE. )
+        IF ( OuterScaling ) CALL BackScaleLinearSystem( Solver, A, &
+            EigenVectors = Solver % Variable % EigenVectors )
       END IF
       IF ( BackRotation ) CALL BackRotateNTSystem( x, Solver % Variable % Perm, DOFs )
 
@@ -3674,7 +3676,7 @@ END SUBROUTINE StoreLumpedFluxes
 
 SUBROUTINE FinalizeLumpedMatrix( Solver )
 
-  !------------------------------------------------------------------------------
+!------------------------------------------------------------------------------
   TYPE(Solver_t) :: Solver
 !------------------------------------------------------------------------------
   REAL(KIND=dp), POINTER :: FluxesMatrix(:,:), FluxesMatrixIm(:,:)
