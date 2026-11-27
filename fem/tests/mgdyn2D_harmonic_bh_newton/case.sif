@@ -1,0 +1,61 @@
+! Exact Newton in MagnetoDynamics2DHarmonic: saturated conducting iron strip (10 mm) with an
+! imposed flux at 500 Hz. The eddy currents make the phase of B vary over the depth, so the
+! conjugate part of the derivative of nu(|B|)B matters. The field is one-dimensional (By(x)).
+Check Keywords "Warn"
+
+Header
+  Mesh DB "." "strip"
+End
+
+Simulation
+  Max Output Level = 5
+  Coordinate System = Cartesian
+  Simulation Type = Steady
+  Steady State Max Iterations = 1
+  Angular Frequency = Real 3141.592653589793
+End
+
+Body 1
+  Equation = 1
+  Material = 1
+End
+
+Equation 1
+  Active Solvers(1) = 1
+End
+
+Material 1
+  Electric Conductivity = Real 2.0e5
+  H-B Curve = Variable "dummy"
+    Real Cubic Monotone
+      include HB
+    End
+End
+
+Solver 1
+  Equation = MgHarm
+  Procedure = "MagnetoDynamics2D" "MagnetoDynamics2DHarmonic"
+  Variable = A[A re:1 A im:1]
+  Harmonic Newton Exact = Logical True
+  Nonlinear System Max Iterations = 100
+  Nonlinear System Convergence Tolerance = 1.0e-10
+  Linear System Solver = Direct
+  Linear System Direct Method = MUMPS
+End
+
+! flux per unit length A(d) - A(0) = 1.6 T x 10 mm
+Boundary Condition 1
+  Target Boundaries(1) = 1
+  A re = Real 0
+  A im = Real 0
+End
+Boundary Condition 2
+  Target Boundaries(1) = 2
+  A re = Real 0.016
+  A im = Real 0
+End
+
+! exact Newton: 13 iterations to a change of 2e-12; the default iteration is at 6.9612744e-3 (change 1.5e-7)
+! after 100 iterations and converges linearly (factor ~0.94) to the same solution
+Solver 1 :: Reference Norm = Real 6.9612587e-3
+Solver 1 :: Reference Norm Tolerance = Real 1.0e-6
