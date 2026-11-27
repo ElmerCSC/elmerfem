@@ -4458,7 +4458,7 @@ CONTAINS
       REAL(KIND=dp) :: xp,yp,x0,y0,x1,y1,xm,ym,a,b,c,d,s,dir1,&
           dist2,mindist2,dist,mindist,smin,phim,cosphi,&
           dir_final,dir0
-      INTEGER :: i,i0,i1,j,k,sgn,m,imin,kmin,dofs,k2,next,nextp
+      INTEGER :: i,j,k,sgn,m,imin,kmin,dofs,k2,next,nextp
       TYPE(Variable_t), POINTER :: Var2D
       INTEGER :: nCol, nLines
       REAL(KIND=dp), POINTER :: pValues(:)
@@ -4606,10 +4606,10 @@ CONTAINS
       ! We can carry the fields with the zero levelset. This is like pure advection.
       ! We should make this less laborious my fetching the pointers first...
       ! Also, do not reinterpolate the nodes that are already ok!
-      IF( nVar > 0 .AND. CutPerm(node) == 0 .AND. kmin == Parenv % MyPE+1) THEN !.AND. PhiVar2D % Perm(node) == 0 ) THEN
-
-        i0 = IsoMesh % Elements(imin) % NodeIndexes(1)
-        i1 = IsoMesh % Elements(imin) % NodeIndexes(2)
+      ! The values are taken from the global polyline data that every partition holds,
+      ! so all copies of a shared node get the same value, whichever partition owns the
+      ! closest segment.
+      IF( nVar > 0 .AND. CutPerm(node) == 0 ) THEN
 
         DO i = 1,nVar
           IF(i==iAvoid) CYCLE
